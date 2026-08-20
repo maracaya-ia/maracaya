@@ -45,6 +45,13 @@
   input.custo:focus{border-color:var(--brasa); outline:none}
   input.custo.salvo{border-color:var(--ok)}
   .classe{font-size:12px; white-space:nowrap}
+  .btn-excluir{background:none; border:1px solid var(--borda); color:var(--texto-suave);
+    border-radius:6px; padding:5px 8px; cursor:pointer; font-size:13px; line-height:1}
+  .btn-excluir:hover{border-color:var(--alerta); color:var(--alerta)}
+  .chip-restaurar{display:inline-flex; align-items:center; gap:6px; background:var(--fundo);
+    border:1px solid var(--borda); border-radius:20px; padding:5px 10px 5px 12px; font-size:12px}
+  .chip-restaurar button{background:none; border:none; color:var(--brasa); cursor:pointer;
+    font-size:12px; padding:0}
   .aviso{background:rgba(255,178,94,.10); border:1px solid var(--brasa-clara);
     border-radius:10px; padding:12px 16px; margin-bottom:12px; font-size:13px; line-height:1.5}
   .rodape{color:var(--texto-suave); font-size:12px; margin-top:20px}
@@ -108,10 +115,14 @@
     <div style="overflow-x:auto"><table id="tProdutos">
       <thead><tr>
         <th>Produto</th><th>Vendidos</th><th>Preço médio</th><th>Custo (CMV)</th>
-        <th>Margem un.</th><th>Margem %</th><th>Lucro total</th><th>Classe</th>
+        <th>Margem un.</th><th>Margem %</th><th>Lucro total</th><th>Classe</th><th></th>
       </tr></thead>
       <tbody></tbody>
     </table></div>
+    <div id="blocoExcluidos" hidden style="margin-top:14px">
+      <div style="font-size:12px; color:var(--texto-suave); text-transform:uppercase; letter-spacing:.05em; margin-bottom:8px">Produtos excluídos da análise</div>
+      <div id="listaExcluidos" style="display:flex; flex-wrap:wrap; gap:8px"></div>
+    </div>
   </div>
 </section>
 
@@ -227,6 +238,8 @@ async function carregar(){
     <td class="num">${p.lucro !== null ? R$(p.lucro) : '—'}</td>
     <td class="classe" style="color:${CORES[p.classe] ?? 'var(--texto-suave)'}">
       ${p.classe ? (EMOJI[p.classe] ?? '') + ' ' + p.classe : 'cadastre o custo'}</td>
+    <td><button class="btn-excluir" data-chave="${p.chave}" data-nome="${p.nome}"
+         title="Excluir da análise de cardápio">🗑</button></td>
   </tr>`).join('');
 
   document.querySelectorAll('input.custo').forEach(inp => {
@@ -241,6 +254,37 @@ async function carregar(){
       if (j.ok){ inp.classList.add('salvo'); setTimeout(carregar, 400); }
     });
   });
+
+  document.querySelectorAll('.btn-excluir').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (!confirm(`Excluir "${btn.dataset.nome}" da análise de cardápio?\n\nNão apaga as vendas — só tira esse produto do quadrante mágico, da lista de custos e do radar de encalhados. Dá pra restaurar depois.`)) return;
+      const resp = await fetch('/api/produtos/excluir', {method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({nome: btn.dataset.chave})});
+      const j = await resp.json();
+      if (j.ok) carregar();
+    });
+  });
+
+  // ---- produtos excluidos ----
+  const blocoExcluidos = document.getElementById('blocoExcluidos');
+  if (d.excluidos && d.excluidos.length){
+    blocoExcluidos.hidden = false;
+    document.getElementById('listaExcluidos').innerHTML = d.excluidos.map(nome => `
+      <span class="chip-restaurar">${nome} <button data-nome="${nome}">↺ restaurar</button></span>
+    `).join('');
+    document.querySelectorAll('#listaExcluidos button').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const resp = await fetch('/api/produtos/restaurar', {method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({nome: btn.dataset.nome})});
+        const j = await resp.json();
+        if (j.ok) carregar();
+      });
+    });
+  } else {
+    blocoExcluidos.hidden = true;
+  }
 
   // ---- radar de encalhados ----
   try{

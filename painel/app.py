@@ -561,6 +561,10 @@ def analise_cardapio(marca: str = Query("todas"), unidade: str = Query("todas"),
         LEFT JOIN produto_custos c ON c.nome = coalesce(a.canonico, lower(trim(i.nome)))
         WHERE p.status <> 'canceled'
           AND p.criado_em >= now() - (%(dias)s || ' days')::interval
+          AND NOT EXISTS (
+              SELECT 1 FROM produto_excluido e
+              WHERE e.nome = coalesce(a.canonico, lower(trim(i.nome)))
+          )
           {filtro_marca}
         GROUP BY 1, c.custo
         HAVING sum(i.quantidade) > 0
@@ -570,7 +574,11 @@ def analise_cardapio(marca: str = Query("todas"), unidade: str = Query("todas"),
     marcas = consultar(
         "SELECT DISTINCT marca FROM pedidos WHERE marca IS NOT NULL ORDER BY 1", {})
 
-    return {"produtos": produtos, "marcas": marcas}
+    excluidos = consultar(
+        "SELECT nome FROM produto_excluido ORDER BY excluido_em DESC", {})
+
+    return {"produtos": produtos, "marcas": marcas,
+            "excluidos": [e["nome"] for e in excluidos]}
 
 
 @app.post("/api/custos")
@@ -588,6 +596,28 @@ def salvar_custo(dados: dict = Body(...)):
         ON CONFLICT (nome) DO UPDATE
             SET custo = EXCLUDED.custo, atualizado_em = now()
     """, {"nome": nome, "custo": custo})
+    return {"ok": True}
+
+
+@app.post("/api/produtos/excluir")
+def excluir_produto(dados: dict = Body(...)):
+    nome = str(dados.get("nome", "")).strip().lower()
+    if not nome:
+        return {"ok": False, "erro": "nome inválido"}
+    executar("""
+        INSERT INTO produto_excluido (nome, excluido_em)
+        VALUES (%(nome)s, now())
+        ON CONFLICT (nome) DO NOTHING
+    """, {"nome": nome})
+    return {"ok": True}
+
+
+@app.post("/api/produtos/restaurar")
+def restaurar_produto(dados: dict = Body(...)):
+    nome = str(dados.get("nome", "")).strip().lower()
+    if not nome:
+        return {"ok": False, "erro": "nome inválido"}
+    executar("DELETE FROM produto_excluido WHERE nome = %(nome)s", {"nome": nome})
     return {"ok": True}
 
 
@@ -1529,6 +1559,10 @@ def _analisar_encalhados(marca="todas", unidade="todas"):
             LEFT JOIN produto_alias a ON a.alias = lower(trim(i.nome))
             WHERE p.status <> 'canceled'
               AND p.criado_em >= now() - interval '56 days'
+              AND NOT EXISTS (
+                  SELECT 1 FROM produto_excluido e
+                  WHERE e.nome = coalesce(a.canonico, lower(trim(i.nome)))
+              )
               {filtro_marca}
             GROUP BY 1
             HAVING sum(i.quantidade) >= 8
