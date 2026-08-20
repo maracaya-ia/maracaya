@@ -240,11 +240,18 @@ function formCompacto(v){
 
 async function medirMeta(){
   try{
-    const r = await fetch(`/api/meta?marca=${encodeURIComponent(estado.marca)}`);
+    const r = await fetch(`/api/meta?marca=${encodeURIComponent(estado.marca)}&unidade=${encodeURIComponent(estado.unidade)}`);
     const m = await r.json();
     const el = document.getElementById('meta');
     const nomeMes = MESES_PT[new Date().getMonth()];
-    const quem = estado.marca === 'todas' ? 'do grupo' : `— ${estado.marca}`;
+    const partes = [];
+    if (estado.marca !== 'todas') partes.push(estado.marca);
+    if (estado.unidade !== 'todas') partes.push(estado.unidade);
+    const quem = partes.length ? `— ${partes.join(' · ')}` : 'do grupo';
+    const avisoUnidade = m.meta_e_do_grupo_todo
+      ? `<div style="color:var(--texto-suave); font-size:11.5px; margin-top:2px">
+           ⚠️ a meta é do grupo inteiro — só o "realizado" está filtrado pela unidade</div>`
+      : '';
 
     if (m.meta === null){
       el.innerHTML = `<div class="topo">
@@ -253,7 +260,8 @@ async function medirMeta(){
           <span class="editar">R$ <input id="inpMeta" type="number" step="500" min="1" placeholder="30000"></span>
         </div>
         <div class="linha-info">Ritmo atual: <strong class="num">${formCompacto(m.ritmo_atual)}/dia</strong>
-          · projeção do mês nesse ritmo: <strong class="num">${formCompacto(m.projecao)}</strong></div>`;
+          · projeção do mês nesse ritmo: <strong class="num">${formCompacto(m.projecao)}</strong></div>
+        ${avisoUnidade}`;
     } else {
       const pct = Math.min(m.pct, 100);
       const pctTempo = 100 * (m.dia_hoje - 1) / m.dias_no_mes;
@@ -276,7 +284,8 @@ async function medirMeta(){
                <span>ritmo atual: <strong class="num ${ritmoCls}">${formCompacto(m.ritmo_atual)}/dia ${m.no_ritmo ? '✅' : '⚠️'}</strong></span>
                <span>projeção: <strong class="num ${ritmoCls}">${formCompacto(m.projecao)}</strong></span>`}
           <span>· ${m.dias_restantes} dia(s) restantes</span>
-        </div>`;
+        </div>
+        ${avisoUnidade}`;
       document.getElementById('btnEditarMeta')?.addEventListener('click', () => {
         document.querySelector('#meta .topo').innerHTML = `
           <span class="titulo">🎯 Nova meta de ${nomeMes} ${quem}</span>

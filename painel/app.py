@@ -115,9 +115,6 @@ def dados(dias: int = Query(30, ge=1, le=365),
     if unidade != "todas":
         filtro_marca += " AND p.unidade = %(unidade)s"
         params["unidade"] = unidade
-    if unidade != "todas":
-        filtro_marca += " AND p.unidade = %(unidade)s"
-        params["unidade"] = unidade
 
     dia_local = f"(p.criado_em AT TIME ZONE '{TZ}')::date"
     if inicio and fim:
@@ -901,12 +898,15 @@ def salvar_dre_config(dados: dict = Body(...)):
 
 
 @app.get("/api/meta")
-def meta_do_mes(marca: str = Query("todas")):
+def meta_do_mes(marca: str = Query("todas"), unidade: str = Query("todas")):
     agora = f"(now() AT TIME ZONE '{TZ}')"
     filtro_marca = ""
     params = {"marca": marca}
     if marca != "todas":
         filtro_marca = "AND p.marca = %(marca)s"
+    if unidade != "todas":
+        filtro_marca += " AND p.unidade = %(unidade)s"
+        params["unidade"] = unidade
 
     dados = consultar(f"""
         SELECT
@@ -935,7 +935,8 @@ def meta_do_mes(marca: str = Query("todas")):
             "dia_hoje": dia, "dias_no_mes": dias_mes,
             "dias_restantes": dias_restantes,
             "ritmo_atual": round(ritmo, 2),
-            "projecao": round(projecao, 2)}
+            "projecao": round(projecao, 2),
+            "meta_e_do_grupo_todo": unidade != "todas"}
     if meta:
         falta = max(meta - realizado, 0)
         resp.update({
