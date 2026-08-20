@@ -1176,7 +1176,7 @@ def lista_compras(marca: str = Query("todas")):
 
 
 @app.get("/api/retencao")
-def retencao_cohorts(marca: str = Query("todas")):
+def retencao_cohorts(marca: str = Query("todas"), unidade: str = Query("todas")):
     """Cohorts mensais: turma = mes da primeira compra; para cada mes
     seguinte, % da turma que voltou a comprar."""
     filtro_marca = ""
