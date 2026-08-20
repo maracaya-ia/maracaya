@@ -1013,7 +1013,7 @@ def metas_todas():
 
 
 @app.get("/api/previsao")
-def previsao_demanda(marca: str = Query("todas")):
+def previsao_demanda(marca: str = Query("todas"), unidade: str = Query("todas")):
     """Preve os proximos 7 dias: mediana por dia da semana (8 semanas)
     ajustada pela tendencia (ultimas 4 semanas vs 4 anteriores)."""
     filtro_marca = ""
@@ -1101,7 +1101,7 @@ def previsao_demanda(marca: str = Query("todas")):
 
 
 @app.get("/api/compras")
-def lista_compras(marca: str = Query("todas")):
+def lista_compras(marca: str = Query("todas"), unidade: str = Query("todas")):
     """Necessidade de insumos pros proximos 7 dias: venda media semanal por
     produto (28 dias) x fator de tendencia x ficha tecnica."""
     filtro_marca = ""
@@ -1497,7 +1497,7 @@ def zap_pergunta(payload: dict = Body(...),
     return {"enviar": True, "texto": resposta}
 
 
-def _analisar_encalhados(marca="todas"):
+def _analisar_encalhados(marca="todas", unidade="todas"):
     """Detecta produtos parados (sem vender ha X dias) e em queda
     (vendas recentes bem abaixo do historico do proprio produto)."""
     filtro_marca = ""
@@ -1552,8 +1552,8 @@ def _analisar_encalhados(marca="todas"):
 
 
 @app.get("/api/encalhados")
-def encalhados(marca: str = Query("todas")):
-    parados, quedas = _analisar_encalhados(marca)
+def encalhados(marca: str = Query("todas"), unidade: str = Query("todas")):
+    parados, quedas = _analisar_encalhados(marca, unidade)
     return {"parados": parados, "quedas": quedas,
             "marcas": consultar(
                 "SELECT DISTINCT marca FROM pedidos WHERE marca IS NOT NULL ORDER BY 1", {})}

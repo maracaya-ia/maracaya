@@ -157,7 +157,7 @@ const NUM = v => (+(v ?? 0)).toLocaleString('pt-BR');
 const NOME_CANAL = {ifood:'iFood', site:'Site', portal:'Portal (balcão)',
   whatsapp:'WhatsApp', chatbot:'Chatbot', app:'App', '99food':'99Food',
   rappi:'Rappi', aiqfome:'Aiqfome', keeta:'Keeta', import:'Importação'};
-let estado = {marca:'todas', sumido:30, canal:'todos', tel:0};
+let estado = {marca:'todas', unidade:'todas', sumido:30, canal:'todos', tel:0};
 let graficos = {};
 
 Chart.defaults.color = 'var(--texto-suave)';
@@ -177,7 +177,7 @@ function fone(t){
 }
 
 async function carregar(){
-  const r = await fetch(`/api/clientes?marca=${encodeURIComponent(estado.marca)}&sumido_apos=${estado.sumido}&canal=${encodeURIComponent(estado.canal)}&so_com_telefone=${estado.tel}`);
+  const r = await fetch(`/api/clientes?marca=${encodeURIComponent(estado.marca)}&unidade=${encodeURIComponent(estado.unidade)}&sumido_apos=${estado.sumido}&canal=${encodeURIComponent(estado.canal)}&so_com_telefone=${estado.tel}`);
   const d = await r.json();
 
   const sel = document.getElementById('selMarca');
@@ -263,7 +263,7 @@ async function carregar(){
 
   // ---- cohorts de retencao ----
   try{
-    const rc = await fetch(`/api/retencao?marca=${encodeURIComponent(estado.marca)}`);
+    const rc = await fetch(`/api/retencao?marca=${encodeURIComponent(estado.marca)}&unidade=${encodeURIComponent(estado.unidade)}`);
     const ct = await rc.json();
     const MES_ROTULO = m => {
       const [a, mm] = m.split('-');

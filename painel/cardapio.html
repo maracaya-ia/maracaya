@@ -120,7 +120,7 @@
 <script>
 const R$ = v => (+(v ?? 0)).toLocaleString('pt-BR', {style:'currency', currency:'BRL'});
 const NUM = v => (+(v ?? 0)).toLocaleString('pt-BR');
-let estado = {marca:'todas', dias:90};
+let estado = {marca:'todas', unidade:'todas', dias:90};
 let graficos = {};
 
 Chart.defaults.color = 'var(--texto-suave)';
@@ -142,7 +142,7 @@ function desenhar(id, config, plugins){
 }
 
 async function carregar(){
-  const r = await fetch(`/api/cardapio?marca=${encodeURIComponent(estado.marca)}&dias=${estado.dias}`);
+  const r = await fetch(`/api/cardapio?marca=${encodeURIComponent(estado.marca)}&unidade=${encodeURIComponent(estado.unidade)}&dias=${estado.dias}`);
   const d = await r.json();
 
   const sel = document.getElementById('selMarca');
@@ -244,7 +244,7 @@ async function carregar(){
 
   // ---- radar de encalhados ----
   try{
-    const re = await fetch(`/api/encalhados?marca=${encodeURIComponent(estado.marca)}`);
+    const re = await fetch(`/api/encalhados?marca=${encodeURIComponent(estado.marca)}&unidade=${encodeURIComponent(estado.unidade)}`);
     const en = await re.json();
     const itemParado = p => `<div style="padding:8px 10px; border:1px solid var(--borda); border-radius:8px; margin-bottom:6px; display:flex; justify-content:space-between; gap:8px">
       <span>${p.nome}</span><span style="color:var(--alerta); font-family:'IBM Plex Mono',monospace; white-space:nowrap">${p.dias}d parado</span></div>`;

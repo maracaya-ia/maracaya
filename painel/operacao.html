@@ -161,7 +161,7 @@ const NUM = v => (+(v ?? 0)).toLocaleString('pt-BR');
 const R$ = v => (+(v ?? 0)).toLocaleString('pt-BR', {style:'currency', currency:'BRL'});
 const DIAS = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
 const DIAS_CURTO = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
-let estado = {marca:'todas', periodo:'60'};
+let estado = {marca:'todas', unidade:'todas', periodo:'60'};
 let graficos = {};
 if (window.Chart){
   Chart.defaults.color = 'var(--texto-suave)';
@@ -180,7 +180,7 @@ function corCalor(v, max){
 }
 
 async function carregar(){
-  const r = await fetch(`/api/operacao?marca=${encodeURIComponent(estado.marca)}&periodo=${estado.periodo}`);
+  const r = await fetch(`/api/operacao?marca=${encodeURIComponent(estado.marca)}&unidade=${encodeURIComponent(estado.unidade)}&periodo=${estado.periodo}`);
   const d = await r.json();
 
   const sel = document.getElementById('selMarca');
@@ -306,7 +306,7 @@ async function carregar(){
 
   // ---- previsao 7 dias ----
   try{
-    const rp = await fetch(`/api/previsao?marca=${encodeURIComponent(estado.marca)}`);
+    const rp = await fetch(`/api/previsao?marca=${encodeURIComponent(estado.marca)}&unidade=${encodeURIComponent(estado.unidade)}`);
     const pv = await rp.json();
     const tend = 100 * (pv.fator_tendencia - 1);
     document.getElementById('descPrev').innerHTML =
@@ -327,7 +327,7 @@ async function carregar(){
 
   // ---- lista de compras ----
   try{
-    const rc = await fetch(`/api/compras?marca=${encodeURIComponent(estado.marca)}`);
+    const rc = await fetch(`/api/compras?marca=${encodeURIComponent(estado.marca)}&unidade=${encodeURIComponent(estado.unidade)}`);
     const lc = await rc.json();
     const fmtQ = (v, u) => u === 'kg'
       ? (+v).toLocaleString('pt-BR', {maximumFractionDigits:1}) + ' kg'

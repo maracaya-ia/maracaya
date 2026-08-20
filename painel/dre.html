@@ -123,10 +123,10 @@
 <script>
 const R$ = v => (+(v ?? 0)).toLocaleString('pt-BR', {style:'currency', currency:'BRL'});
 const NUM = v => (+(v ?? 0)).toLocaleString('pt-BR');
-let estado = {marca:'todas', periodo:'mes_atual'};
+let estado = {marca:'todas', unidade:'todas', periodo:'mes_atual'};
 
 async function carregar(){
-  const r = await fetch(`/api/dre?marca=${encodeURIComponent(estado.marca)}&periodo=${estado.periodo}`);
+  const r = await fetch(`/api/dre?marca=${encodeURIComponent(estado.marca)}&unidade=${encodeURIComponent(estado.unidade)}&periodo=${estado.periodo}`);
   const d = await r.json();
 
   const sel = document.getElementById('selMarca');

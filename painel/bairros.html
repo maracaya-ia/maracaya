@@ -100,7 +100,7 @@
 <script>
 const R$ = v => (+(v ?? 0)).toLocaleString('pt-BR', {style:'currency', currency:'BRL'});
 const NUM = v => (+(v ?? 0)).toLocaleString('pt-BR');
-let estado = {marca:'todas', dias:90, agrupar:'regiao'};
+let estado = {marca:'todas', unidade:'todas', dias:90, agrupar:'regiao'};
 let mapa = null, camadaPontos = null;
 
 function garantirMapa(){
@@ -112,7 +112,7 @@ function garantirMapa(){
 }
 
 async function carregar(){
-  const r = await fetch(`/api/bairros?marca=${encodeURIComponent(estado.marca)}&dias=${estado.dias}&agrupar=${estado.agrupar}`);
+  const r = await fetch(`/api/bairros?marca=${encodeURIComponent(estado.marca)}&unidade=${encodeURIComponent(estado.unidade)}&dias=${estado.dias}&agrupar=${estado.agrupar}`);
   const d = await r.json();
 
   const sel = document.getElementById('selMarca');
