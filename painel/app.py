@@ -1829,6 +1829,9 @@ def deletar_nota(dados: dict = Body(...)):
 
 @app.get("/api/unidades")
 def listar_unidades():
+    # "Chomp" e uma marca, nao uma unidade fisica (futuramente vai operar
+    # dentro da unidade Sobradinho) - por isso fica de fora do filtro de unidade.
     us = consultar(
-        "SELECT DISTINCT unidade FROM pedidos WHERE unidade IS NOT NULL ORDER BY 1", {})
+        "SELECT DISTINCT unidade FROM pedidos WHERE unidade IS NOT NULL "
+        "AND unidade <> 'Chomp' ORDER BY 1", {})
     return {"unidades": [u["unidade"] for u in us]}
