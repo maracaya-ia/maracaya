@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bairros — Painel Operacional</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700&family=Inter:wght@400;500&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+  
+  *{box-sizing:border-box; margin:0; padding:0}
+  body{background:var(--fundo); color:var(--texto);
+    font-family:'Inter',system-ui,sans-serif; font-size:14px; padding:24px}
+  header{display:flex; align-items:center; gap:16px; flex-wrap:wrap; margin-bottom:24px}
+  h1{font-family:'Sora',sans-serif; font-size:20px; font-weight:700; letter-spacing:-.02em}
+  h1 .marca{color:var(--brasa)}
+  nav{display:flex; gap:14px}
+  nav a{color:var(--texto-suave); text-decoration:none; font-size:13px}
+  nav a:hover{color:var(--brasa)}
+  .controles{margin-left:auto; display:flex; gap:8px; flex-wrap:wrap}
+  select{background:var(--painel); color:var(--texto); border:1px solid var(--borda);
+    border-radius:8px; padding:8px 12px; font-family:'Inter'; font-size:13px; cursor:pointer}
+
+  .grade{display:grid; grid-template-columns:repeat(12,1fr); gap:12px}
+  .card{background:var(--painel); border:1px solid var(--borda); border-radius:12px;
+    padding:18px; display:flex; flex-direction:column}
+  .card h2{font-family:'Sora'; font-size:14px; font-weight:600; margin-bottom:4px}
+  .card .desc{color:var(--texto-suave); font-size:12px; margin-bottom:14px; line-height:1.5}
+  .c-12{grid-column:span 12} .c-7{grid-column:span 7} .c-5{grid-column:span 5}
+  @media(max-width:950px){.c-7,.c-5{grid-column:span 12}}
+
+  #mapa{height:440px; border-radius:10px; background:#0E1013}
+  .leaflet-container{font-family:'Inter'}
+
+  table{width:100%; border-collapse:collapse; font-size:13px}
+  th{color:var(--texto-suave); text-align:left; font-weight:500; padding:8px 8px;
+    border-bottom:1px solid var(--borda); text-transform:uppercase; font-size:11px; letter-spacing:.05em}
+  td{padding:8px; border-bottom:1px solid var(--borda)}
+  tr:last-child td{border-bottom:none}
+  td.num{font-family:'IBM Plex Mono',monospace; white-space:nowrap}
+  .barra{height:5px; border-radius:3px; background:var(--brasa); margin-top:4px}
+  tr.top td{color:var(--brasa-clara)}
+  .info{display:inline-flex; align-items:center; justify-content:center;
+    width:16px; height:16px; margin-left:6px; border:1px solid var(--texto-suave);
+    border-radius:50%; font-size:10px; font-weight:600; color:var(--texto-suave);
+    cursor:help; position:relative; vertical-align:middle}
+  .info:hover::after, .info:focus::after{
+    content:attr(data-tip); position:absolute; bottom:140%; left:0;
+    width:min(300px, 72vw); background:#0E1013; border:1px solid var(--borda);
+    padding:10px 12px; border-radius:10px; font-size:12px; font-weight:400;
+    line-height:1.55; color:var(--texto); z-index:1001; white-space:normal; text-align:left}
+  .rodape{color:var(--texto-suave); font-size:12px; margin-top:20px}
+</style>
+<link rel="stylesheet" href="/static/_tema.css">
+</head>
+<body>
+
+<header>
+  <h1>Bairros <span class="marca">— Grupo Maracayá</span></h1>
+  
+  <div class="controles">
+    <select id="selUnidade" aria-label="Unidade">
+      <option value="todas">Todas as unidades</option>
+    </select>
+    <select id="selMarca"><option value="todas">Todas as marcas</option></select>
+    <select id="selAgrupar">
+      <option value="regiao" selected>Por região/condomínio</option>
+      <option value="bairro">Por bairro (oficial)</option>
+    </select>
+    <select id="selJanela">
+      <option value="30">Últimos 30 dias</option>
+      <option value="60">Últimos 60 dias</option>
+      <option value="90" selected>Últimos 90 dias</option>
+      <option value="365">Tudo</option>
+    </select>
+  </div>
+</header>
+
+<section class="grade">
+  <div class="card c-7">
+    <h2>Mapa de entregas<span class="info" tabindex="0" data-tip="Cada ponto é um pedido de delivery entregue no período — posição vem das coordenadas reais do endereço. Zoom com scroll, arrasta pra navegar. Concentração de pontos = seu território de verdade; vazio com gente morando = oportunidade de marketing.">?</span></h2>
+    <div class="desc" id="descMapa">Cada ponto de brasa é um pedido entregue</div>
+    <div id="mapa"></div>
+  </div>
+
+  <div class="card c-5">
+    <h2>Ranking de regiões<span class="info" tabindex="0" data-tip="Só pedidos de delivery não cancelados. Por região/condomínio: usa as regras cadastradas (Jardim Europa II, Bela Vista...) lidas do texto do endereço; quem não casa com regra aparece pelo bairro oficial. Por bairro: usa o campo oficial do endereço. Regras novas são 1 linha de SQL na tabela regras_regiao.">?</span></h2>
+    <div class="desc">Quem sustenta a casa — delivery no período</div>
+    <div style="overflow-x:auto"><table id="tBairros">
+      <thead><tr><th>Bairro</th><th>Pedidos</th><th>Faturamento</th><th>Ticket</th><th>Clientes</th></tr></thead>
+      <tbody></tbody>
+    </table></div>
+  </div>
+</section>
+
+<p class="rodape" id="atualizadoEm">Carregando…</p>
+
+<script>
+const R$ = v => (+(v ?? 0)).toLocaleString('pt-BR', {style:'currency', currency:'BRL'});
+const NUM = v => (+(v ?? 0)).toLocaleString('pt-BR');
+let estado = {marca:'todas', dias:90, agrupar:'regiao'};
+let mapa = null, camadaPontos = null;
+
+function garantirMapa(){
+  if (mapa) return;
+  mapa = L.map('mapa', {zoomControl:true}).setView([-15.65, -47.83], 12);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    attribution: '© OpenStreetMap · © CARTO', maxZoom: 18
+  }).addTo(mapa);
+}
+
+async function carregar(){
+  const r = await fetch(`/api/bairros?marca=${encodeURIComponent(estado.marca)}&dias=${estado.dias}&agrupar=${estado.agrupar}`);
+  const d = await r.json();
+
+  const sel = document.getElementById('selMarca');
+  if (sel.options.length === 1){
+    d.marcas.forEach(m => sel.add(new Option(m.marca, m.marca)));
+  }
+
+  // ---- mapa ----
+  garantirMapa();
+  if (camadaPontos) camadaPontos.remove();
+  camadaPontos = L.layerGroup();
+  d.pontos.forEach(p => {
+    L.circleMarker([+p.lat, +p.lng], {
+      radius: 4, color: '#FF7A2F', weight: 1,
+      fillColor: '#FF7A2F', fillOpacity: 0.45
+    }).bindTooltip(R$(+p.total)).addTo(camadaPontos);
+  });
+  camadaPontos.addTo(mapa);
+  if (d.pontos.length){
+    const lats = d.pontos.map(p => +p.lat), lngs = d.pontos.map(p => +p.lng);
+    mapa.fitBounds([[Math.min(...lats), Math.min(...lngs)],
+                    [Math.max(...lats), Math.max(...lngs)]], {padding:[30,30]});
+  }
+  document.getElementById('descMapa').textContent =
+    `${NUM(d.pontos.length)} entregas no mapa · ${NUM(d.totais.pedidos)} pedidos de delivery no período`;
+
+  // ---- ranking ----
+  const maxPed = Math.max(...d.ranking.map(b => +b.pedidos), 1);
+  const totalFat = d.ranking.reduce((s,b) => s + (+b.faturamento), 0);
+  document.querySelector('#tBairros tbody').innerHTML = d.ranking.map((b, i) => `
+    <tr class="${i === 0 ? 'top' : ''}">
+      <td>${b.bairro}${i === 0 ? ' 👑' : ''}
+        <div class="barra" style="width:${Math.max(100 * b.pedidos / maxPed, 3)}%"></div></td>
+      <td class="num">${NUM(b.pedidos)}</td>
+      <td class="num">${R$(b.faturamento)}</td>
+      <td class="num">${R$(b.ticket)}</td>
+      <td class="num">${NUM(b.clientes)}</td>
+    </tr>`).join('') || '<tr><td colspan="5">Sem entregas no período</td></tr>';
+
+  const top = d.ranking[0];
+  document.getElementById('atualizadoEm').textContent =
+    (top ? `${top.bairro} responde por ${(100 * top.faturamento / Math.max(totalFat, 1)).toFixed(0)}% do faturamento de delivery · ` : '') +
+    'Atualizado às ' + new Date().toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'});
+}
+
+document.getElementById('selUnidade').addEventListener('change', e => {
+  estado.unidade = e.target.value;
+  carregar();
+});
+fetch('/api/unidades').then(r => r.json()).then(d => {
+  const sel = document.getElementById('selUnidade');
+  (d.unidades || []).forEach(u => {
+    const o = document.createElement('option');
+    o.value = u; o.textContent = u; sel.appendChild(o);
+  });
+});
+document.getElementById('selMarca').addEventListener('change', e => {
+  estado.marca = e.target.value; carregar();
+});
+document.getElementById('selJanela').addEventListener('change', e => {
+  estado.dias = +e.target.value; carregar();
+});
+document.getElementById('selAgrupar').addEventListener('change', e => {
+  estado.agrupar = e.target.value; carregar();
+});
+
+carregar();
+</script>
+<script src="/static/_tema.js"></script>
+</body>
+</html>

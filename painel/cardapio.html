@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cardápio — Painel Operacional</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700&family=Inter:wght@400;500&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  
+  *{box-sizing:border-box; margin:0; padding:0}
+  body{background:var(--fundo); color:var(--texto);
+    font-family:'Inter',system-ui,sans-serif; font-size:14px; padding:24px}
+  header{display:flex; align-items:center; gap:16px; flex-wrap:wrap; margin-bottom:24px}
+  h1{font-family:'Sora',sans-serif; font-size:20px; font-weight:700; letter-spacing:-.02em}
+  h1 .marca{color:var(--brasa)}
+  nav{display:flex; gap:14px}
+  nav a{color:var(--texto-suave); text-decoration:none; font-size:13px}
+  nav a:hover{color:var(--brasa)}
+  .controles{margin-left:auto; display:flex; gap:8px; flex-wrap:wrap}
+  select{background:var(--painel); color:var(--texto); border:1px solid var(--borda);
+    border-radius:8px; padding:8px 12px; font-family:'Inter'; font-size:13px; cursor:pointer}
+
+  .grade{display:grid; grid-template-columns:repeat(12,1fr); gap:12px}
+  .card{background:var(--painel); border:1px solid var(--borda); border-radius:12px;
+    padding:18px; display:flex; flex-direction:column}
+  .card h2{font-family:'Sora'; font-size:14px; font-weight:600; margin-bottom:4px}
+  .card .desc{color:var(--texto-suave); font-size:12px; margin-bottom:14px; line-height:1.5}
+  .c-12{grid-column:span 12}
+
+  .legenda{display:flex; gap:16px; flex-wrap:wrap; font-size:12px; margin-bottom:10px}
+  .legenda span{display:flex; align-items:center; gap:6px}
+  .bolinha{width:10px; height:10px; border-radius:50%}
+
+  table{width:100%; border-collapse:collapse; font-size:13px}
+  th{color:var(--texto-suave); text-align:left; font-weight:500; padding:8px 10px;
+    border-bottom:1px solid var(--borda); text-transform:uppercase; font-size:11px; letter-spacing:.05em}
+  td{padding:8px 10px; border-bottom:1px solid var(--borda)}
+  tr:last-child td{border-bottom:none}
+  td.num{font-family:'IBM Plex Mono',monospace; white-space:nowrap}
+  input.custo{width:90px; background:var(--fundo); color:var(--texto);
+    border:1px solid var(--borda); border-radius:6px; padding:6px 8px;
+    font-family:'IBM Plex Mono',monospace; font-size:13px}
+  input.custo:focus{border-color:var(--brasa); outline:none}
+  input.custo.salvo{border-color:var(--ok)}
+  .classe{font-size:12px; white-space:nowrap}
+  .aviso{background:rgba(255,178,94,.10); border:1px solid var(--brasa-clara);
+    border-radius:10px; padding:12px 16px; margin-bottom:12px; font-size:13px; line-height:1.5}
+  .rodape{color:var(--texto-suave); font-size:12px; margin-top:20px}
+  .info{display:inline-flex; align-items:center; justify-content:center;
+    width:16px; height:16px; margin-left:6px; border:1px solid var(--texto-suave);
+    border-radius:50%; font-size:10px; font-weight:600; color:var(--texto-suave);
+    cursor:help; position:relative; vertical-align:middle}
+  .info:hover::after, .info:focus::after{
+    content:attr(data-tip); position:absolute; bottom:140%; left:0;
+    width:min(300px, 72vw); background:#0E1013; border:1px solid var(--borda);
+    padding:10px 12px; border-radius:10px; font-size:12px; font-weight:400;
+    line-height:1.55; color:var(--texto); z-index:9; white-space:normal; text-align:left}
+</style>
+<link rel="stylesheet" href="/static/_tema.css">
+</head>
+<body>
+
+<header>
+  <h1>Cardápio <span class="marca">— Grupo Maracayá</span></h1>
+  
+  <div class="controles">
+    <select id="selUnidade" aria-label="Unidade">
+      <option value="todas">Todas as unidades</option>
+    </select>
+    <select id="selMarca"><option value="todas">Todas as marcas</option></select>
+    <select id="selJanela">
+      <option value="30">Últimos 30 dias</option>
+      <option value="60">Últimos 60 dias</option>
+      <option value="90" selected>Últimos 90 dias</option>
+    </select>
+  </div>
+</header>
+
+<div class="aviso" id="avisoCustos" hidden></div>
+
+<section class="grade">
+  <div class="card c-12">
+    <h2>Quadrante mágico<span class="info" tabindex="0" data-tip="Cada bolinha é um produto: quanto mais pra direita, mais vende; quanto mais pra cima, mais margem por unidade deixa (preço médio − CMV). As linhas dividem nos valores medianos. Estrela: proteja e destaque. Burro de carga: vende muito, margem baixa — candidato a reajuste ou redução de custo. Quebra-cabeça: margem ótima, vende pouco — divulgue. Abacaxi: repense ou tire do cardápio. Só produtos com custo cadastrado entram.">?</span></h2>
+    <div class="desc">Popularidade × margem unitária — o raio-X de lucro do seu cardápio</div>
+    <div class="legenda">
+      <span><span class="bolinha" style="background:var(--ok)"></span>⭐ Estrela</span>
+      <span><span class="bolinha" style="background:var(--brasa-clara)"></span>🐴 Burro de carga</span>
+      <span><span class="bolinha" style="background:var(--roxo)"></span>🧩 Quebra-cabeça</span>
+      <span><span class="bolinha" style="background:var(--alerta)"></span>🍍 Abacaxi</span>
+    </div>
+    <div style="position:relative; height:380px"><canvas id="gQuadrante"></canvas></div>
+  </div>
+
+  <div class="card c-12">
+    <h2>Radar de produtos encalhados 📉<span class="info" tabindex="0" data-tip="Vigia produtos que já tiveram volume relevante (8+ vendas em 8 semanas). 'Parados' = sem vender há 10+ dias. 'Em queda' = as últimas 2 semanas venderam menos de 60% das 2 anteriores. Serve pra reaquecer com combo, destaque ou promo antes do produto morrer de vez.">?</span></h2>
+    <div class="desc" id="descEncalhados">Produtos perdendo tração — aja antes de sumirem do cardápio</div>
+    <div id="gridEncalhados" style="display:grid; grid-template-columns:1fr 1fr; gap:16px">
+      <div><h3 style="font-size:12px; color:var(--texto-suave); text-transform:uppercase; letter-spacing:.05em; margin-bottom:8px">🛑 Parados</h3><div id="listaParados"></div></div>
+      <div><h3 style="font-size:12px; color:var(--texto-suave); text-transform:uppercase; letter-spacing:.05em; margin-bottom:8px">📉 Em queda</h3><div id="listaQuedas"></div></div>
+    </div>
+  </div>
+
+  <div class="card c-12">
+    <h2>Produtos e custos<span class="info" tabindex="0" data-tip="Digite o CMV (custo de mercadoria: insumos + embalagem) de cada produto e aperte Enter ou clique fora — salva na hora e o quadrante se redesenha. Margem = preço médio praticado − custo. Lucro total = margem unitária × quantidade vendida no período.">?</span></h2>
+    <div class="desc">Cadastre o CMV direto aqui — Enter salva. Preço médio vem das vendas reais do período.</div>
+    <div style="overflow-x:auto"><table id="tProdutos">
+      <thead><tr>
+        <th>Produto</th><th>Vendidos</th><th>Preço médio</th><th>Custo (CMV)</th>
+        <th>Margem un.</th><th>Margem %</th><th>Lucro total</th><th>Classe</th>
+      </tr></thead>
+      <tbody></tbody>
+    </table></div>
+  </div>
+</section>
+
+<p class="rodape" id="atualizadoEm">Carregando…</p>
+
+<script>
+const R$ = v => (+(v ?? 0)).toLocaleString('pt-BR', {style:'currency', currency:'BRL'});
+const NUM = v => (+(v ?? 0)).toLocaleString('pt-BR');
+let estado = {marca:'todas', dias:90};
+let graficos = {};
+
+Chart.defaults.color = 'var(--texto-suave)';
+Chart.defaults.borderColor = '#2A2E38';
+Chart.defaults.font.family = 'Inter';
+
+const CORES = {'Estrela':'#5BBB7B','Burro de carga':'#FFB25E','Quebra-cabeça':'#7A8CE8','Abacaxi':'#E15B5B'};
+const EMOJI = {'Estrela':'⭐','Burro de carga':'🐴','Quebra-cabeça':'🧩','Abacaxi':'🍍'};
+
+function mediana(arr){
+  const s = [...arr].sort((a,b) => a-b);
+  const m = Math.floor(s.length / 2);
+  return s.length % 2 ? s[m] : (s[m-1] + s[m]) / 2;
+}
+
+function desenhar(id, config, plugins){
+  if (graficos[id]) graficos[id].destroy();
+  graficos[id] = new Chart(document.getElementById(id), {...config, plugins});
+}
+
+async function carregar(){
+  const r = await fetch(`/api/cardapio?marca=${encodeURIComponent(estado.marca)}&dias=${estado.dias}`);
+  const d = await r.json();
+
+  const sel = document.getElementById('selMarca');
+  if (sel.options.length === 1){
+    d.marcas.forEach(m => sel.add(new Option(m.marca, m.marca)));
+  }
+
+  const comCusto = d.produtos.filter(p => p.custo !== null)
+    .map(p => ({...p, margem: +p.preco_medio - +p.custo,
+                margem_pct: +p.preco_medio > 0 ? 100 * (+p.preco_medio - +p.custo) / +p.preco_medio : 0,
+                lucro: (+p.preco_medio - +p.custo) * +p.qtd}));
+  const semCusto = d.produtos.filter(p => p.custo === null);
+
+  // aviso de cobertura
+  const aviso = document.getElementById('avisoCustos');
+  if (semCusto.length > 0){
+    aviso.hidden = false;
+    aviso.innerHTML = `📝 <strong>${semCusto.length} produto${semCusto.length > 1 ? 's' : ''} sem custo cadastrado</strong> — preenche o CMV na tabela abaixo que o quadrante se completa sozinho. ${comCusto.length > 0 ? `Já classificados: ${comCusto.length}.` : ''}`;
+  } else if (d.produtos.length > 0){
+    aviso.hidden = false;
+    aviso.style.borderColor = 'var(--ok)';
+    aviso.innerHTML = `✅ Todos os ${d.produtos.length} produtos com custo cadastrado — quadrante completo.`;
+  }
+
+  // classificacao pelos medianos
+  let medQtd = 0, medMargem = 0;
+  if (comCusto.length >= 2){
+    medQtd = mediana(comCusto.map(p => +p.qtd));
+    medMargem = mediana(comCusto.map(p => p.margem));
+    comCusto.forEach(p => {
+      const pop = +p.qtd >= medQtd, mg = p.margem >= medMargem;
+      p.classe = pop && mg ? 'Estrela' : pop && !mg ? 'Burro de carga'
+               : !pop && mg ? 'Quebra-cabeça' : 'Abacaxi';
+    });
+  } else {
+    comCusto.forEach(p => p.classe = '—');
+  }
+
+  // quadrante
+  const linhas = {
+    id: 'linhasQuadrante',
+    afterDraw(chart){
+      if (comCusto.length < 2) return;
+      const {ctx, scales:{x, y}} = chart;
+      ctx.save();
+      ctx.strokeStyle = '#3A3E48'; ctx.setLineDash([5,4]); ctx.lineWidth = 1;
+      const px = x.getPixelForValue(medQtd), py = y.getPixelForValue(medMargem);
+      ctx.beginPath(); ctx.moveTo(px, y.top); ctx.lineTo(px, y.bottom); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x.left, py); ctx.lineTo(x.right, py); ctx.stroke();
+      ctx.restore();
+    }
+  };
+
+  desenhar('gQuadrante', {type:'scatter', data:{
+    datasets:[{
+      data: comCusto.map(p => ({x:+p.qtd, y:p.margem, nome:p.nome, classe:p.classe,
+                                pct:p.margem_pct, lucro:p.lucro})),
+      backgroundColor: comCusto.map(p => CORES[p.classe] ?? 'var(--texto-suave)'),
+      pointRadius: 7, pointHoverRadius: 9
+    }]},
+    options:{maintainAspectRatio:false,
+      plugins:{legend:{display:false},
+        tooltip:{callbacks:{
+          label: c => `${EMOJI[c.raw.classe] ?? ''} ${c.raw.nome}`,
+          afterLabel: c => [`${NUM(c.raw.x)} vendidos · margem ${R$(c.raw.y)}/un (${c.raw.pct.toFixed(0)}%)`,
+                            `lucro no período: ${R$(c.raw.lucro)}`]}}},
+      scales:{x:{title:{display:true, text:'unidades vendidas'}},
+              y:{title:{display:true, text:'margem por unidade (R$)'}}}}},
+    [linhas]);
+
+  // tabela
+  const todos = [...comCusto, ...semCusto.map(p => ({...p, margem:null, margem_pct:null, lucro:null, classe:null}))];
+  document.querySelector('#tProdutos tbody').innerHTML = todos.map(p => `<tr>
+    <td>${p.nome}</td>
+    <td class="num">${NUM(p.qtd)}</td>
+    <td class="num">${R$(p.preco_medio)}</td>
+    <td><input class="custo" type="number" step="0.01" min="0"
+         data-chave="${p.chave}" value="${p.custo !== null ? (+p.custo).toFixed(2) : ''}"
+         placeholder="R$ 0,00"></td>
+    <td class="num">${p.margem !== null ? R$(p.margem) : '—'}</td>
+    <td class="num">${p.margem_pct !== null ? p.margem_pct.toFixed(0) + '%' : '—'}</td>
+    <td class="num">${p.lucro !== null ? R$(p.lucro) : '—'}</td>
+    <td class="classe" style="color:${CORES[p.classe] ?? 'var(--texto-suave)'}">
+      ${p.classe ? (EMOJI[p.classe] ?? '') + ' ' + p.classe : 'cadastre o custo'}</td>
+  </tr>`).join('');
+
+  document.querySelectorAll('input.custo').forEach(inp => {
+    inp.addEventListener('keydown', e => { if (e.key === 'Enter') inp.blur(); });
+    inp.addEventListener('blur', async () => {
+      const v = parseFloat(inp.value);
+      if (isNaN(v) || v < 0) return;
+      const resp = await fetch('/api/custos', {method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({nome: inp.dataset.chave, custo: v})});
+      const j = await resp.json();
+      if (j.ok){ inp.classList.add('salvo'); setTimeout(carregar, 400); }
+    });
+  });
+
+  // ---- radar de encalhados ----
+  try{
+    const re = await fetch(`/api/encalhados?marca=${encodeURIComponent(estado.marca)}`);
+    const en = await re.json();
+    const itemParado = p => `<div style="padding:8px 10px; border:1px solid var(--borda); border-radius:8px; margin-bottom:6px; display:flex; justify-content:space-between; gap:8px">
+      <span>${p.nome}</span><span style="color:var(--alerta); font-family:'IBM Plex Mono',monospace; white-space:nowrap">${p.dias}d parado</span></div>`;
+    const itemQueda = q => `<div style="padding:8px 10px; border:1px solid var(--borda); border-radius:8px; margin-bottom:6px; display:flex; justify-content:space-between; gap:8px">
+      <span>${q.nome}<br><span style="color:var(--texto-suave); font-size:11px">${q.anterior}→${q.recente} un</span></span>
+      <span style="color:var(--brasa-clara); font-family:'IBM Plex Mono',monospace; white-space:nowrap">▼ ${q.queda}%</span></div>`;
+    document.getElementById('listaParados').innerHTML =
+      en.parados.length ? en.parados.map(itemParado).join('')
+      : '<div style="color:var(--texto-suave); font-size:13px; padding:8px 0">Nenhum produto parado 🎉</div>';
+    document.getElementById('listaQuedas').innerHTML =
+      en.quedas.length ? en.quedas.map(itemQueda).join('')
+      : '<div style="color:var(--texto-suave); font-size:13px; padding:8px 0">Nenhum produto em queda 🎉</div>';
+    const tot = en.parados.length + en.quedas.length;
+    document.getElementById('descEncalhados').textContent = tot === 0
+      ? 'Nenhum alerta — o cardápio está girando bem 🔥'
+      : `${tot} produto(s) pedindo atenção — aja antes de sumirem do cardápio`;
+  }catch(e){ /* encalhados nunca derruba a pagina */ }
+
+  document.getElementById('atualizadoEm').textContent =
+    'Atualizado às ' + new Date().toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'}) +
+    ` · classificação recalculada a cada custo salvo`;
+}
+
+document.getElementById('selUnidade').addEventListener('change', e => {
+  estado.unidade = e.target.value;
+  carregar();
+});
+fetch('/api/unidades').then(r => r.json()).then(d => {
+  const sel = document.getElementById('selUnidade');
+  (d.unidades || []).forEach(u => {
+    const o = document.createElement('option');
+    o.value = u; o.textContent = u; sel.appendChild(o);
+  });
+});
+document.getElementById('selMarca').addEventListener('change', e => {
+  estado.marca = e.target.value; carregar();
+});
+document.getElementById('selJanela').addEventListener('change', e => {
+  estado.dias = +e.target.value; carregar();
+});
+
+carregar();
+</script>
+<script src="/static/_tema.js"></script>
+</body>
+</html>

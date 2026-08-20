@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Operação — Painel Operacional</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700&family=Inter:wght@400;500&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  
+  *{box-sizing:border-box; margin:0; padding:0}
+  body{background:var(--fundo); color:var(--texto);
+    font-family:'Inter',system-ui,sans-serif; font-size:14px; padding:24px}
+  header{display:flex; align-items:center; gap:16px; flex-wrap:wrap; margin-bottom:24px}
+  h1{font-family:'Sora',sans-serif; font-size:20px; font-weight:700; letter-spacing:-.02em}
+  h1 .marca{color:var(--brasa)}
+  nav{display:flex; gap:14px}
+  nav a{color:var(--texto-suave); text-decoration:none; font-size:13px}
+  nav a:hover{color:var(--brasa)}
+  .controles{margin-left:auto; display:flex; gap:8px; flex-wrap:wrap}
+  select{background:var(--painel); color:var(--texto); border:1px solid var(--borda);
+    border-radius:8px; padding:8px 12px; font-family:'Inter'; font-size:13px; cursor:pointer}
+
+  .grade{display:grid; grid-template-columns:repeat(12,1fr); gap:12px}
+  .card{background:var(--painel); border:1px solid var(--borda); border-radius:12px;
+    padding:18px; display:flex; flex-direction:column}
+  .card h2{font-family:'Sora'; font-size:14px; font-weight:600; margin-bottom:4px}
+  .card .desc{color:var(--texto-suave); font-size:12px; margin-bottom:14px}
+  .c-12{grid-column:span 12} .c-7{grid-column:span 7} .c-5{grid-column:span 5}
+  @media(max-width:950px){.c-7,.c-5{grid-column:span 12}}
+
+  table{width:100%; border-collapse:collapse; font-size:13px}
+  th{color:var(--texto-suave); text-align:left; font-weight:500; padding:8px 10px;
+    border-bottom:1px solid var(--borda); text-transform:uppercase; font-size:11px; letter-spacing:.05em}
+  td{padding:9px 10px; border-bottom:1px solid var(--borda)}
+  tr:last-child td{border-bottom:none}
+  td.num{font-family:'IBM Plex Mono',monospace}
+  tr.forte td{color:var(--brasa-clara)}
+  tr.fraco td{color:var(--texto-suave)}
+
+  /* mapa de calor */
+  .mapa{display:grid; gap:3px; font-size:11px}
+  .mapa .rotulo-h{color:var(--texto-suave); text-align:center}
+  .mapa .rotulo-d{color:var(--texto-suave); display:flex; align-items:center; justify-content:flex-end; padding-right:6px}
+  .cel{aspect-ratio:1.4; border-radius:4px; position:relative}
+  .cel:hover::after{
+    content:attr(data-tip); position:absolute; bottom:110%; left:50%; transform:translateX(-50%);
+    background:#000; color:var(--texto); padding:4px 8px; border-radius:6px; white-space:nowrap;
+    font-size:11px; z-index:2; border:1px solid var(--borda)}
+
+  .insights{display:flex; flex-direction:column; gap:10px}
+  .insight{display:flex; gap:10px; align-items:flex-start; background:rgba(255,122,47,.06);
+    border:1px solid var(--borda); border-radius:10px; padding:12px 14px; line-height:1.45}
+  .insight .ico{font-size:16px}
+  .insight strong{color:var(--brasa-clara)}
+  .rodape{color:var(--texto-suave); font-size:12px; margin-top:20px}
+  .prev-grade{display:grid; grid-template-columns:repeat(7, 1fr); gap:8px}
+  @media(max-width:900px){.prev-grade{grid-template-columns:repeat(2, 1fr)}}
+  .prev-dia{background:var(--fundo); border:1px solid var(--borda); border-radius:10px;
+    padding:12px 10px; text-align:center}
+  .prev-dia.fds{border-color:rgba(255,122,47,.45)}
+  .prev-dia .nome{font-size:12px; color:var(--texto-suave); margin-bottom:6px}
+  .prev-dia .qtd{font-family:'IBM Plex Mono',monospace; font-size:22px; font-weight:600; color:var(--brasa-clara)}
+  .prev-dia .fat{font-family:'IBM Plex Mono',monospace; font-size:13px; margin-top:4px}
+  .prev-dia .faixa{font-size:11px; color:var(--texto-suave); margin-top:4px}
+  .info{display:inline-flex; align-items:center; justify-content:center;
+    width:16px; height:16px; margin-left:6px; border:1px solid var(--texto-suave);
+    border-radius:50%; font-size:10px; font-weight:600; color:var(--texto-suave);
+    cursor:help; position:relative; vertical-align:middle; font-family:'Inter'}
+  .info:hover, .info:focus{border-color:var(--brasa); color:var(--brasa); outline:none}
+  .info:hover::after, .info:focus::after{
+    content:attr(data-tip); position:absolute; bottom:140%; left:0;
+    width:min(300px, 72vw); background:#0E1013; border:1px solid var(--borda);
+    padding:10px 12px; border-radius:10px; font-size:12px; font-weight:400;
+    line-height:1.55; color:var(--texto); z-index:9; white-space:normal; text-align:left}
+</style>
+<link rel="stylesheet" href="/static/_tema.css">
+</head>
+<body>
+
+<header>
+  <h1>Operação <span class="marca">— Grupo Maracayá</span></h1>
+  
+  <div class="controles">
+    <select id="selUnidade" aria-label="Unidade">
+      <option value="todas">Todas as unidades</option>
+    </select>
+    <select id="selMarca"><option value="todas">Todas as marcas</option></select>
+    <select id="selJanela">
+      <option value="semana_atual">Semana atual</option>
+      <option value="mes_atual">Este mês</option>
+      <option value="mes_passado">Mês passado</option>
+      <option value="30">Últimos 30 dias</option>
+      <option value="60" selected>Últimos 60 dias</option>
+      <option value="90">Últimos 90 dias</option>
+    </select>
+  </div>
+</header>
+
+<section class="grade">
+  <div class="card c-7">
+    <h2>Manual da semana<span class="info" tabindex="0" data-tip="Pedidos/dia: média de pedidos por dia daquele dia da semana no período. Pico começa: primeira hora em que o movimento atinge 60% da hora mais forte do dia — é quando a equipe precisa estar pronta. Hora mais quente: a hora com mais pedidos.">?</span></h2>
+    <div class="desc">Recalculado automaticamente com a demanda do período — sua escala baseada em dados</div>
+    <div style="overflow-x:auto"><table id="tSemana">
+      <thead><tr><th>Dia</th><th>Pedidos/dia</th><th>Pico começa</th><th>Hora mais quente</th><th>Ticket</th></tr></thead>
+      <tbody></tbody>
+    </table></div>
+  </div>
+
+  <div class="card c-5">
+    <h2>Leituras do Zé Claudinho 👨‍🍳<span class="info" tabindex="0" data-tip="Conclusões geradas automaticamente dos números do período selecionado: dia mais forte e mais fraco, diferença de ticket, e diagnóstico de gargalo. Mudam sozinhas conforme a demanda muda.">?</span></h2>
+    <div class="desc">Insights gerados dos números do período</div>
+    <div class="insights" id="insights"></div>
+  </div>
+
+  <div class="card c-5">
+    <h2>Tempo de atendimento por canal ⏱️<span class="info" tabindex="0" data-tip="Tempo entre o pedido entrar e ser concluído no portal. Mediana: o tempo típico — metade dos pedidos sai mais rápido que isso (imune a pedidos esquecidos abertos, que distorceriam a média). P90: 9 em cada 10 pedidos saem em até esse tempo — é o número certo pra prometer prazo ao cliente. Só entram pedidos concluídos com tempo entre 1 e 180 min (filtro anti-ruído).">?</span></h2>
+    <div class="desc" id="descTempoCanal">Mediana criado → concluído (tooltip mostra o P90: o pior caso típico)</div>
+    <div style="position:relative; height:200px"><canvas id="gTempoCanal"></canvas></div>
+  </div>
+
+  <div class="card c-7">
+    <h2>Tempo de atendimento por horário<span class="info" tabindex="0" data-tip="Mediana do tempo de atendimento em cada hora do dia. Horários com menos de 5 pedidos no período ficam de fora (amostra pequena demais pra ser confiável). Linha subindo junto com o pico = cozinha saturando no volume.">?</span></h2>
+    <div class="desc">Se a linha sobe junto com o pico, o gargalo é capacidade de cozinha</div>
+    <div style="position:relative; height:200px"><canvas id="gTempoHora"></canvas></div>
+  </div>
+
+  <div class="card c-12">
+    <h2>Comparativo semana a semana<span class="info" tabindex="0" data-tip="Pedidos por semana nas últimas 12 semanas (semana começa na segunda). O resumo compara esta semana com o MESMO ponto da semana passada — quinta 15h contra quinta 15h — pra não gerar falso alarme de queda no começo da semana. Este card ignora o filtro de período de propósito: é o termômetro fixo de tendência.">?</span></h2>
+    <div class="desc" id="descSemanas">Pedidos por semana nas últimas 12 semanas</div>
+    <div style="position:relative; height:220px"><canvas id="gSemanas"></canvas></div>
+  </div>
+
+  <div class="card c-12">
+    <h2>Previsão dos próximos 7 dias 🔮<span class="info" tabindex="0" data-tip="Mediana de pedidos e faturamento das últimas 8 semanas daquele dia da semana, ajustada pela tendência recente (últimas 4 semanas vs as 4 anteriores). A faixa embaixo é o intervalo típico (semana fraca–forte). Use pra dimensionar compras e escala — e desconfie de qualquer previsão sem faixa.">?</span></h2>
+    <div class="desc" id="descPrev">Base pra compras e escala da semana</div>
+    <div class="prev-grade" id="prevGrade"></div>
+  </div>
+
+  <div class="card c-12">
+    <h2>Lista de compras da semana 🛒<span class="info" tabindex="0" data-tip="Necessidade de cada insumo pros próximos 7 dias: venda média semanal de cada produto (últimas 4 semanas × tendência) explodida pela ficha técnica. A coluna 'com folga' adiciona 15% de segurança — use-a pros perecíveis críticos. As receitas vieram da sua ficha técnica; ajustes são 1 linha de SQL na tabela ficha_tecnica.">?</span></h2>
+    <div class="desc" id="descCompras">Do padrão de vendas direto pro fornecedor</div>
+    <div style="overflow-x:auto"><table id="tCompras">
+      <thead><tr><th>Insumo</th><th>Necessidade (7 dias)</th><th>Com folga de 15%</th></tr></thead>
+      <tbody></tbody>
+    </table></div>
+  </div>
+
+  <div class="card c-12">
+    <h2>Mapa de calor — dia × hora<span class="info" tabindex="0" data-tip="Total de pedidos em cada combinação de dia da semana e hora, no período selecionado. Do carvão (parado) à brasa (lotado), na mesma escala pra grade toda — dá pra comparar qualquer célula com qualquer outra. Use pra desenhar a escala de equipe.">?</span></h2>
+    <div class="desc">Cada célula é uma combinação dia/horário; do carvão à brasa conforme o volume. Sua escala de equipe desenhada.</div>
+    <div class="mapa" id="mapa"></div>
+  </div>
+</section>
+
+<p class="rodape" id="atualizadoEm">Carregando…</p>
+
+<script>
+const NUM = v => (+(v ?? 0)).toLocaleString('pt-BR');
+const R$ = v => (+(v ?? 0)).toLocaleString('pt-BR', {style:'currency', currency:'BRL'});
+const DIAS = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
+const DIAS_CURTO = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+let estado = {marca:'todas', periodo:'60'};
+let graficos = {};
+if (window.Chart){
+  Chart.defaults.color = 'var(--texto-suave)';
+  Chart.defaults.borderColor = '#2A2E38';
+  Chart.defaults.font.family = 'Inter';
+}
+function desenhar(id, config){
+  if (graficos[id]) graficos[id].destroy();
+  graficos[id] = new Chart(document.getElementById(id), config);
+}
+
+function corCalor(v, max){
+  const t = max ? Math.min(v / max, 1) : 0;
+  const mix = (a,b) => Math.round(a + (b - a) * t);
+  return `rgb(${mix(42,255)},${mix(46,122)},${mix(56,47)})`;
+}
+
+async function carregar(){
+  const r = await fetch(`/api/operacao?marca=${encodeURIComponent(estado.marca)}&periodo=${estado.periodo}`);
+  const d = await r.json();
+
+  const sel = document.getElementById('selMarca');
+  if (sel.options.length === 1){
+    d.marcas.forEach(m => sel.add(new Option(m.marca, m.marca)));
+  }
+
+  // ---- manual da semana ----
+  const ordem = [1,2,3,4,5,6,0]; // seg..dom
+  const porDow = Object.fromEntries(d.dias_semana.map(x => [x.dow, x]));
+  const medias = d.dias_semana.map(x => +x.media);
+  const maxMedia = Math.max(...medias), minMedia = Math.min(...medias);
+
+  document.querySelector('#tSemana tbody').innerHTML = ordem.map(dw => {
+    const x = porDow[dw];
+    if (!x) return '';
+    const cls = +x.media === maxMedia ? 'forte' : (+x.media === minMedia ? 'fraco' : '');
+    return `<tr class="${cls}">
+      <td>${DIAS[dw]}${+x.media === maxMedia ? ' 🥇' : ''}${+x.media === minMedia ? ' 📉' : ''}</td>
+      <td class="num">${x.media}</td>
+      <td class="num">${x.pico_inicio}h</td>
+      <td class="num">${x.hora_pico}h</td>
+      <td class="num">${R$(x.ticket)}</td>
+    </tr>`;
+  }).join('');
+
+  // ---- insights automáticos ----
+  const forte = d.dias_semana.reduce((a,b) => +a.media >= +b.media ? a : b);
+  const fraco = d.dias_semana.reduce((a,b) => +a.media <= +b.media ? a : b);
+  const fds = d.grupos.find(g => g.grupo === 'fds');
+  const meio = d.grupos.find(g => g.grupo === 'meio');
+  const ins = [];
+
+  ins.push({ico:'🥇', txt:`<strong>${DIAS[forte.dow]}</strong> é seu dia mais forte (${forte.media} pedidos/dia), com pico já às <strong>${forte.pico_inicio}h</strong> — equipe 100% pronta com antecedência: chapa quente, praça montada, insumo porcionado.`});
+  ins.push({ico:'📉', txt:`<strong>${DIAS[fraco.dow]}</strong> é o vale (${fraco.media}/dia — ${Math.round(100 * fraco.media / forte.media)}% do dia forte). Candidato natural a promoção de recorrência; meça o efeito com a comparação de datas.`});
+  if (fds && meio){
+    const dt = 100 * (fds.ticket - meio.ticket) / meio.ticket;
+    if (Math.abs(dt) >= 3){
+      ins.push({ico:'💳', txt: dt > 0
+        ? `Ticket do fim de semana é <strong>${dt.toFixed(0)}% maior</strong> (${R$(fds.ticket)} vs ${R$(meio.ticket)}): cliente vem disposto — hora de sugerir combo maior, adicional e sobremesa.`
+        : `Ticket do meio de semana está <strong>${Math.abs(dt).toFixed(0)}% maior</strong> que o do fim de semana — padrão invertido, vale investigar o mix.`});
+    }
+    ins.push({ico:'📦', txt:`Volume: fim de semana faz <strong>${fds.pedidos_dia}/dia</strong> vs ${meio.pedidos_dia} no meio — use as médias pra dimensionar compra de insumo por dia da semana.`});
+  }
+  const cedo = d.dias_semana.filter(x => x.pico_inicio <= (Math.min(...d.dias_semana.map(y => +y.pico_inicio))));
+  ins.push({ico:'⏰', txt:`Pico mais cedo: <strong>${cedo.map(x => DIAS[x.dow]).join(' e ')}</strong> (${cedo[0].pico_inicio}h) — nesses dias, escala completa desde a abertura.`});
+
+  document.getElementById('insights').innerHTML =
+    ins.map(i => `<div class="insight"><span class="ico">${i.ico}</span><span>${i.txt}</span></div>`).join('');
+
+  // ---- tempos de atendimento ----
+  const NOME_TIPO = {delivery:'Delivery', takeout:'Balcão/Retirada', onsite:'No local', closed_table:'Mesa'};
+  const cob = d.cobertura;
+  const pctCob = cob.total > 0 ? Math.round(100 * cob.mediveis / cob.total) : 0;
+  document.getElementById('descTempoCanal').innerHTML =
+    `Mediana criado → concluído · baseado em <strong>${pctCob}%</strong> dos pedidos` +
+    (pctCob < 70 ? ' — <span style="color:var(--brasa-clara)">equipe concluindo os pedidos no portal, esse número sobe e a métrica fica fiel</span>' : '');
+
+  desenhar('gTempoCanal', {type:'bar', data:{
+    labels: d.tempos_canal.map(x => NOME_TIPO[x.tipo] ?? x.tipo),
+    datasets:[{data: d.tempos_canal.map(x => +x.mediana), backgroundColor:'#FF7A2F', borderRadius:4}]},
+    options:{indexAxis:'y', maintainAspectRatio:false,
+      plugins:{legend:{display:false},
+        tooltip:{callbacks:{label: c => `mediana: ${c.parsed.x} min`,
+          afterLabel: c => `P90: ${d.tempos_canal[c.dataIndex].p90} min · ${NUM(d.tempos_canal[c.dataIndex].pedidos)} pedidos`}}},
+      scales:{x:{title:{display:true, text:'minutos'}}}}});
+
+  desenhar('gTempoHora', {type:'line', data:{
+    labels: d.tempos_hora.map(x => `${x.hora}h`),
+    datasets:[{data: d.tempos_hora.map(x => +x.mediana), fill:true,
+      borderColor:'#FF7A2F', backgroundColor:'rgba(255,122,47,.12)',
+      tension:.3, pointRadius:3, borderWidth:2}]},
+    options:{maintainAspectRatio:false,
+      plugins:{legend:{display:false},
+        tooltip:{callbacks:{label: c => `mediana: ${c.parsed.y} min`,
+          afterLabel: c => `${NUM(d.tempos_hora[c.dataIndex].pedidos)} pedidos nesse horário`}}},
+      scales:{y:{title:{display:true, text:'minutos'}}}}});
+
+  // insight de gargalo: tempo no pico vs fora do pico
+  if (d.tempos_hora.length >= 3){
+    const maxVol = Math.max(...d.tempos_hora.map(x => +x.pedidos));
+    const pico = d.tempos_hora.filter(x => +x.pedidos >= 0.6 * maxVol);
+    const fora = d.tempos_hora.filter(x => +x.pedidos < 0.6 * maxVol);
+    const med = arr => arr.reduce((s,x) => s + (+x.mediana) * (+x.pedidos), 0) /
+                       Math.max(arr.reduce((s,x) => s + (+x.pedidos), 0), 1);
+    if (pico.length && fora.length){
+      const tp = med(pico), tf = med(fora);
+      const dpct = 100 * (tp - tf) / tf;
+      const el = document.getElementById('insights');
+      if (dpct >= 15){
+        el.innerHTML += `<div class="insight"><span class="ico">🍳</span><span>Gargalo confirmado: no pico o atendimento leva <strong>${tp.toFixed(0)} min</strong> vs ${tf.toFixed(0)} min fora dele (<strong>+${dpct.toFixed(0)}%</strong>) — a cozinha satura no volume. Reforço de equipe ou pré-preparo no pico.</span></div>`;
+      } else {
+        el.innerHTML += `<div class="insight"><span class="ico">🍳</span><span>Cozinha aguenta o tranco: tempo no pico (${tp.toFixed(0)} min) fica próximo do fora de pico (${tf.toFixed(0)} min) — capacidade bem dimensionada.</span></div>`;
+      }
+    }
+  }
+
+  // ---- comparativo semana a semana ----
+  const sv = d.semana_vs;
+  const hoje = new Date();
+  const labels = d.semanas.map((x, i) =>
+    i === d.semanas.length - 1 ? `${x.semana} (atual)` : x.semana);
+  const cores = d.semanas.map((x, i) =>
+    i === d.semanas.length - 1 ? '#FFB25E' : '#FF7A2F');
+  desenhar('gSemanas', {type:'bar', data:{
+    labels,
+    datasets:[{data: d.semanas.map(x => +x.pedidos), backgroundColor: cores, borderRadius:4}]},
+    options:{maintainAspectRatio:false,
+      plugins:{legend:{display:false},
+        tooltip:{callbacks:{label: c => `${NUM(c.parsed.y)} pedidos`,
+          afterLabel: c => `Faturamento: ${R$(+d.semanas[c.dataIndex].faturamento)}`}}},
+      scales:{y:{ticks:{precision:0}}}}});
+
+  if (+sv.anterior > 0){
+    const p = 100 * (sv.atual - sv.anterior) / sv.anterior;
+    const seta = p >= 0 ? '▲' : '▼';
+    const cor = p >= 0 ? 'var(--ok)' : 'var(--alerta)';
+    document.getElementById('descSemanas').innerHTML =
+      `Esta semana até agora: <strong>${NUM(sv.atual)} pedidos</strong> (${R$(+sv.fat_atual)}) ` +
+      `<span style="color:${cor}">${seta} ${Math.abs(p).toFixed(0)}%</span> ` +
+      `vs o mesmo ponto da semana passada (${NUM(sv.anterior)} pedidos, ${R$(+sv.fat_anterior)}) — comparação justa, mesmo dia e hora`;
+  }
+
+  // ---- previsao 7 dias ----
+  try{
+    const rp = await fetch(`/api/previsao?marca=${encodeURIComponent(estado.marca)}`);
+    const pv = await rp.json();
+    const tend = 100 * (pv.fator_tendencia - 1);
+    document.getElementById('descPrev').innerHTML =
+      `Semana prevista: <strong>${NUM(pv.total_pedidos)} pedidos</strong> · <strong>${R$(pv.total_faturamento)}</strong>` +
+      ` · tendência das últimas 4 semanas: <span style="color:${tend >= 0 ? 'var(--ok)' : 'var(--alerta)'}">` +
+      `${tend >= 0 ? '▲' : '▼'} ${Math.abs(tend).toFixed(0)}%</span>`;
+    document.getElementById('prevGrade').innerHTML = pv.dias.map(x => {
+      const dt = new Date(x.data + 'T12:00:00');
+      const fds = [0,5,6].includes(x.dow);
+      return `<div class="prev-dia ${fds ? 'fds' : ''}">
+        <div class="nome">${DIAS_CURTO[x.dow]} ${String(dt.getDate()).padStart(2,'0')}/${String(dt.getMonth()+1).padStart(2,'0')}</div>
+        <div class="qtd">~${NUM(x.pedidos)}</div>
+        <div class="fat">${R$(x.faturamento)}</div>
+        <div class="faixa">${NUM(x.pedidos_min)}–${NUM(x.pedidos_max)} pedidos</div>
+      </div>`;
+    }).join('');
+  }catch(e){ /* previsao nunca derruba a pagina */ }
+
+  // ---- lista de compras ----
+  try{
+    const rc = await fetch(`/api/compras?marca=${encodeURIComponent(estado.marca)}`);
+    const lc = await rc.json();
+    const fmtQ = (v, u) => u === 'kg'
+      ? (+v).toLocaleString('pt-BR', {maximumFractionDigits:1}) + ' kg'
+      : Math.ceil(+v).toLocaleString('pt-BR') + ' un';
+    document.querySelector('#tCompras tbody').innerHTML = lc.insumos.map(x => `<tr>
+      <td>${x.insumo}</td>
+      <td style="font-family:'IBM Plex Mono',monospace">${fmtQ(x.necessidade, x.unidade)}</td>
+      <td style="font-family:'IBM Plex Mono',monospace; color:var(--brasa-clara)">${fmtQ(x.necessidade * 1.15, x.unidade)}</td>
+    </tr>`).join('') || '<tr><td colspan="3">Sem fichas técnicas cadastradas ainda</td></tr>';
+    let descC = `Cobre <strong>${lc.cobertura_pct.toFixed(0)}%</strong> das unidades vendidas`;
+    if (lc.sem_ficha) descC += ` · sem ficha: ${lc.sem_ficha}`;
+    document.getElementById('descCompras').innerHTML = descC;
+  }catch(e){ /* compras nunca derruba a pagina */ }
+
+  // ---- mapa de calor ----
+  const hm = {};
+  d.heatmap.forEach(x => hm[`${x.dow}-${x.hora}`] = +x.pedidos);
+  const horasComDado = [...new Set(d.heatmap.map(x => +x.hora))].sort((a,b) => a-b);
+  const hIni = Math.max(Math.min(...horasComDado) - 1, 0);
+  const hFim = Math.min(Math.max(...horasComDado) + 1, 23);
+  const horas = []; for (let h = hIni; h <= hFim; h++) horas.push(h);
+  const maxCel = Math.max(...Object.values(hm), 1);
+
+  const mapa = document.getElementById('mapa');
+  mapa.style.gridTemplateColumns = `56px repeat(${horas.length}, 1fr)`;
+  let html = '<div></div>' + horas.map(h => `<div class="rotulo-h">${h}h</div>`).join('');
+  ordem.forEach(dw => {
+    html += `<div class="rotulo-d">${DIAS_CURTO[dw]}</div>`;
+    horas.forEach(h => {
+      const v = hm[`${dw}-${h}`] ?? 0;
+      html += `<div class="cel" style="background:${corCalor(v, maxCel)}"
+        data-tip="${DIAS_CURTO[dw]} ${h}h — ${NUM(v)} pedidos"></div>`;
+    });
+  });
+  mapa.innerHTML = html;
+
+  document.getElementById('atualizadoEm').textContent =
+    'Atualizado às ' + new Date().toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'}) +
+    ' · recalculado automaticamente conforme o período selecionado';
+}
+
+document.getElementById('selUnidade').addEventListener('change', e => {
+  estado.unidade = e.target.value;
+  carregar();
+});
+fetch('/api/unidades').then(r => r.json()).then(d => {
+  const sel = document.getElementById('selUnidade');
+  (d.unidades || []).forEach(u => {
+    const o = document.createElement('option');
+    o.value = u; o.textContent = u; sel.appendChild(o);
+  });
+});
+document.getElementById('selMarca').addEventListener('change', e => {
+  estado.marca = e.target.value; carregar();
+});
+document.getElementById('selJanela').addEventListener('change', e => {
+  estado.periodo = e.target.value; carregar();
+});
+
+carregar();
+setInterval(carregar, 10 * 60 * 1000);
+</script>
+<script src="/static/_tema.js"></script>
+</body>
+</html>

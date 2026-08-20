@@ -1,0 +1,70 @@
+/* ===== Tema claro/escuro via variáveis ===== */
+:root[data-tema="escuro"]{
+  --fundo:#14161B; --painel:#1D2027; --borda:#2A2E38;
+  --texto:#EDEAE2; --texto-suave:#8B8F99;
+}
+:root[data-tema="claro"]{
+  --fundo:#F4F1EC; --painel:#FFFFFF; --borda:#E2DDD3;
+  --texto:#2A2620; --texto-suave:#7A736A;
+}
+:root{
+  --brasa:#FF7A2F; --brasa-clara:#FF8A3F; --ok:#4CA968; --alerta:#E15B5B;
+}
+:root[data-tema="claro"] .card,
+:root[data-tema="claro"] .kpi{box-shadow:0 1px 3px rgba(0,0,0,.05)}
+
+/* ===== Sidebar ===== */
+.sidebar{
+  position:fixed; top:0; left:0; bottom:0; width:210px; z-index:100;
+  background:var(--painel); border-right:1px solid var(--borda);
+  display:flex; flex-direction:column; padding:18px 12px;
+  transition:transform .25s ease;
+}
+.sb-logo{font-family:'Sora',sans-serif; font-weight:700; font-size:17px; color:var(--brasa);
+  padding:6px 10px 18px; display:flex; align-items:center; gap:8px}
+.sb-logo span{color:var(--texto)}
+.sb-nav{display:flex; flex-direction:column; gap:3px; flex:1}
+.sb-item{display:flex; align-items:center; gap:11px; padding:10px 11px; border-radius:9px;
+  color:var(--texto-suave); text-decoration:none; font-size:14px; transition:all .15s}
+.sb-item:hover{background:var(--fundo); color:var(--texto)}
+.sb-item.ativo{background:rgba(255,122,47,.12); color:var(--brasa)}
+.sb-ico{font-size:16px; width:20px; text-align:center; flex-shrink:0}
+.sb-tema{display:flex; align-items:center; gap:11px; padding:10px 11px; border-radius:9px;
+  background:var(--fundo); color:var(--texto-suave); border:1px solid var(--borda);
+  cursor:pointer; font-family:'Inter'; font-size:13px; margin-top:8px}
+.sb-tema:hover{color:var(--texto); border-color:var(--brasa)}
+.sb-toggle{display:none; position:fixed; top:16px; left:16px; z-index:101;
+  background:var(--painel); color:var(--texto); border:1px solid var(--borda);
+  border-radius:8px; width:40px; height:40px; font-size:18px; cursor:pointer}
+
+/* empurra o conteúdo pra direita da sidebar */
+body{padding-left:234px !important}
+
+@media(max-width:820px){
+  .sidebar{transform:translateX(-100%)}
+  body.sb-aberta .sidebar{transform:translateX(0)}
+  body{padding-left:24px !important; padding-top:64px !important}
+  .sb-toggle{display:block}
+}
+
+/* ===== Garantia de legibilidade em ambos os temas ===== */
+/* força elementos de texto a herdarem a cor do tema (evita preto fixo no escuro) */
+body{color:var(--texto)}
+h1, h2, h3, h4, p, td, th, span, div, label, a{color:inherit}
+/* campos de formulário sempre com cor do tema */
+input, select, textarea{color:var(--texto)}
+input::placeholder, textarea::placeholder{color:var(--texto-suave); opacity:.7}
+/* date inputs: ícone do calendário visível em ambos */
+:root[data-tema="escuro"] input[type=date]{color-scheme:dark}
+:root[data-tema="claro"] input[type=date]{color-scheme:light}
+/* seletos e opções */
+select option{background:var(--painel); color:var(--texto)}
+/* garante que rótulos suaves não fiquem pretos */
+.rotulo, .sub, .desc, .rodape{color:var(--texto-suave)}
+
+/* ===== Logo por tema ===== */
+.sb-logo img{max-width:150px; height:auto; display:block}
+.sb-logo .logo-clara{display:none}
+.sb-logo .logo-escura{display:none}
+:root[data-tema="claro"] .sb-logo .logo-clara{display:block}
+:root[data-tema="escuro"] .sb-logo .logo-escura{display:block}

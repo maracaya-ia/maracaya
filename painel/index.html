@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Painel Operacional</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700&family=Inter:wght@400;500&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  
+  *{box-sizing:border-box; margin:0; padding:0}
+  body{
+    background:var(--fundo); color:var(--texto);
+    font-family:'Inter',system-ui,sans-serif; font-size:14px;
+    min-height:100vh; padding:24px;
+  }
+  header{
+    display:flex; align-items:center; gap:16px; flex-wrap:wrap;
+    margin-bottom:24px;
+  }
+  h1{font-family:'Sora',sans-serif; font-size:20px; font-weight:700; letter-spacing:-.02em}
+  h1 .marca{color:var(--brasa)}
+  .controles{margin-left:auto; display:flex; gap:8px; flex-wrap:wrap}
+  select,.periodo button{
+    background:var(--painel); color:var(--texto); border:1px solid var(--borda);
+    border-radius:8px; padding:8px 12px; font-family:'Inter'; font-size:13px;
+    cursor:pointer;
+  }
+  .periodo{display:flex; gap:4px}
+  .periodo button.ativo{border-color:var(--brasa); color:var(--brasa)}
+  input[type=date]{background:var(--painel); color:var(--texto); border:1px solid var(--borda);
+    border-radius:8px; padding:7px 10px; font-family:'Inter'; font-size:13px; color-scheme:dark}
+  .datas{display:flex; gap:4px; align-items:center}
+  .datas .sep{color:var(--texto-suave)}
+  #grpComp{display:none}
+  #grpComp.aberto{display:flex}
+  #btnComp.ativo{border-color:var(--brasa-clara); color:var(--brasa-clara)}
+  .delta-up{color:var(--ok)} .delta-down{color:var(--alerta)}
+  .periodo button:focus-visible,select:focus-visible{outline:2px solid var(--brasa); outline-offset:2px}
+
+  .kpis{display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; margin-bottom:12px}
+  .kpi{
+    background:var(--painel); border:1px solid var(--borda); border-radius:12px;
+    padding:16px 18px;
+  }
+  .kpi .rotulo{color:var(--texto-suave); font-size:12px; text-transform:uppercase; letter-spacing:.06em; margin-bottom:8px}
+  .kpi .valor{font-family:'IBM Plex Mono',monospace; font-size:26px; font-weight:600; line-height:1}
+  .kpi.destaque .valor{color:var(--brasa)}
+  .kpi .sub{color:var(--texto-suave); font-size:12px; margin-top:6px}
+
+  .grade{display:grid; grid-template-columns:repeat(12,1fr); gap:12px}
+  .card{
+    background:var(--painel); border:1px solid var(--borda); border-radius:12px;
+    padding:18px; min-height:260px; display:flex; flex-direction:column;
+  }
+  .card h2{font-family:'Sora'; font-size:14px; font-weight:600; margin-bottom:14px}
+  .card .area{position:relative; flex:1; min-height:200px}
+  .c-12{grid-column:span 12} .c-8{grid-column:span 8} .c-6{grid-column:span 6} .c-4{grid-column:span 4}
+  @media(max-width:900px){.c-8,.c-6,.c-4{grid-column:span 12}}
+
+  .rodape{color:var(--texto-suave); font-size:12px; margin-top:20px; display:flex; gap:8px; align-items:center}
+  .pulso{width:8px; height:8px; border-radius:50%; background:var(--ok); animation:pulso 2s infinite}
+  @keyframes pulso{50%{opacity:.3}}
+  @media(prefers-reduced-motion:reduce){.pulso{animation:none}}
+  .vazio{color:var(--texto-suave); text-align:center; padding:40px 0}
+  .sentinela{border-radius:12px; padding:12px 16px; margin-bottom:12px;
+    font-size:13px; line-height:1.5; display:flex; flex-direction:column; gap:6px}
+  .sentinela.ok{background:rgba(91,187,123,.07); border:1px solid rgba(91,187,123,.35); color:var(--texto-suave)}
+  .sentinela.boa{background:rgba(91,187,123,.10); border:1px solid var(--ok)}
+  .sentinela.atencao{background:rgba(255,178,94,.10); border:1px solid var(--brasa-clara)}
+  .sentinela.critico{background:rgba(225,91,91,.12); border:1px solid var(--alerta)}
+  .sentinela .linha{display:flex; gap:8px; align-items:flex-start}
+  .meta{background:var(--painel); border:1px solid var(--borda); border-radius:12px;
+    padding:14px 18px; margin-bottom:12px}
+  .meta .topo{display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; margin-bottom:10px}
+  .meta .titulo{font-family:'Sora'; font-size:13px; font-weight:600}
+  .meta .num{font-family:'IBM Plex Mono',monospace}
+  .meta .editar{margin-left:auto; background:none; border:none; color:var(--texto-suave);
+    cursor:pointer; font-size:12px; font-family:'Inter'}
+  .meta .editar:hover{color:var(--brasa)}
+  .termometro{height:14px; background:var(--fundo); border:1px solid var(--borda);
+    border-radius:8px; overflow:hidden; position:relative}
+  .termometro .mercurio{height:100%; border-radius:8px 0 0 8px;
+    background:linear-gradient(90deg, #B45A28, var(--brasa), var(--brasa-clara));
+    transition:width .6s ease}
+  .termometro .marca-hoje{position:absolute; top:-3px; bottom:-3px; width:2px;
+    background:var(--texto-suave); opacity:.7}
+  .meta .linha-info{display:flex; gap:14px; flex-wrap:wrap; margin-top:9px;
+    font-size:12.5px; color:var(--texto-suave)}
+  .meta .linha-info strong{color:var(--texto)}
+  .meta .ritmo-ok{color:var(--ok)} .meta .ritmo-ruim{color:var(--alerta)}
+  .meta input{width:130px; background:var(--fundo); color:var(--texto);
+    border:1px solid var(--borda); border-radius:6px; padding:7px 9px;
+    font-family:'IBM Plex Mono',monospace; font-size:13px}
+  .meta input:focus{border-color:var(--brasa); outline:none}
+  table.canais{width:100%; border-collapse:collapse; font-size:13px}
+  table.canais th{color:var(--texto-suave); text-align:left; font-weight:500; padding:8px 10px;
+    border-bottom:1px solid var(--borda); text-transform:uppercase; font-size:11px; letter-spacing:.05em}
+  table.canais td{padding:8px 10px; border-bottom:1px solid var(--borda)}
+  table.canais tr:last-child td{border-bottom:none}
+  table.canais td.num{font-family:'IBM Plex Mono',monospace; white-space:nowrap}
+  input.pct{width:64px; background:var(--fundo); color:var(--texto);
+    border:1px solid var(--borda); border-radius:6px; padding:6px 8px;
+    font-family:'IBM Plex Mono',monospace; font-size:13px}
+  input.pct:focus{border-color:var(--brasa); outline:none}
+  input.pct.salvo{border-color:var(--ok)}
+  td.pedagio{color:var(--alerta)}
+  td.liquido{color:var(--ok)}
+  .info{display:inline-flex; align-items:center; justify-content:center;
+    width:16px; height:16px; margin-left:6px; border:1px solid var(--texto-suave);
+    border-radius:50%; font-size:10px; font-weight:600; color:var(--texto-suave);
+    cursor:help; position:relative; vertical-align:middle}
+  .info:hover::after, .info:focus::after{
+    content:attr(data-tip); position:absolute; bottom:140%; left:0;
+    width:min(300px, 72vw); background:#0E1013; border:1px solid var(--borda);
+    padding:10px 12px; border-radius:10px; font-size:12px; font-weight:400;
+    line-height:1.55; color:var(--texto); z-index:9; white-space:normal; text-align:left}
+</style>
+<link rel="stylesheet" href="/static/_tema.css">
+</head>
+<body>
+
+<header>
+  <h1>Painel Operacional <span class="marca">— Grupo Maracayá</span></h1>
+  
+  <div class="controles">
+    <select id="selUnidade" aria-label="Unidade">
+      <option value="todas">Todas as unidades</option>
+    </select>
+    <select id="selMarca" aria-label="Marca">
+      <option value="todas">Todas as marcas</option>
+    </select>
+    <div class="periodo" role="group" aria-label="Período">
+      <button data-dias="1">Hoje</button>
+      <button data-dias="7">7 dias</button>
+      <button data-dias="30" class="ativo">30 dias</button>
+      <button data-dias="90">90 dias</button>
+    </div>
+    <div class="datas" aria-label="Período personalizado">
+      <input type="date" id="dtIni"><span class="sep">→</span><input type="date" id="dtFim">
+    </div>
+    <div class="periodo"><button id="btnComp" title="Comparar com outro período">⇄ Comparar</button></div>
+    <div class="datas" id="grpComp" aria-label="Período de comparação">
+      <input type="date" id="dtCompIni"><span class="sep">→</span><input type="date" id="dtCompFim">
+    </div>
+  </div>
+</header>
+
+<div id="sentinela" class="sentinela ok" hidden></div>
+
+<div id="meta" class="meta" hidden></div>
+
+<section class="kpis">
+  <div class="kpi destaque"><div class="rotulo">Faturamento</div><div class="valor" id="kFat">—</div><div class="sub" id="kFatSub"></div></div>
+  <div class="kpi"><div class="rotulo">Pedidos (vendas)</div><div class="valor" id="kPed">—</div><div class="sub" id="kPedSub"></div></div>
+  <div class="kpi"><div class="rotulo">Ticket médio</div><div class="valor" id="kTicket">—</div></div>
+  <div class="kpi"><div class="rotulo">Cancelamentos</div><div class="valor" id="kCanc">—</div><div class="sub" id="kCancSub"></div></div>
+  <div class="kpi"><div class="rotulo">Líquido após canais</div><div class="valor" id="kLiq">—</div><div class="sub" id="kLiqSub"></div></div>
+</section>
+
+<section class="grade">
+  <div class="card c-8"><h2>Faturamento por dia</h2><div class="area"><canvas id="gDia"></canvas></div></div>
+  <div class="card c-4"><h2>Horário de pico</h2><div class="area"><canvas id="gHora"></canvas></div></div>
+  <div class="card c-6"><h2>Campeões de venda</h2><div class="area"><canvas id="gProdutos"></canvas></div></div>
+  <div class="card c-6"><h2>Movimento por dia da semana</h2><div class="area"><canvas id="gSemana"></canvas></div></div>
+  <div class="card c-6"><h2>Formas de pagamento</h2><div class="area"><canvas id="gPagamento"></canvas></div></div>
+  <div class="card c-6"><h2>Tipo de pedido</h2><div class="area"><canvas id="gTipo"></canvas></div></div>
+  <div class="card c-12">
+    <h2>O pedágio dos marketplaces 💸<span class="info" tabindex="0" data-tip="Cadastre a comissão de cada canal (o % total que ele cobra por pedido: comissão + taxa de pagamento + planos). Digite e aperte Enter — salva na hora. Pedágio = bruto × comissão. Líquido = o que efetivamente sobra do canal. Canal próprio (site/portal) normalmente é 0%.">?</span></h2>
+    <div class="desc" style="color:var(--texto-suave); font-size:12px; margin-bottom:12px" id="descCanais">Cadastre a comissão de cada canal e veja o que sobra de verdade</div>
+    <div style="overflow-x:auto"><table class="canais" id="tCanais">
+      <thead><tr><th>Canal</th><th>Pedidos</th><th>Bruto</th><th>Comissão %</th><th>Pedágio</th><th>Líquido</th></tr></thead>
+      <tbody></tbody>
+    </table></div>
+  </div>
+</section>
+
+<p class="rodape"><span class="pulso"></span><span id="atualizadoEm">Carregando…</span></p>
+
+<script>
+const R$ = v => (v ?? 0).toLocaleString('pt-BR', {style:'currency', currency:'BRL'});
+const NUM = v => (v ?? 0).toLocaleString('pt-BR');
+const DIAS_SEMANA = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+const NOME_PGTO = {money:'Dinheiro', credit_card:'Crédito', debit_card:'Débito',
+  pix:'Pix', pix_auto:'Pix automático', meal_voucher:'Vale-refeição',
+  food_voucher:'Vale-alimentação', online_credit_card:'Crédito online',
+  ifood:'iFood (online)', ifood_voucher:'Voucher iFood', picpay:'PicPay',
+  bank_transfer:'Transferência', bank_slip:'Boleto', debt_book:'Fiado'};
+const NOME_CANAL = {ifood:'iFood', site:'Site próprio', portal:'Portal (balcão)',
+  catalog:'Catálogo/Link', whatsapp:'WhatsApp', chatbot:'Chatbot', app:'App',
+  food99:'99Food', '99food':'99Food', rappi:'Rappi', aiqfome:'Aiqfome', keeta:'Keeta'};
+const NOME_TIPO = {delivery:'Delivery', takeout:'Retirada', onsite:'No local', closed_table:'Mesa/Comanda'};
+
+let estado = {dias:30, marca:'todas', unidade:'todas', ini:null, fim:null, compIni:null, compFim:null};
+let graficos = {};
+
+Chart.defaults.color = 'var(--texto-suave)';
+Chart.defaults.borderColor = '#2A2E38';
+Chart.defaults.font.family = 'Inter';
+
+function corCalor(v, max){            // carvão -> brasa
+  const t = max ? v / max : 0;
+  const mix = (a,b) => Math.round(a + (b - a) * t);
+  return `rgb(${mix(58,255)},${mix(51,122)},${mix(37,47)})`;
+}
+
+function desenhar(id, config){
+  if (graficos[id]) graficos[id].destroy();
+  graficos[id] = new Chart(document.getElementById(id), config);
+}
+
+async function vigiar(){
+  try{
+    const r = await fetch('/api/sentinela');
+    const s = await r.json();
+    const el = document.getElementById('sentinela');
+    el.className = 'sentinela ' + s.status;
+    const hora = new Date().toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'});
+    if (s.status === 'ok'){
+      el.innerHTML = `<div class="linha">🟢 <span>Sentinela: operação dentro do normal · verificada às ${hora}</span></div>`;
+    } else {
+      el.innerHTML = s.alertas.map(a =>
+        `<div class="linha">${a.icone} <span>${a.texto}</span></div>`).join('') +
+        `<div class="linha" style="color:var(--texto-suave)">🛡️ <span>Sentinela · verificada às ${hora} · compara com o típico das últimas 8 semanas nesse mesmo ponto do dia</span></div>`;
+    }
+    el.hidden = false;
+  }catch(e){ /* sentinela nunca derruba o painel */ }
+}
+
+const MESES_PT = ['janeiro','fevereiro','março','abril','maio','junho',
+  'julho','agosto','setembro','outubro','novembro','dezembro'];
+
+function formCompacto(v){
+  return (+v).toLocaleString('pt-BR', {style:'currency', currency:'BRL', maximumFractionDigits:0});
+}
+
+async function medirMeta(){
+  try{
+    const r = await fetch(`/api/meta?marca=${encodeURIComponent(estado.marca)}`);
+    const m = await r.json();
+    const el = document.getElementById('meta');
+    const nomeMes = MESES_PT[new Date().getMonth()];
+    const quem = estado.marca === 'todas' ? 'do grupo' : `— ${estado.marca}`;
+
+    if (m.meta === null){
+      el.innerHTML = `<div class="topo">
+          <span class="titulo">🎯 Meta de ${nomeMes} ${quem}</span>
+          <span style="color:var(--texto-suave); font-size:12.5px">defina e o termômetro acompanha todo dia</span>
+          <span class="editar">R$ <input id="inpMeta" type="number" step="500" min="1" placeholder="30000"></span>
+        </div>
+        <div class="linha-info">Ritmo atual: <strong class="num">${formCompacto(m.ritmo_atual)}/dia</strong>
+          · projeção do mês nesse ritmo: <strong class="num">${formCompacto(m.projecao)}</strong></div>`;
+    } else {
+      const pct = Math.min(m.pct, 100);
+      const pctTempo = 100 * (m.dia_hoje - 1) / m.dias_no_mes;
+      const bateu = m.realizado >= m.meta;
+      const ritmoCls = m.no_ritmo ? 'ritmo-ok' : 'ritmo-ruim';
+      el.innerHTML = `<div class="topo">
+          <span class="titulo">🎯 Meta de ${nomeMes} ${quem}</span>
+          <span class="num"><strong>${formCompacto(m.realizado)}</strong> de ${formCompacto(m.meta)} (${m.pct.toFixed(0)}%)</span>
+          <button class="editar" id="btnEditarMeta">✏️ editar</button>
+        </div>
+        <div class="termometro">
+          <div class="mercurio" style="width:${pct}%"></div>
+          <div class="marca-hoje" style="left:${pctTempo}%" title="onde o mês está no calendário"></div>
+        </div>
+        <div class="linha-info">
+          ${bateu
+            ? `<span class="ritmo-ok">🏆 Meta batida com ${m.dias_restantes} dia(s) de sobra — bora esticar?</span>`
+            : `<span>faltam <strong class="num">${formCompacto(m.falta)}</strong></span>
+               <span>precisa de <strong class="num">${formCompacto(m.necessario_por_dia)}/dia</strong></span>
+               <span>ritmo atual: <strong class="num ${ritmoCls}">${formCompacto(m.ritmo_atual)}/dia ${m.no_ritmo ? '✅' : '⚠️'}</strong></span>
+               <span>projeção: <strong class="num ${ritmoCls}">${formCompacto(m.projecao)}</strong></span>`}
+          <span>· ${m.dias_restantes} dia(s) restantes</span>
+        </div>`;
+      document.getElementById('btnEditarMeta')?.addEventListener('click', () => {
+        document.querySelector('#meta .topo').innerHTML = `
+          <span class="titulo">🎯 Nova meta de ${nomeMes} ${quem}</span>
+          <span class="editar">R$ <input id="inpMeta" type="number" step="500" min="1" value="${m.meta}"></span>`;
+        ligarInputMeta();
+      });
+    }
+    el.hidden = false;
+    ligarInputMeta();
+  }catch(e){ /* meta nunca derruba o painel */ }
+}
+
+function ligarInputMeta(){
+  const inp = document.getElementById('inpMeta');
+  if (!inp) return;
+  const salvar = async () => {
+    const v = parseFloat(inp.value);
+    if (isNaN(v) || v <= 0) return;
+    inp.disabled = true;
+    try{
+      const resp = await fetch('/api/meta', {method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({marca: estado.marca, valor: v})});
+      const j = await resp.json();
+      if (j.ok) medirMeta();
+      else alert('Não salvou: ' + (j.erro ?? 'erro desconhecido'));
+    }catch(e){
+      alert('Falha ao salvar a meta — o painel está no ar?');
+      inp.disabled = false;
+    }
+  };
+  inp.addEventListener('keydown', e => { if (e.key === 'Enter') salvar(); });
+  inp.addEventListener('blur', salvar);
+}
+
+async function carregar(){
+  medirMeta();
+  vigiar();
+  let url = `/api/dados?dias=${estado.dias}&marca=${encodeURIComponent(estado.marca)}&unidade=${encodeURIComponent(estado.unidade)}`;
+  if (estado.ini && estado.fim) url += `&inicio=${estado.ini}&fim=${estado.fim}`;
+  if (estado.compIni && estado.compFim) url += `&comp_inicio=${estado.compIni}&comp_fim=${estado.compFim}`;
+  const r = await fetch(url);
+  const d = await r.json();
+
+  // seletor de marcas (preenche uma vez)
+  const sel = document.getElementById('selMarca');
+  if (sel.options.length === 1){
+    d.marcas.forEach(m => sel.add(new Option(m.marca, m.marca)));
+  }
+
+  // KPIs
+  const k = d.kpis;
+  document.getElementById('kFat').textContent = R$(+k.faturamento);
+  document.getElementById('kPed').textContent = NUM(+k.pedidos);
+  document.getElementById('kTicket').textContent = R$(+k.ticket);
+  document.getElementById('kCanc').textContent = NUM(+k.cancelados);
+  const taxa = k.total_geral > 0 ? (100 * k.cancelados / k.total_geral).toFixed(1) : 0;
+  document.getElementById('kCancSub').textContent = `${taxa}% dos pedidos`;
+  if (d.comparacao){
+    const c = d.comparacao;
+    const delta = (atual, ant) => {
+      if (+ant === 0) return '<span class="delta-up">novo</span>';
+      const p = 100 * (atual - ant) / ant;
+      const cls = p >= 0 ? 'delta-up' : 'delta-down';
+      return `<span class="${cls}">${p >= 0 ? '▲' : '▼'} ${Math.abs(p).toFixed(1)}%</span>`;
+    };
+    document.getElementById('kFatSub').innerHTML =
+      `${delta(+k.faturamento, +c.faturamento)} vs ${R$(+c.faturamento)}`;
+    document.getElementById('kPedSub').innerHTML =
+      `${delta(+k.pedidos, +c.pedidos)} vs ${NUM(+c.pedidos)}`;
+    const taxaC = c.total_geral > 0 ? (100 * c.cancelados / c.total_geral).toFixed(1) : 0;
+    document.getElementById('kCancSub').innerHTML =
+      `período comparado: ${NUM(+c.cancelados)} (${taxaC}%)`;
+  } else {
+    document.getElementById('kPedSub').textContent =
+      estado.dias > 1 ? `média de ${(k.pedidos / estado.dias).toFixed(1)}/dia` : '';
+    document.getElementById('kFatSub').textContent =
+      estado.dias > 1 ? `média de ${R$(k.faturamento / estado.dias)}/dia` : '';
+  }
+
+  // Faturamento por dia
+  desenhar('gDia', {type:'line', data:{
+    labels: d.por_dia.map(x => x.dia.slice(8,10) + '/' + x.dia.slice(5,7)),
+    datasets:[{data: d.por_dia.map(x => +x.faturamento), fill:true,
+      borderColor:'#FF7A2F', backgroundColor:'rgba(255,122,47,.12)',
+      tension:.3, pointRadius:2, borderWidth:2}]},
+    options:{maintainAspectRatio:false, plugins:{legend:{display:false},
+      tooltip:{callbacks:{label: c => R$(c.parsed.y)}}},
+      scales:{y:{ticks:{callback: v => 'R$ ' + NUM(v)}}}}});
+
+  // Horário de pico — barras de calor
+  const horas = Array.from({length:24}, (_,h) => h);
+  const porHora = horas.map(h => (d.por_hora.find(x => +x.hora === h)?.pedidos) ?? 0);
+  const maxHora = Math.max(...porHora, 1);
+  desenhar('gHora', {type:'bar', data:{
+    labels: horas.map(h => `${h}h`),
+    datasets:[{data: porHora, backgroundColor: porHora.map(v => corCalor(+v, maxHora)),
+      borderRadius:3}]},
+    options:{maintainAspectRatio:false, plugins:{legend:{display:false}},
+      scales:{x:{ticks:{maxTicksLimit:12}}, y:{ticks:{precision:0}}}}});
+
+  // Campeões de venda
+  desenhar('gProdutos', {type:'bar', data:{
+    labels: d.top_produtos.map(x => x.nome.length > 26 ? x.nome.slice(0,25) + '…' : x.nome),
+    datasets:[{data: d.top_produtos.map(x => +x.qtd), backgroundColor:'#FF7A2F', borderRadius:3}]},
+    options:{indexAxis:'y', maintainAspectRatio:false,
+      plugins:{legend:{display:false},
+        tooltip:{callbacks:{afterLabel: c => 'Receita: ' + R$(+d.top_produtos[c.dataIndex].receita)}}},
+      scales:{x:{ticks:{precision:0}}}}});
+
+  // Dia da semana
+  const dows = Array.from({length:7}, (_,i) => i);
+  const porDow = dows.map(i => (d.dia_semana.find(x => +x.dow === i)?.pedidos) ?? 0);
+  desenhar('gSemana', {type:'bar', data:{
+    labels: DIAS_SEMANA,
+    datasets:[{data: porDow, backgroundColor:'#FFB25E', borderRadius:3}]},
+    options:{maintainAspectRatio:false, plugins:{legend:{display:false}},
+      scales:{y:{ticks:{precision:0}}}}});
+
+  // Pagamentos
+  desenhar('gPagamento', {type:'doughnut', data:{
+    labels: d.pagamentos.map(x => NOME_PGTO[x.forma] ?? x.forma),
+    datasets:[{data: d.pagamentos.map(x => +x.pedidos),
+      backgroundColor:['#FF7A2F','#FFB25E','#5BBB7B','#7A8CE8','#E15B5B','var(--texto-suave)','#D4C46A'],
+      borderColor:'#1D2027', borderWidth:2}]},
+    options:{maintainAspectRatio:false,
+      plugins:{legend:{position:'right', labels:{boxWidth:12}}}}});
+
+  // Tipos
+  desenhar('gTipo', {type:'doughnut', data:{
+    labels: d.tipos.map(x => NOME_TIPO[x.tipo] ?? x.tipo),
+    datasets:[{data: d.tipos.map(x => +x.pedidos),
+      backgroundColor:['#FF7A2F','#5BBB7B','#7A8CE8','#FFB25E'],
+      borderColor:'#1D2027', borderWidth:2}]},
+    options:{maintainAspectRatio:false,
+      plugins:{legend:{position:'right', labels:{boxWidth:12}}}}});
+
+  // ---- pedagio dos marketplaces ----
+  const semTaxa = d.canais.filter(c => c.comissao_pct === null && c.origem !== 'não informado').length;
+  const pedagioTotal = d.canais.reduce((s,c) => s + (+c.pedagio || 0), 0);
+  const liquidoTotal = d.canais.reduce((s,c) => s + (+c.liquido || 0), 0);
+  const brutoTotal = d.canais.reduce((s,c) => s + (+c.bruto || 0), 0);
+
+  document.getElementById('kLiq').textContent = R$(liquidoTotal);
+  document.getElementById('kLiqSub').textContent = pedagioTotal > 0
+    ? `canais comem ${R$(pedagioTotal)} (${(100 * pedagioTotal / Math.max(brutoTotal, 1)).toFixed(1)}%)`
+    : (semTaxa > 0 ? 'cadastre as comissões abaixo' : 'sem pedágio no período');
+
+  document.getElementById('descCanais').textContent = semTaxa > 0
+    ? `${semTaxa} canal(is) sem comissão cadastrada — preenche que o líquido fica fiel`
+    : 'Comissões configuradas — líquido calculado sobre as vendas reais';
+
+  document.querySelector('#tCanais tbody').innerHTML = d.canais.map(c => `<tr>
+    <td>${NOME_CANAL[c.origem] ?? c.origem}</td>
+    <td class="num">${NUM(+c.pedidos)}</td>
+    <td class="num">${R$(+c.bruto)}</td>
+    <td><input class="pct" type="number" step="0.1" min="0" max="60"
+         data-origem="${c.origem}" value="${c.comissao_pct !== null ? (+c.comissao_pct) : ''}"
+         placeholder="%"></td>
+    <td class="num pedagio">${c.comissao_pct !== null ? '−' + R$(+c.pedagio) : '—'}</td>
+    <td class="num liquido">${c.comissao_pct !== null ? R$(+c.liquido) : '—'}</td>
+  </tr>`).join('');
+
+  document.querySelectorAll('input.pct').forEach(inp => {
+    inp.addEventListener('keydown', e => { if (e.key === 'Enter') inp.blur(); });
+    inp.addEventListener('blur', async () => {
+      const v = parseFloat(inp.value);
+      if (isNaN(v) || v < 0) return;
+      const resp = await fetch('/api/taxas', {method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({origem: inp.dataset.origem, comissao: v})});
+      const j = await resp.json();
+      if (j.ok){ inp.classList.add('salvo'); setTimeout(carregar, 400); }
+    });
+  });
+
+  document.getElementById('atualizadoEm').textContent =
+    'Atualizado às ' + new Date().toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'}) +
+    ' · dados sincronizados a cada 15 min';
+}
+
+document.querySelectorAll('.periodo button[data-dias]').forEach(b =>
+  b.addEventListener('click', () => {
+    document.querySelector('.periodo button[data-dias].ativo')?.classList.remove('ativo');
+    b.classList.add('ativo');
+    estado.dias = +b.dataset.dias;
+    estado.ini = estado.fim = null;
+    document.getElementById('dtIni').value = '';
+    document.getElementById('dtFim').value = '';
+    carregar();
+  }));
+
+function aoMudarData(){
+  let i = document.getElementById('dtIni').value;
+  let f = document.getElementById('dtFim').value;
+  // se preencheu so o inicio, assume o fim = hoje; so o fim, assume inicio = fim
+  if (i && !f){ f = new Date().toISOString().slice(0,10); document.getElementById('dtFim').value = f; }
+  if (f && !i){ i = f; document.getElementById('dtIni').value = i; }
+  if (!i || !f) return;
+  // corrige ordem invertida automaticamente
+  if (i > f){ const t = i; i = f; f = t;
+    document.getElementById('dtIni').value = i;
+    document.getElementById('dtFim').value = f; }
+  estado.ini = i; estado.fim = f;
+  document.querySelector('.periodo button[data-dias].ativo')?.classList.remove('ativo');
+  carregar();
+}
+document.getElementById('dtIni').addEventListener('change', aoMudarData);
+document.getElementById('dtFim').addEventListener('change', aoMudarData);
+
+document.getElementById('btnComp').addEventListener('click', () => {
+  const grp = document.getElementById('grpComp');
+  const btn = document.getElementById('btnComp');
+  const abrindo = !grp.classList.contains('aberto');
+  grp.classList.toggle('aberto', abrindo);
+  btn.classList.toggle('ativo', abrindo);
+  if (!abrindo){
+    estado.compIni = estado.compFim = null;
+    document.getElementById('dtCompIni').value = '';
+    document.getElementById('dtCompFim').value = '';
+    carregar();
+  }
+});
+
+function aoMudarComp(){
+  const i = document.getElementById('dtCompIni').value;
+  const f = document.getElementById('dtCompFim').value;
+  if (i && f){ estado.compIni = i; estado.compFim = f; carregar(); }
+}
+document.getElementById('dtCompIni').addEventListener('change', aoMudarComp);
+document.getElementById('dtCompFim').addEventListener('change', aoMudarComp);
+
+document.getElementById('selUnidade').addEventListener('change', e => {
+  estado.unidade = e.target.value;
+  carregar();
+});
+fetch('/api/unidades').then(r => r.json()).then(d => {
+  const sel = document.getElementById('selUnidade');
+  (d.unidades || []).forEach(u => {
+    const o = document.createElement('option');
+    o.value = u; o.textContent = u; sel.appendChild(o);
+  });
+});
+document.getElementById('selMarca').addEventListener('change', e => {
+  estado.marca = e.target.value;
+  carregar();
+});
+
+carregar();
+setInterval(carregar, 5 * 60 * 1000);   // recarrega a cada 5 min
+</script>
+<script src="/static/_tema.js"></script>
+</body>
+</html>

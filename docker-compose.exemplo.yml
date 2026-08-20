@@ -1,0 +1,102 @@
+# Sistema de Dados — Maracayá + Chomp + Quadra 8 (Saipos)
+# Subir tudo:  docker compose up -d
+# Acessos:     Metabase http://localhost:3000 | n8n http://localhost:5678 | Painel http://localhost:8080
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: dados_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: alvaro
+      POSTGRES_PASSWORD: SUA_SENHA_AQUI
+      POSTGRES_DB: operacao
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./schema.sql:/docker-entrypoint-initdb.d/schema.sql
+
+  n8n:
+    image: n8nio/n8n:1.70.0
+    container_name: dados_n8n
+    restart: unless-stopped
+    environment:
+      - GENERIC_TIMEZONE=America/Sao_Paulo
+      - TZ=America/Sao_Paulo
+      - N8N_SECURE_COOKIE=false
+    ports:
+      - "5678:5678"
+    volumes:
+      - n8n_data:/home/node/.n8n
+    depends_on:
+      - postgres
+
+  metabase:
+    image: metabase/metabase:latest
+    container_name: dados_metabase
+    restart: unless-stopped
+    environment:
+      MB_DB_TYPE: postgres
+      MB_DB_DBNAME: metabase_app
+      MB_DB_PORT: 5432
+      MB_DB_USER: alvaro
+      MB_DB_PASS: SUA_SENHA_AQUI
+      MB_DB_HOST: postgres
+    ports:
+      - "3000:3000"
+    depends_on:
+      - postgres
+
+  sync_saipos:
+    image: python:3.12-slim
+    container_name: sync_saipos
+    restart: unless-stopped
+    working_dir: /app
+    volumes:
+      - ./:/app
+    environment:
+      - PYTHONUNBUFFERED=1
+      - SAIPOS_TOKEN=SEU_TOKEN_SAIPOS
+      - SAIPOS_STORE_ID=81530
+      - PGPASSWORD=SUA_SENHA_AQUI
+      - SYNC_INTERVAL=900
+    command: bash -c "pip install -q requests psycopg2-binary && python sync_saipos.py"
+    depends_on:
+      - postgres
+
+  sync_maracaya:
+    image: python:3.12-slim
+    container_name: sync_maracaya
+    restart: unless-stopped
+    working_dir: /app
+    volumes:
+      - ./:/app
+    environment:
+      - PYTHONUNBUFFERED=1
+      - CW_API_KEY=SEU_TOKEN_CW
+      - LOJA_CODIGO=46472
+      - PGPASSWORD=SUA_SENHA_AQUI
+      - SYNC_INTERVAL=900
+    command: bash -c "pip install -q requests psycopg2-binary && python sync.py"
+    depends_on:
+      - postgres
+
+  painel:
+    image: python:3.12-slim
+    container_name: painel
+    restart: unless-stopped
+    working_dir: /app
+    volumes:
+      - ./painel:/app
+    environment:
+      - PGPASSWORD=SUA_SENHA_AQUI
+    ports:
+      - "8080:8080"
+    command: bash -c "pip install -q fastapi uvicorn psycopg2-binary && uvicorn app:app --host 0.0.0.0 --port 8080"
+    depends_on:
+      - postgres
+
+volumes:
+  pg_data:
+  n8n_data:

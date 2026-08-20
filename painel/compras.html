@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Compras — Painel Operacional</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700&family=Inter:wght@400;500&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  
+  *{box-sizing:border-box; margin:0; padding:0}
+  body{background:var(--fundo); color:var(--texto);
+    font-family:'Inter',system-ui,sans-serif; font-size:14px; padding:24px}
+  header{display:flex; align-items:center; gap:16px; flex-wrap:wrap; margin-bottom:24px}
+  h1{font-family:'Sora',sans-serif; font-size:20px; font-weight:700; letter-spacing:-.02em}
+  h1 .marca{color:var(--brasa)}
+  nav{display:flex; gap:14px}
+  nav a{color:var(--texto-suave); text-decoration:none; font-size:13px}
+  nav a:hover{color:var(--brasa)}
+  .controles{margin-left:auto; display:flex; gap:8px; align-items:center; flex-wrap:wrap}
+  .controles label{color:var(--texto-suave); font-size:13px}
+  select{background:var(--painel); color:var(--texto); border:1px solid var(--borda);
+    border-radius:8px; padding:8px 12px; font-family:'Inter'; font-size:13px; cursor:pointer}
+
+  .grade{display:grid; grid-template-columns:repeat(12,1fr); gap:12px}
+  .card{background:var(--painel); border:1px solid var(--borda); border-radius:12px;
+    padding:18px; display:flex; flex-direction:column}
+  .card h2{font-family:'Sora'; font-size:14px; font-weight:600; margin-bottom:4px}
+  .card .desc{color:var(--texto-suave); font-size:12px; margin-bottom:14px; line-height:1.5}
+  .c-12{grid-column:span 12} .c-8{grid-column:span 8} .c-4{grid-column:span 4}
+  @media(max-width:950px){.c-8,.c-4{grid-column:span 12}}
+
+  .kpis{display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; margin-bottom:12px}
+  .kpi{background:var(--painel); border:1px solid var(--borda); border-radius:12px; padding:16px 18px}
+  .kpi .rotulo{color:var(--texto-suave); font-size:12px; text-transform:uppercase; letter-spacing:.06em; margin-bottom:8px}
+  .kpi .valor{font-family:'IBM Plex Mono',monospace; font-size:24px; font-weight:600}
+
+  /* linha do tempo de boletos */
+  .timeline{display:flex; flex-direction:column; gap:8px}
+  .boleto{display:flex; align-items:center; gap:12px}
+  .boleto .dia{width:52px; text-align:center; font-family:'IBM Plex Mono',monospace;
+    font-size:13px; color:var(--texto-suave); flex-shrink:0}
+  .boleto .barra-wrap{flex:1; background:var(--fundo); border:1px solid var(--borda);
+    border-radius:8px; overflow:hidden; height:34px; position:relative; display:flex; align-items:center}
+  .boleto .barra{height:100%; background:linear-gradient(90deg,#B45A28,var(--brasa)); border-radius:0}
+  .boleto .conteudo{position:absolute; left:10px; right:10px; display:flex;
+    justify-content:space-between; align-items:center; font-size:12.5px; gap:8px}
+  .boleto .conteudo .val{font-family:'IBM Plex Mono',monospace; font-weight:600}
+  .boleto.pico .barra-wrap{border-color:var(--alerta)}
+
+  table{width:100%; border-collapse:collapse; font-size:13px}
+  th{color:var(--texto-suave); text-align:left; font-weight:500; padding:8px 8px;
+    border-bottom:1px solid var(--borda); text-transform:uppercase; font-size:11px; letter-spacing:.05em}
+  td{padding:9px 8px; border-bottom:1px solid var(--borda)}
+  tr:last-child td{border-bottom:none}
+  td.num{font-family:'IBM Plex Mono',monospace; white-space:nowrap}
+  .tag{font-size:11px; padding:2px 7px; border-radius:20px; border:1px solid var(--borda)}
+  .tag.perecivel{color:var(--brasa-clara); border-color:var(--brasa-clara)}
+  .aviso{background:rgba(255,178,94,.10); border:1px solid var(--brasa-clara);
+    border-radius:10px; padding:12px 16px; margin-bottom:12px; font-size:13px; line-height:1.5}
+  .rodape{color:var(--texto-suave); font-size:12px; margin-top:20px}
+  .info{display:inline-flex; align-items:center; justify-content:center;
+    width:16px; height:16px; margin-left:6px; border:1px solid var(--texto-suave);
+    border-radius:50%; font-size:10px; font-weight:600; color:var(--texto-suave);
+    cursor:help; position:relative; vertical-align:middle}
+  .info:hover::after, .info:focus::after{
+    content:attr(data-tip); position:absolute; bottom:140%; left:0;
+    width:min(320px, 72vw); background:#0E1013; border:1px solid var(--borda);
+    padding:10px 12px; border-radius:10px; font-size:12px; font-weight:400;
+    line-height:1.55; color:var(--texto); z-index:9; white-space:normal; text-align:left}
+</style>
+<link rel="stylesheet" href="/static/_tema.css">
+</head>
+<body>
+
+<header>
+  <h1>Compras <span class="marca">— Grupo Maracayá</span></h1>
+  
+  <div class="controles">
+    <label>Dia de fazer os pedidos:</label>
+    <select id="selAncora">
+      <option value="seg" selected>Segunda-feira</option>
+      <option value="ter">Terça-feira</option>
+      <option value="qua">Quarta-feira</option>
+      <option value="qui">Quinta-feira</option>
+      <option value="sex">Sexta-feira</option>
+    </select>
+  </div>
+</header>
+
+<div class="aviso" id="avisoPico" hidden></div>
+
+<section class="kpis">
+  <div class="kpi"><div class="rotulo">Compra total / mês</div><div class="valor" id="kTotal">—</div></div>
+  <div class="kpi"><div class="rotulo">Fornecedores</div><div class="valor" id="kForn">—</div></div>
+  <div class="kpi"><div class="rotulo">Maior boleto do mês</div><div class="valor" id="kPico">—</div></div>
+</section>
+
+<section class="grade">
+  <div class="card c-8">
+    <h2>Calendário de boletos do mês<span class="info" tabindex="0" data-tip="Se você fizer todos os pedidos no dia escolhido, cada fornecedor entrega na próxima data possível e o boleto vence após o prazo dele. A linha mostra quanto vence em cada dia — o objetivo é ver os vencimentos espalhados, sem acúmulo. Boleto destacado em vermelho é o dia de maior desembolso.">?</span></h2>
+    <div class="desc" id="descTimeline">Pedidos numa data só, boletos distribuídos pelo mês</div>
+    <div class="timeline" id="timeline"></div>
+  </div>
+
+  <div class="card c-4">
+    <h2>Ordem de compra</h2>
+    <div class="desc">O que pedir no dia-âncora, por fornecedor</div>
+    <div style="overflow-x:auto"><table id="tOrdem">
+      <thead><tr><th>Fornecedor</th><th>Entrega</th><th>Vence</th></tr></thead>
+      <tbody></tbody>
+    </table></div>
+  </div>
+
+  <div class="card c-12">
+    <h2>Plano de estoque do mês 📦<span class="info" tabindex="0" data-tip="Consumo diário de cada insumo (vendas das últimas 4 semanas × ficha técnica × tendência) projetado pros dias de cobertura, com folga de segurança. Preencha o estoque atual (coluna editável) e a coluna COMPRAR mostra exatamente quanto pedir de cada um. Agrupado por fornecedor pra virar a ordem de compra.">?</span></h2>
+    <div class="desc" id="descEstoque">Preencha o estoque atual — a coluna \'Comprar\' te diz o que pedir</div>
+    <div style="display:flex; gap:16px; margin-bottom:14px; flex-wrap:wrap; align-items:center">
+      <label style="color:var(--texto-suave); font-size:13px">Cobertura:
+        <select id="selCobertura" style="background:var(--fundo); color:var(--texto); border:1px solid var(--borda); border-radius:6px; padding:5px 8px; margin-left:4px">
+          <option value="15">15 dias</option>
+          <option value="30" selected>30 dias (mês)</option>
+          <option value="45">45 dias</option>
+        </select></label>
+      <label style="color:var(--texto-suave); font-size:13px">Segurança:
+        <select id="selSeguranca" style="background:var(--fundo); color:var(--texto); border:1px solid var(--borda); border-radius:6px; padding:5px 8px; margin-left:4px">
+          <option value="10">+10%</option>
+          <option value="20" selected>+20%</option>
+          <option value="30">+30%</option>
+        </select></label>
+    </div>
+    <div style="overflow-x:auto"><table id="tEstoque">
+      <thead><tr><th>Insumo</th><th>Fornecedor</th><th>Consumo/dia</th><th>Necessidade</th><th>Estoque atual</th><th>Comprar</th></tr></thead>
+      <tbody></tbody>
+    </table></div>
+  </div>
+
+  <div class="card c-12">
+    <h2>Fornecedores<span class="info" tabindex="0" data-tip="Valor médio mensal e prazo de pagamento de cada um. Clique no valor pra editar — o calendário recalcula na hora. Perecível pede atenção com entregas fracionadas mesmo em pedido único.">?</span></h2>
+    <div class="desc">Clique no valor pra atualizar</div>
+    <div style="overflow-x:auto"><table id="tForn">
+      <thead><tr><th>Fornecedor</th><th>Categoria</th><th>Entrega</th><th>Prazo</th><th>Média/mês</th><th>Gasto real (este mês)</th></tr></thead>
+      <tbody></tbody>
+    </table></div>
+  </div>
+</section>
+
+<p class="rodape" id="atualizadoEm">Carregando…</p>
+
+<script>
+const R$ = v => (+(v ?? 0)).toLocaleString('pt-BR', {style:'currency', currency:'BRL'});
+let estado = {ancora:'seg', cobertura:30, seguranca:20};
+
+async function carregar(){
+  const r = await fetch(`/api/compras_plano?ancora=${estado.ancora}`);
+  const d = await r.json();
+
+  document.getElementById('kTotal').textContent = R$(d.total_mes);
+  document.getElementById('kForn').textContent = d.itens.length;
+  document.getElementById('kPico').textContent = d.pico ? R$(d.pico.valor) : '—';
+
+  // aviso de concentração
+  const av = document.getElementById('avisoPico');
+  if (d.pico && d.pico.qtd >= 2){
+    av.hidden = false;
+    av.innerHTML = `⚠️ No dia <strong>${d.pico.dia}</strong> vencem <strong>${d.pico.qtd} boletos</strong> juntos (${R$(d.pico.valor)}): ${d.pico.forns.join(', ')}. ` +
+      `Se apertar o caixa, adie o pedido de um fornecedor "todo dia" (Ambev/Ki Karnes/Juju) pra empurrar o vencimento.`;
+  } else {
+    av.hidden = false;
+    av.style.borderColor = 'var(--ok)';
+    av.style.background = 'rgba(91,187,123,.10)';
+    av.innerHTML = `✅ Boletos bem distribuídos — nenhum dia concentra muito. Pedido único no dia-âncora funciona liso.`;
+  }
+
+  // timeline
+  const maxVal = Math.max(...d.concentracao.map(c => c.valor), 1);
+  document.getElementById('timeline').innerHTML = d.concentracao.map(c => {
+    const pico = d.pico && c.data === d.pico.data && c.qtd >= 2;
+    return `<div class="boleto ${pico ? 'pico' : ''}">
+      <div class="dia">dia ${c.dia}</div>
+      <div class="barra-wrap">
+        <div class="barra" style="width:${Math.max(100 * c.valor / maxVal, 12)}%"></div>
+        <div class="conteudo"><span>${c.forns.join(', ')}</span><span class="val">${R$(c.valor)}</span></div>
+      </div>
+    </div>`;
+  }).join('');
+  document.getElementById('descTimeline').textContent =
+    `Pedidos na ${d.ancora_dow.toLowerCase()}-feira → ${d.concentracao.length} vencimentos no mês`;
+
+  // ordem de compra
+  document.querySelector('#tOrdem tbody').innerHTML = d.itens.map(it => `<tr>
+    <td>${it.nome}</td>
+    <td class="num">${it.entrega_dow} ${it.entrega.slice(8,10)}/${it.entrega.slice(5,7)}</td>
+    <td class="num">${it.vence_dow} ${it.vence.slice(8,10)}/${it.vence.slice(5,7)}</td>
+  </tr>`).join('');
+
+  // fornecedores editaveis
+  const DOW = {todos:'Todo dia'};
+  document.querySelector('#tForn tbody').innerHTML = d.itens.map(it => `<tr>
+    <td>${it.nome}</td>
+    <td><span class="tag ${it.categoria}">${it.categoria === 'perecivel' ? 'Perecível' : 'Seco'}</span></td>
+    <td class="num">${it.dias_entrega === 'todos' ? 'Todo dia' : it.dias_entrega}</td>
+    <td class="num">${it.prazo} dias</td>
+    <td><input data-forn="${it.nome}" type="number" step="10" min="0" value="${it.valor.toFixed(2)}"
+         style="width:110px; background:var(--fundo); color:var(--texto); border:1px solid var(--borda); border-radius:6px; padding:6px 8px; font-family:'IBM Plex Mono',monospace; font-size:13px"></td>
+    <td class="num" style="color:${(it.real_mes||0) > it.valor ? 'var(--alerta)' : ((it.real_mes||0) > 0 ? 'var(--ok)' : 'var(--texto-suave)')}">
+      ${(it.real_mes||0) > 0 ? R$(it.real_mes) + ((it.real_mes > it.valor) ? ' ⚠️' : '') : '—'}</td>
+  </tr>`).join('');
+
+  document.querySelectorAll('#tForn input').forEach(inp => {
+    inp.addEventListener('keydown', e => { if (e.key === 'Enter') inp.blur(); });
+    inp.addEventListener('blur', async () => {
+      const v = parseFloat(inp.value);
+      if (isNaN(v) || v < 0) return;
+      const resp = await fetch('/api/fornecedor', {method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({nome: inp.dataset.forn, valor_mensal: v})});
+      const j = await resp.json();
+      if (j.ok){ inp.style.borderColor = 'var(--ok)'; setTimeout(carregar, 400); }
+    });
+  });
+
+  // ---- plano de estoque ----
+  try{
+    const rs = await fetch(`/api/estoque_plano?cobertura_dias=${estado.cobertura}&seguranca_pct=${estado.seguranca}`);
+    const es = await rs.json();
+    const fmtQ = (v, u) => v == null ? '—' : (u === 'kg'
+      ? (+v).toLocaleString('pt-BR', {maximumFractionDigits:1}) + ' kg'
+      : Math.ceil(+v).toLocaleString('pt-BR') + ' un');
+    document.querySelector('#tEstoque tbody').innerHTML = es.itens.map(x => `<tr>
+      <td>${x.insumo}</td>
+      <td style="color:var(--texto-suave)">${x.fornecedor}</td>
+      <td class="num" style="color:var(--texto-suave)">${fmtQ(x.consumo_dia, x.unidade)}</td>
+      <td class="num">${fmtQ(x.necessidade, x.unidade)}</td>
+      <td><input data-insumo="${x.insumo.replace(/"/g,'&quot;')}" type="number" step="0.1" min="0"
+           value="${x.estoque != null ? x.estoque : ''}" placeholder="—"
+           style="width:90px; background:var(--fundo); color:var(--texto); border:1px solid var(--borda); border-radius:6px; padding:6px 8px; font-family:'IBM Plex Mono',monospace; font-size:13px"></td>
+      <td class="num" style="color:var(--brasa-clara); font-weight:600">${x.comprar > 0 ? fmtQ(x.comprar, x.unidade) : '✓ ok'}</td>
+    </tr>`).join('');
+    document.querySelectorAll('#tEstoque input').forEach(inp => {
+      inp.addEventListener('keydown', e => { if (e.key === 'Enter') inp.blur(); });
+      inp.addEventListener('blur', async () => {
+        const v = parseFloat(inp.value);
+        if (isNaN(v) || v < 0) return;
+        const resp = await fetch('/api/estoque', {method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({insumo: inp.dataset.insumo, estoque: v})});
+        const j = await resp.json();
+        if (j.ok){ inp.style.borderColor = 'var(--ok)'; setTimeout(carregar, 400); }
+      });
+    });
+    const semEstoque = es.itens.filter(x => x.estoque == null).length;
+    document.getElementById('descEstoque').innerHTML = semEstoque > 0
+      ? `Preencha o estoque atual dos ${semEstoque} insumo(s) em branco — a coluna <strong>Comprar</strong> assume estoque zero até você preencher`
+      : `Cobertura de ${es.cobertura_dias} dias + ${es.seguranca_pct}% de segurança · a coluna <strong>Comprar</strong> é sua ordem de compra`;
+  }catch(e){ /* estoque nunca derruba a pagina */ }
+
+  document.getElementById('atualizadoEm').textContent =
+    'Atualizado às ' + new Date().toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'}) +
+    ' · plano baseado no dia-âncora escolhido';
+}
+
+document.getElementById('selAncora').addEventListener('change', e => {
+  estado.ancora = e.target.value; carregar();
+});
+document.addEventListener('change', e => {
+  if (e.target.id === 'selCobertura'){ estado.cobertura = +e.target.value; carregar(); }
+  if (e.target.id === 'selSeguranca'){ estado.seguranca = +e.target.value; carregar(); }
+});
+
+carregar();
+</script>
+<script src="/static/_tema.js"></script>
+</body>
+</html>

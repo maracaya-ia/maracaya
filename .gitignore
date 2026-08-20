@@ -1,0 +1,8 @@
+docker-compose.yml
+*.bak
+*.bak2
+*.bak3
+backup_banco.sql
+__pycache__/
+*.pyc
+workflows/

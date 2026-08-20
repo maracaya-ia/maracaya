@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Clientes — Painel Operacional</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700&family=Inter:wght@400;500&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  
+  *{box-sizing:border-box; margin:0; padding:0}
+  body{background:var(--fundo); color:var(--texto);
+    font-family:'Inter',system-ui,sans-serif; font-size:14px; padding:24px}
+  header{display:flex; align-items:center; gap:16px; flex-wrap:wrap; margin-bottom:24px}
+  h1{font-family:'Sora',sans-serif; font-size:20px; font-weight:700; letter-spacing:-.02em}
+  h1 .marca{color:var(--brasa)}
+  nav a{color:var(--texto-suave); text-decoration:none; font-size:13px}
+  nav a:hover{color:var(--brasa)}
+  .controles{margin-left:auto; display:flex; gap:8px; flex-wrap:wrap}
+  select{background:var(--painel); color:var(--texto); border:1px solid var(--borda);
+    border-radius:8px; padding:8px 12px; font-family:'Inter'; font-size:13px; cursor:pointer}
+  select:focus-visible{outline:2px solid var(--brasa); outline-offset:2px}
+
+  .kpis{display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; margin-bottom:12px}
+  .kpi{background:var(--painel); border:1px solid var(--borda); border-radius:12px; padding:16px 18px}
+  .kpi .rotulo{color:var(--texto-suave); font-size:12px; text-transform:uppercase; letter-spacing:.06em; margin-bottom:8px}
+  .kpi .valor{font-family:'IBM Plex Mono',monospace; font-size:26px; font-weight:600; line-height:1}
+  .kpi.destaque .valor{color:var(--brasa)}
+  .kpi .sub{color:var(--texto-suave); font-size:12px; margin-top:6px}
+
+  .grade{display:grid; grid-template-columns:repeat(12,1fr); gap:12px}
+  .card{background:var(--painel); border:1px solid var(--borda); border-radius:12px;
+    padding:18px; display:flex; flex-direction:column}
+  .card h2{font-family:'Sora'; font-size:14px; font-weight:600; margin-bottom:4px}
+  .card .desc{color:var(--texto-suave); font-size:12px; margin-bottom:14px}
+  .card .area{position:relative; flex:1; min-height:220px}
+  .c-12{grid-column:span 12} .c-6{grid-column:span 6}
+  @media(max-width:900px){.c-6{grid-column:span 12}}
+
+  table{width:100%; border-collapse:collapse; font-size:13px}
+  th{color:var(--texto-suave); text-align:left; font-weight:500; padding:8px 10px;
+    border-bottom:1px solid var(--borda); text-transform:uppercase; font-size:11px; letter-spacing:.05em}
+  td{padding:9px 10px; border-bottom:1px solid var(--borda)}
+  tr:last-child td{border-bottom:none}
+  td.num{font-family:'IBM Plex Mono',monospace}
+  td .fone{color:var(--texto-suave)}
+  .dias{color:var(--alerta); font-family:'IBM Plex Mono',monospace}
+  .vazio{color:var(--texto-suave); text-align:center; padding:30px 0}
+  .alerta{display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+    background:rgba(225,91,91,.10); border:1px solid var(--alerta);
+    border-radius:12px; padding:14px 18px; margin-bottom:12px}
+  .alerta strong{color:var(--alerta)}
+  .alerta .mono{font-family:'IBM Plex Mono',monospace}
+  .alerta.ok{background:rgba(91,187,123,.10); border-color:var(--ok)}
+  .alerta.ok strong{color:var(--ok)}
+  .rodape{color:var(--texto-suave); font-size:12px; margin-top:20px}
+  .cohort{width:100%; border-collapse:separate; border-spacing:4px; font-size:13px}
+  .cohort th{color:var(--texto-suave); font-weight:500; font-size:11px;
+    text-transform:uppercase; letter-spacing:.05em; padding:4px 8px; text-align:center}
+  .cohort th:first-child{text-align:left}
+  .cohort td{padding:9px 8px; border-radius:8px; text-align:center;
+    font-family:'IBM Plex Mono',monospace}
+  .cohort td.rotulo{text-align:left; font-family:'Inter'; background:none}
+  .cohort td.rotulo small{color:var(--texto-suave); display:block; font-size:11px}
+  .cohort td.vazio{background:none}
+</style>
+<link rel="stylesheet" href="/static/_tema.css">
+</head>
+<body>
+
+<header>
+  <h1>Clientes <span class="marca">— Grupo Maracayá</span></h1>
+  
+  <div class="controles">
+    <select id="selUnidade" aria-label="Unidade">
+      <option value="todas">Todas as unidades</option>
+    </select>
+    <select id="selMarca" aria-label="Marca">
+      <option value="todas">Todas as marcas</option>
+    </select>
+    <select id="selCanal" aria-label="Canal">
+      <option value="todos">Todos os canais</option>
+    </select>
+    <select id="selTel" aria-label="Telefone">
+      <option value="0">Com e sem telefone</option>
+      <option value="1">Só com telefone 📱</option>
+    </select>
+    <select id="selSumido" aria-label="Considerar sumido após">
+      <option value="30">Sumido há 30+ dias</option>
+      <option value="45">Sumido há 45+ dias</option>
+      <option value="60">Sumido há 60+ dias</option>
+    </select>
+  </div>
+</header>
+
+<div id="alerta" class="alerta" hidden></div>
+
+<section class="kpis">
+  <div class="kpi destaque"><div class="rotulo">Clientes</div><div class="valor" id="kTotal">—</div><div class="sub">com pelo menos 1 pedido válido</div></div>
+  <div class="kpi"><div class="rotulo">Recorrentes</div><div class="valor" id="kRec">—</div><div class="sub" id="kRecSub"></div></div>
+  <div class="kpi"><div class="rotulo">Novos (30 dias)</div><div class="valor" id="kNovos">—</div></div>
+  <div class="kpi"><div class="rotulo">Gasto médio por cliente</div><div class="valor" id="kGasto">—</div></div>
+</section>
+
+<section class="grade">
+  <div class="card c-6">
+    <h2>Escada da fidelização</h2>
+    <div class="desc">Quantos pedidos cada cliente já fez — o objetivo é empurrar todo mundo pra direita</div>
+    <div class="area"><canvas id="gFreq"></canvas></div>
+  </div>
+  <div class="card c-6">
+    <h2>Recência da base</h2>
+    <div class="desc">Quando cada cliente pediu pela última vez — quanto mais frio, mais urgente o resgate</div>
+    <div class="area"><canvas id="gRecencia"></canvas></div>
+  </div>
+  <div class="card c-6">
+    <h2>Tempo entre pedidos</h2>
+    <div class="desc" id="descCiclo">Quantos dias o cliente demora pra voltar, ciclo a ciclo</div>
+    <div class="area"><canvas id="gCiclo"></canvas></div>
+  </div>
+  <div class="card c-6">
+    <h2>Novos clientes por semana</h2>
+    <div class="desc">Primeira compra de cada cliente — sua aquisição</div>
+    <div class="area"><canvas id="gNovos"></canvas></div>
+  </div>
+  <div class="card c-6">
+    <h2>Top clientes 👑</h2>
+    <div class="desc">Quem mais deixou dinheiro na chapa</div>
+    <div style="overflow-x:auto"><table id="tTop">
+      <thead><tr><th>Cliente</th><th>Pedidos</th><th>Total gasto</th><th>Último pedido</th></tr></thead>
+      <tbody></tbody>
+    </table></div>
+  </div>
+  <div class="card c-6">
+    <h2>Lista de resgate 🚨</h2>
+    <div class="desc">Pediram 2+ vezes e sumiram — os primeiros da fila pra campanha de WhatsApp</div>
+    <div style="overflow-x:auto"><table id="tSumidos">
+      <thead><tr><th>Cliente</th><th>Pedidos</th><th>Gastava</th><th>Sumido há</th></tr></thead>
+      <tbody></tbody>
+    </table></div>
+  </div>
+  <div class="card c-12">
+    <h2>Curva de retenção — cohorts 📈<span class="info" tabindex="0" data-tip="Cada linha é a 'turma' de clientes que fez a PRIMEIRA compra naquele mês. As colunas mostram quantos % da turma voltaram a comprar 1, 2, 3... meses depois (Mês 0 é sempre 100%). Célula mais laranja = mais gente voltou. Se as turmas novas retêm mais que as antigas na mesma coluna, o negócio está melhorando de verdade — faturamento sobe até com negócio doente, retenção não mente. O mês atual (*) ainda está em andamento, então a última coluna sempre parece pior do que vai terminar.">?</span></h2>
+    <div class="desc" id="descCohort">Quantos % de cada turma de clientes continua comprando, mês a mês</div>
+    <div style="overflow-x:auto"><table class="cohort" id="tCohort">
+      <thead></thead><tbody></tbody>
+    </table></div>
+  </div>
+</section>
+
+<p class="rodape" id="atualizadoEm">Carregando…</p>
+
+<script>
+const R$ = v => (+(v ?? 0)).toLocaleString('pt-BR', {style:'currency', currency:'BRL'});
+const NUM = v => (+(v ?? 0)).toLocaleString('pt-BR');
+const NOME_CANAL = {ifood:'iFood', site:'Site', portal:'Portal (balcão)',
+  whatsapp:'WhatsApp', chatbot:'Chatbot', app:'App', '99food':'99Food',
+  rappi:'Rappi', aiqfome:'Aiqfome', keeta:'Keeta', import:'Importação'};
+let estado = {marca:'todas', sumido:30, canal:'todos', tel:0};
+let graficos = {};
+
+Chart.defaults.color = 'var(--texto-suave)';
+Chart.defaults.borderColor = '#2A2E38';
+Chart.defaults.font.family = 'Inter';
+
+function desenhar(id, config){
+  if (graficos[id]) graficos[id].destroy();
+  graficos[id] = new Chart(document.getElementById(id), config);
+}
+
+function fone(t){
+  if (!t) return '';
+  const d = t.replace(/\D/g,'');
+  if (d.length === 11) return `(${d.slice(0,2)}) ${d.slice(2,7)}-${d.slice(7)}`;
+  return t;
+}
+
+async function carregar(){
+  const r = await fetch(`/api/clientes?marca=${encodeURIComponent(estado.marca)}&sumido_apos=${estado.sumido}&canal=${encodeURIComponent(estado.canal)}&so_com_telefone=${estado.tel}`);
+  const d = await r.json();
+
+  const sel = document.getElementById('selMarca');
+  if (sel.options.length === 1){
+    d.marcas.forEach(m => sel.add(new Option(m.marca, m.marca)));
+  }
+  const selC = document.getElementById('selCanal');
+  if (selC.options.length === 1){
+    d.canais.forEach(c => selC.add(new Option(NOME_CANAL[c.origem] ?? c.origem, c.origem)));
+  }
+
+  const alerta = document.getElementById('alerta');
+  if (+d.resgate.clientes > 0){
+    alerta.className = 'alerta';
+    alerta.innerHTML = `🚨 <span><strong>${NUM(d.resgate.clientes)} clientes</strong> não pedem há mais de
+      <strong>${estado.sumido} dias</strong> — juntos eles já deixaram
+      <strong class="mono">${R$(d.resgate.gasto)}</strong> na chapa.
+      Um cupom de "sentimos sua falta" pode trazê-los de volta — a lista de resgate abaixo tem nome e telefone. 📲</span>`;
+    alerta.hidden = false;
+  } else {
+    alerta.className = 'alerta ok';
+    alerta.innerHTML = `✅ <span>Nenhum cliente recorrente sumido há mais de <strong>${estado.sumido} dias</strong>. Base quente!</span>`;
+    alerta.hidden = false;
+  }
+
+  const k = d.kpis;
+  document.getElementById('kTotal').textContent = NUM(k.total);
+  document.getElementById('kRec').textContent = NUM(k.recorrentes);
+  const pct = k.total > 0 ? (100 * k.recorrentes / k.total).toFixed(0) : 0;
+  document.getElementById('kRecSub').textContent = `${pct}% voltaram pra pedir de novo`;
+  document.getElementById('kNovos').textContent = NUM(k.novos_30d);
+  document.getElementById('kGasto').textContent = R$(k.gasto_medio);
+
+  desenhar('gFreq', {type:'bar', data:{
+    labels: d.frequencia.map(x => x.faixa),
+    datasets:[{data: d.frequencia.map(x => +x.clientes),
+      backgroundColor:['#3A3325','#B45A28','#FF7A2F','#FFB25E'], borderRadius:4}]},
+    options:{maintainAspectRatio:false, plugins:{legend:{display:false}},
+      scales:{y:{ticks:{precision:0}}}}});
+
+  desenhar('gRecencia', {type:'doughnut', data:{
+    labels: d.recencia.map(x => x.faixa),
+    datasets:[{data: d.recencia.map(x => +x.clientes),
+      backgroundColor:['#FF7A2F','#FFB25E','var(--texto-suave)','#3A3E48'],
+      borderColor:'#1D2027', borderWidth:2}]},
+    options:{maintainAspectRatio:false,
+      plugins:{legend:{position:'right', labels:{boxWidth:12}}}}});
+
+  document.getElementById('descCiclo').textContent =
+    `Média geral: ${d.media_entre_pedidos} dias entre um pedido e o próximo`;
+  desenhar('gCiclo', {type:'bar', data:{
+    labels: d.ciclos.map(x => x.ciclo),
+    datasets:[{data: d.ciclos.map(x => +x.media_dias), backgroundColor:'#FFB25E', borderRadius:4}]},
+    options:{maintainAspectRatio:false,
+      plugins:{legend:{display:false},
+        tooltip:{callbacks:{label: c => `${c.parsed.y} dias em média`,
+          afterLabel: c => `${d.ciclos[c.dataIndex].clientes} clientes chegaram nesse ciclo`}}},
+      scales:{y:{title:{display:true, text:'dias'}}}}});
+
+  desenhar('gNovos', {type:'line', data:{
+    labels: d.novos_semana.map(x => x.semana),
+    datasets:[{data: d.novos_semana.map(x => +x.clientes), fill:true,
+      borderColor:'#FF7A2F', backgroundColor:'rgba(255,122,47,.12)',
+      tension:.3, pointRadius:2, borderWidth:2}]},
+    options:{maintainAspectRatio:false, plugins:{legend:{display:false}},
+      scales:{y:{ticks:{precision:0}}}}});
+
+  const tbTop = document.querySelector('#tTop tbody');
+  tbTop.innerHTML = d.top.map(c => `<tr>
+    <td>${c.nome ?? 'Sem nome'}<br><span class="fone">${fone(c.telefone)}</span></td>
+    <td class="num">${c.pedidos}</td>
+    <td class="num">${R$(c.gasto)}</td>
+    <td class="num">${c.ultimo_pedido}</td>
+  </tr>`).join('') || '<tr><td colspan="4" class="vazio">Sem dados ainda</td></tr>';
+
+  const tbSum = document.querySelector('#tSumidos tbody');
+  tbSum.innerHTML = d.sumidos.map(c => `<tr>
+    <td>${c.nome ?? 'Sem nome'}<br><span class="fone">${fone(c.telefone)}</span></td>
+    <td class="num">${c.pedidos}</td>
+    <td class="num">${R$(c.gasto)}</td>
+    <td class="dias">${c.dias_sem_pedido} dias</td>
+  </tr>`).join('') || '<tr><td colspan="4" class="vazio">Ninguém sumido — ótimo sinal 🎉</td></tr>';
+
+  // ---- cohorts de retencao ----
+  try{
+    const rc = await fetch(`/api/retencao?marca=${encodeURIComponent(estado.marca)}`);
+    const ct = await rc.json();
+    const MES_ROTULO = m => {
+      const [a, mm] = m.split('-');
+      return ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'][+mm - 1] + '/' + a.slice(2);
+    };
+    const corRet = pct => {
+      const t = Math.min(pct / 60, 1);   // 60%+ = brasa total
+      const mix = (a,b) => Math.round(a + (b - a) * t);
+      return `rgb(${mix(42,255)},${mix(46,122)},${mix(56,47)})`;
+    };
+    const maxM = Math.max(...ct.cohorts.map(c => Math.max(...c.retencao.map(r => r.m))), 0);
+    document.querySelector('#tCohort thead').innerHTML =
+      '<tr><th>Turma (1ª compra)</th>' +
+      Array.from({length: maxM + 1}, (_, i) => `<th>Mês ${i}</th>`).join('') + '</tr>';
+    document.querySelector('#tCohort tbody').innerHTML = ct.cohorts.map(c => {
+      const porM = Object.fromEntries(c.retencao.map(r => [r.m, r]));
+      const parcial = c.mes === ct.mes_atual ? ' *' : '';
+      let tds = `<td class="rotulo">${MES_ROTULO(c.mes)}${parcial}<small>${NUM(c.tamanho)} clientes</small></td>`;
+      for (let m = 0; m <= maxM; m++){
+        const r = porM[m];
+        const mesFuturo = m > 0 && !r && (new Date(c.mes) > new Date(ct.mes_atual) === false);
+        if (r){
+          const parcialCol = (new Date(c.mes).getTime() + m * 32 * 864e5) >= new Date(ct.mes_atual).getTime();
+          tds += `<td style="background:${corRet(r.pct)}" title="${NUM(r.ativos)} de ${NUM(c.tamanho)} clientes">${r.pct.toFixed(0)}%${m > 0 && c.retencao.length - 1 === c.retencao.findIndex(x => x.m === m) && parcialCol ? '*' : ''}</td>`;
+        } else {
+          // sem registro: mes ja passou (0%) ou ainda nao chegou (vazio)
+          const dataCol = new Date(c.mes); dataCol.setMonth(dataCol.getMonth() + m);
+          const chegou = dataCol <= new Date(ct.mes_atual);
+          tds += chegou ? `<td style="background:${corRet(0)}">0%</td>` : '<td class="vazio"></td>';
+        }
+      }
+      return `<tr>${tds}</tr>`;
+    }).join('');
+
+    // insight: compara M1 entre turmas
+    const comM1 = ct.cohorts.filter(c => c.mes !== ct.mes_atual && c.retencao.some(r => r.m === 1));
+    if (comM1.length >= 2){
+      const primeira = comM1[0].retencao.find(r => r.m === 1).pct;
+      const ultima = comM1[comM1.length - 1].retencao.find(r => r.m === 1).pct;
+      const delta = ultima - primeira;
+      document.getElementById('descCohort').innerHTML =
+        `Retenção no 1º mês: turma ${MES_ROTULO(comM1[0].mes)} → <strong>${primeira.toFixed(0)}%</strong> · ` +
+        `turma ${MES_ROTULO(comM1[comM1.length-1].mes)} → <strong>${ultima.toFixed(0)}%</strong> ` +
+        `<span style="color:${delta >= 0 ? 'var(--ok)' : 'var(--alerta)'}">(${delta >= 0 ? '▲ melhorando' : '▼ piorando'})</span>` +
+        ` · * mês em andamento`;
+    }
+  }catch(e){ /* cohorts nunca derrubam a pagina */ }
+
+  document.getElementById('atualizadoEm').textContent =
+    'Atualizado às ' + new Date().toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'});
+}
+
+document.getElementById('selUnidade').addEventListener('change', e => {
+  estado.unidade = e.target.value;
+  carregar();
+});
+fetch('/api/unidades').then(r => r.json()).then(d => {
+  const sel = document.getElementById('selUnidade');
+  (d.unidades || []).forEach(u => {
+    const o = document.createElement('option');
+    o.value = u; o.textContent = u; sel.appendChild(o);
+  });
+});
+document.getElementById('selMarca').addEventListener('change', e => {
+  estado.marca = e.target.value; carregar();
+});
+document.getElementById('selSumido').addEventListener('change', e => {
+  estado.sumido = +e.target.value; carregar();
+});
+document.getElementById('selCanal').addEventListener('change', e => {
+  estado.canal = e.target.value; carregar();
+});
+document.getElementById('selTel').addEventListener('change', e => {
+  estado.tel = +e.target.value; carregar();
+});
+
+carregar();
+setInterval(carregar, 5 * 60 * 1000);
+</script>
+<script src="/static/_tema.js"></script>
+</body>
+</html>

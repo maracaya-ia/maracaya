@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DRE — Painel Operacional</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700&family=Inter:wght@400;500&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  
+  *{box-sizing:border-box; margin:0; padding:0}
+  body{background:var(--fundo); color:var(--texto);
+    font-family:'Inter',system-ui,sans-serif; font-size:14px; padding:24px}
+  header{display:flex; align-items:center; gap:16px; flex-wrap:wrap; margin-bottom:24px}
+  h1{font-family:'Sora',sans-serif; font-size:20px; font-weight:700; letter-spacing:-.02em}
+  h1 .marca{color:var(--brasa)}
+  nav{display:flex; gap:14px}
+  nav a{color:var(--texto-suave); text-decoration:none; font-size:13px}
+  nav a:hover{color:var(--brasa)}
+  .controles{margin-left:auto; display:flex; gap:8px; flex-wrap:wrap}
+  select,.periodo button{background:var(--painel); color:var(--texto); border:1px solid var(--borda);
+    border-radius:8px; padding:8px 12px; font-family:'Inter'; font-size:13px; cursor:pointer}
+  .periodo{display:flex; gap:4px}
+  .periodo button.ativo{border-color:var(--brasa); color:var(--brasa)}
+
+  .grade{display:grid; grid-template-columns:repeat(12,1fr); gap:12px}
+  .card{background:var(--painel); border:1px solid var(--borda); border-radius:12px;
+    padding:18px; display:flex; flex-direction:column}
+  .card h2{font-family:'Sora'; font-size:14px; font-weight:600; margin-bottom:4px}
+  .card .desc{color:var(--texto-suave); font-size:12px; margin-bottom:14px; line-height:1.5}
+  .c-12{grid-column:span 12} .c-8{grid-column:span 8} .c-4{grid-column:span 4}
+  @media(max-width:950px){.c-8,.c-4{grid-column:span 12}}
+
+  .dre{width:100%; border-collapse:collapse; font-size:14px}
+  .dre td{padding:10px 12px; border-bottom:1px solid var(--borda)}
+  .dre tr:last-child td{border-bottom:none}
+  .dre td.num{font-family:'IBM Plex Mono',monospace; text-align:right; white-space:nowrap}
+  .dre tr.soma td{font-weight:600; border-top:2px solid var(--borda); background:rgba(255,255,255,.02)}
+  .dre tr.final td{font-family:'Sora'; font-size:16px; border-top:2px solid var(--brasa)}
+  .dre .sinal{color:var(--texto-suave); width:22px; font-family:'IBM Plex Mono',monospace}
+  .dre .nota{display:block; color:var(--texto-suave); font-size:11px; margin-top:3px; font-weight:400}
+  .neg{color:var(--alerta)} .pos{color:var(--ok)}
+
+  .kpi-lucro{text-align:center; padding:22px 18px}
+  .kpi-lucro .rotulo{color:var(--texto-suave); font-size:12px; text-transform:uppercase; letter-spacing:.06em}
+  .kpi-lucro .valor{font-family:'IBM Plex Mono',monospace; font-size:34px; font-weight:600; margin:10px 0 4px}
+  .kpi-lucro .margem{font-size:14px}
+
+  .param{display:flex; align-items:center; justify-content:space-between; gap:10px;
+    padding:10px 0; border-bottom:1px solid var(--borda)}
+  .param:last-child{border-bottom:none}
+  .param input{width:90px; background:var(--fundo); color:var(--texto);
+    border:1px solid var(--borda); border-radius:6px; padding:7px 9px;
+    font-family:'IBM Plex Mono',monospace; font-size:13px; text-align:right}
+  .param input:focus{border-color:var(--brasa); outline:none}
+  .param input.salvo{border-color:var(--ok)}
+  .param .lbl{line-height:1.35}
+  .param .lbl small{display:block; color:var(--texto-suave)}
+
+  .info{display:inline-flex; align-items:center; justify-content:center;
+    width:16px; height:16px; margin-left:6px; border:1px solid var(--texto-suave);
+    border-radius:50%; font-size:10px; font-weight:600; color:var(--texto-suave);
+    cursor:help; position:relative; vertical-align:middle}
+  .info:hover::after, .info:focus::after{
+    content:attr(data-tip); position:absolute; bottom:140%; left:50%; transform:translateX(-50%);
+    width:min(300px, 72vw); background:#0E1013; border:1px solid var(--borda);
+    padding:10px 12px; border-radius:10px; font-size:12px; font-weight:400;
+    line-height:1.55; color:var(--texto); z-index:9; white-space:normal; text-align:left}
+  .rodape{color:var(--texto-suave); font-size:12px; margin-top:20px}
+</style>
+<link rel="stylesheet" href="/static/_tema.css">
+</head>
+<body>
+
+<header>
+  <h1>DRE <span class="marca">— Grupo Maracayá</span></h1>
+  
+  <div class="controles">
+    <select id="selUnidade" aria-label="Unidade">
+      <option value="todas">Todas as unidades</option>
+    </select>
+    <select id="selMarca"><option value="todas">Todas as marcas</option></select>
+    <div class="periodo" role="group">
+      <button data-p="hoje">Hoje</button>
+      <button data-p="semana_atual">Semana</button>
+      <button data-p="mes_atual" class="ativo">Este mês</button>
+      <button data-p="mes_passado">Mês passado</button>
+      <button data-p="30">30 dias</button>
+    </div>
+  </div>
+</header>
+
+<section class="grade">
+  <div class="card c-8">
+    <h2>Demonstrativo do resultado<span class="info" tabindex="0" data-tip="Do bruto ao que sobra, linha a linha. CMV vem dos custos cadastrados na aba Cardápio; a fatia de produtos sem custo é estimada pela média dos mapeados (a nota da linha mostra a cobertura). Comissões vêm do card de pedágio da Visão geral. Impostos e custo de entrega são os parâmetros ao lado.">?</span></h2>
+    <div class="desc" id="descDre">Lucro bruto estimado — antes das despesas fixas (aluguel, salários, contas)</div>
+    <table class="dre"><tbody id="tbDre"></tbody></table>
+  </div>
+
+  <div class="c-4" style="display:flex; flex-direction:column; gap:12px">
+    <div class="card kpi-lucro">
+      <div class="rotulo">Sobrou na chapa</div>
+      <div class="valor" id="kLucro">—</div>
+      <div class="margem" id="kMargem">—</div>
+    </div>
+    <div class="card">
+      <h2>Parâmetros<span class="info" tabindex="0" data-tip="Imposto: % total sobre a receita (ex: alíquota do Simples Nacional). Custo de entrega: quanto você paga ao motoboy por entrega, em média. Digite e aperte Enter — o DRE recalcula na hora.">?</span></h2>
+      <div class="param">
+        <span class="lbl">Imposto sobre receita<small>ex: Simples Nacional</small></span>
+        <span><input id="cfgImposto" data-chave="imposto_pct" type="number" step="0.1" min="0" max="40"> %</span>
+      </div>
+      <div class="param">
+        <span class="lbl">Custo por entrega<small>motoboy, por pedido delivery</small></span>
+        <span>R$ <input id="cfgEntrega" data-chave="custo_entrega" type="number" step="0.5" min="0"></span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<p class="rodape" id="atualizadoEm">Carregando…</p>
+
+<script>
+const R$ = v => (+(v ?? 0)).toLocaleString('pt-BR', {style:'currency', currency:'BRL'});
+const NUM = v => (+(v ?? 0)).toLocaleString('pt-BR');
+let estado = {marca:'todas', periodo:'mes_atual'};
+
+async function carregar(){
+  const r = await fetch(`/api/dre?marca=${encodeURIComponent(estado.marca)}&periodo=${estado.periodo}`);
+  const d = await r.json();
+
+  const sel = document.getElementById('selMarca');
+  if (sel.options.length === 1){
+    d.marcas.forEach(m => sel.add(new Option(m.marca, m.marca)));
+  }
+
+  document.getElementById('tbDre').innerHTML = d.linhas.map(l => {
+    const cls = l.t === '=' ? (l.rotulo.startsWith('Lucro') ? 'final' : 'soma') : '';
+    const corValor = l.t === '-' ? 'neg' : (l.rotulo.startsWith('Lucro') ? (l.valor >= 0 ? 'pos' : 'neg') : '');
+    return `<tr class="${cls}">
+      <td class="sinal">${l.t === '=' ? '=' : (l.t === '-' ? '(−)' : '(+)')}</td>
+      <td>${l.rotulo}${l.nota ? `<span class="nota">${l.nota}</span>` : ''}</td>
+      <td class="num ${corValor}">${l.t === '-' ? '−' : ''}${R$(Math.abs(l.valor))}</td>
+    </tr>`;
+  }).join('');
+
+  const res = d.resumo;
+  const elL = document.getElementById('kLucro');
+  elL.textContent = R$(res.lucro);
+  elL.className = 'valor ' + (res.lucro >= 0 ? 'pos' : 'neg');
+  document.getElementById('kMargem').innerHTML =
+    `margem de <strong>${res.margem.toFixed(1)}%</strong> · ${NUM(res.pedidos)} pedidos`;
+
+  const avisos = [];
+  if (res.cobertura_cmv < 90) avisos.push(`CMV com ${res.cobertura_cmv.toFixed(0)}% de cobertura — cadastre os custos que faltam na aba Cardápio`);
+  if (+res.bruto_sem_taxa > 0) avisos.push(`há canais sem comissão cadastrada (Visão geral → pedágio)`);
+  if ((d.config.imposto_pct ?? 0) === 0) avisos.push('imposto está em 0% — configure ao lado');
+  document.getElementById('descDre').textContent = avisos.length
+    ? '⚠️ Pra ficar fiel: ' + avisos.join(' · ')
+    : 'Lucro bruto estimado — antes das despesas fixas (aluguel, salários, contas)';
+
+  const ci = document.getElementById('cfgImposto');
+  const ce = document.getElementById('cfgEntrega');
+  if (document.activeElement !== ci) ci.value = d.config.imposto_pct ?? '';
+  if (document.activeElement !== ce) ce.value = d.config.custo_entrega ?? '';
+
+  document.getElementById('atualizadoEm').textContent =
+    'Atualizado às ' + new Date().toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'}) +
+    ' · DRE gerencial simplificado — não substitui a contabilidade oficial';
+}
+
+document.querySelectorAll('.periodo button').forEach(b =>
+  b.addEventListener('click', () => {
+    document.querySelector('.periodo .ativo')?.classList.remove('ativo');
+    b.classList.add('ativo');
+    estado.periodo = b.dataset.p;
+    carregar();
+  }));
+
+document.getElementById('selUnidade').addEventListener('change', e => {
+  estado.unidade = e.target.value;
+  carregar();
+});
+fetch('/api/unidades').then(r => r.json()).then(d => {
+  const sel = document.getElementById('selUnidade');
+  (d.unidades || []).forEach(u => {
+    const o = document.createElement('option');
+    o.value = u; o.textContent = u; sel.appendChild(o);
+  });
+});
+document.getElementById('selMarca').addEventListener('change', e => {
+  estado.marca = e.target.value; carregar();
+});
+
+document.querySelectorAll('.param input').forEach(inp => {
+  inp.addEventListener('keydown', e => { if (e.key === 'Enter') inp.blur(); });
+  inp.addEventListener('blur', async () => {
+    const v = parseFloat(inp.value);
+    if (isNaN(v) || v < 0) return;
+    const resp = await fetch('/api/dre_config', {method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({chave: inp.dataset.chave, valor: v})});
+    const j = await resp.json();
+    if (j.ok){ inp.classList.add('salvo'); setTimeout(() => { inp.classList.remove('salvo'); carregar(); }, 400); }
+  });
+});
+
+carregar();
+setInterval(carregar, 5 * 60 * 1000);
+</script>
+<script src="/static/_tema.js"></script>
+</body>
+</html>
