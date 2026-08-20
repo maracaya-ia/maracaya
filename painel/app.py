@@ -176,15 +176,16 @@ def dados(dias: int = Query(30, ge=1, le=365),
     """, params)
 
     top_produtos = consultar(f"""
-        SELECT i.nome, sum(i.quantidade)::int AS qtd,
+        SELECT max(i.nome) AS nome, sum(i.quantidade)::int AS qtd,
                round(sum(i.total), 2) AS receita
         FROM pedido_itens i
         JOIN pedidos p ON p.id = i.pedido_id
+        LEFT JOIN produto_alias a ON a.alias = lower(trim(i.nome))
         WHERE {cond_periodo}
           AND p.status <> 'canceled'
           AND coalesce(i.categoria, '') <> 'combo'
           {filtro_marca}
-        GROUP BY i.nome ORDER BY qtd DESC LIMIT 10
+        GROUP BY coalesce(a.canonico, lower(trim(i.nome))) ORDER BY qtd DESC LIMIT 10
     """, params)
 
     pagamentos = consultar(f"""
@@ -548,7 +549,7 @@ def analise_cardapio(marca: str = Query("todas"), unidade: str = Query("todas"),
         params["unidade"] = unidade
 
     produtos = consultar(f"""
-        SELECT lower(trim(i.nome)) AS chave,
+        SELECT coalesce(a.canonico, lower(trim(i.nome))) AS chave,
                max(i.nome) AS nome,
                sum(i.quantidade)::int AS qtd,
                round(sum(i.total), 2) AS receita,
@@ -556,7 +557,8 @@ def analise_cardapio(marca: str = Query("todas"), unidade: str = Query("todas"),
                c.custo
         FROM pedido_itens i
         JOIN pedidos p ON p.id = i.pedido_id
-        LEFT JOIN produto_custos c ON c.nome = lower(trim(i.nome))
+        LEFT JOIN produto_alias a ON a.alias = lower(trim(i.nome))
+        LEFT JOIN produto_custos c ON c.nome = coalesce(a.canonico, lower(trim(i.nome)))
         WHERE p.status <> 'canceled'
           AND p.criado_em >= now() - (%(dias)s || ' days')::interval
           {filtro_marca}
@@ -1513,7 +1515,7 @@ def _analisar_encalhados(marca="todas", unidade="todas"):
     # so vale a pena vigiar quem ja teve volume relevante (>= 8 no historico de 56d)
     dados = consultar(f"""
         WITH base AS (
-            SELECT lower(trim(i.nome)) AS chave,
+            SELECT coalesce(a.canonico, lower(trim(i.nome))) AS chave,
                    max(i.nome) AS nome,
                    sum(i.quantidade) AS total_56d,
                    sum(i.quantidade) FILTER (
@@ -1524,6 +1526,7 @@ def _analisar_encalhados(marca="todas", unidade="todas"):
                    max(p.criado_em AT TIME ZONE '{TZ}') AS ultima_venda
             FROM pedido_itens i
             JOIN pedidos p ON p.id = i.pedido_id
+            LEFT JOIN produto_alias a ON a.alias = lower(trim(i.nome))
             WHERE p.status <> 'canceled'
               AND p.criado_em >= now() - interval '56 days'
               {filtro_marca}
