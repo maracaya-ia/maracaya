@@ -21,6 +21,7 @@ from psycopg2.extras import Json
 API_KEY = os.environ.get("CW_API_KEY")
 LOJA_CODIGO = os.environ.get("LOJA_CODIGO")
 INTERVALO = int(os.environ.get("SYNC_INTERVAL", "900"))
+UNIDADE = os.environ.get("UNIDADE", "Colorado")
 
 PG = dict(
     host=os.environ.get("PGHOST", "postgres"),
@@ -156,13 +157,13 @@ def salvar(cur, loja_id, o):
         """
         INSERT INTO pedidos (loja_id, order_id_cw, cliente_id, status, tipo, origem,
                              subtotal, taxa_entrega, desconto, total, forma_pagamento,
-                             cupom, criado_em, concluido_em, motivo_cancelamento)
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id
+                             cupom, criado_em, concluido_em, motivo_cancelamento, unidade)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id
         """,
         (loja_id, order_id, cliente_id, o.get("status"), o.get("order_type"),
          o.get("sales_channel"), soma_itens, o.get("delivery_fee") or 0,
          descontos, total, forma_pgto, cupom, o.get("created_at"),
-         o.get("updated_at"), o.get("cancellation_reason")),
+         o.get("updated_at"), o.get("cancellation_reason"), UNIDADE),
     )
     inserir_itens(cur, cur.fetchone()[0], o.get("items"))
     return "novo"
