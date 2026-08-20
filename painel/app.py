@@ -795,6 +795,8 @@ def dre(marca: str = Query("todas"), unidade: str = Query("todas"), periodo: str
     dia = f"(p.criado_em AT TIME ZONE '{TZ}')::date"
     if periodo == "hoje":
         cond = f"{dia} = {agora}::date"
+    elif periodo == "ontem":
+        cond = f"{dia} = ({agora}::date - 1)"
     elif periodo == "semana_atual":
         cond = f"{dia} >= date_trunc('week', {agora})::date"
     elif periodo == "mes_passado":

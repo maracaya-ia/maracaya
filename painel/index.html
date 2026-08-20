@@ -133,9 +133,12 @@
     </select>
     <div class="periodo" role="group" aria-label="Período">
       <button data-dias="1">Hoje</button>
+      <button data-periodo="ontem">Ontem</button>
       <button data-dias="7">7 dias</button>
       <button data-dias="30" class="ativo">30 dias</button>
       <button data-dias="90">90 dias</button>
+      <button data-periodo="mes_atual">Este mês</button>
+      <button data-periodo="mes_passado">Mês passado</button>
     </div>
     <div class="datas" aria-label="Período personalizado">
       <input type="date" id="dtIni"><span class="sep">→</span><input type="date" id="dtFim">
@@ -455,14 +458,43 @@ async function carregar(){
     ' · dados sincronizados a cada 15 min';
 }
 
+function marcarPeriodoAtivo(btn){
+  document.querySelectorAll('.periodo button.ativo').forEach(el => el.classList.remove('ativo'));
+  btn?.classList.add('ativo');
+}
+
 document.querySelectorAll('.periodo button[data-dias]').forEach(b =>
   b.addEventListener('click', () => {
-    document.querySelector('.periodo button[data-dias].ativo')?.classList.remove('ativo');
-    b.classList.add('ativo');
+    marcarPeriodoAtivo(b);
     estado.dias = +b.dataset.dias;
     estado.ini = estado.fim = null;
     document.getElementById('dtIni').value = '';
     document.getElementById('dtFim').value = '';
+    carregar();
+  }));
+
+function fmtData(d){ return d.toISOString().slice(0,10); }
+
+document.querySelectorAll('.periodo button[data-periodo]').forEach(b =>
+  b.addEventListener('click', () => {
+    const hoje = new Date();
+    let ini, fim;
+    if (b.dataset.periodo === 'ontem'){
+      const ontem = new Date(hoje); ontem.setDate(hoje.getDate() - 1);
+      ini = fim = fmtData(ontem);
+    } else if (b.dataset.periodo === 'mes_atual'){
+      ini = fmtData(new Date(hoje.getFullYear(), hoje.getMonth(), 1));
+      fim = fmtData(hoje);
+    } else if (b.dataset.periodo === 'mes_passado'){
+      ini = fmtData(new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1));
+      fim = fmtData(new Date(hoje.getFullYear(), hoje.getMonth(), 0));
+    } else return;
+
+    marcarPeriodoAtivo(b);
+    estado.ini = ini; estado.fim = fim;
+    estado.dias = Math.round((new Date(fim) - new Date(ini)) / 86400000) + 1;
+    document.getElementById('dtIni').value = ini;
+    document.getElementById('dtFim').value = fim;
     carregar();
   }));
 
@@ -478,7 +510,7 @@ function aoMudarData(){
     document.getElementById('dtIni').value = i;
     document.getElementById('dtFim').value = f; }
   estado.ini = i; estado.fim = f;
-  document.querySelector('.periodo button[data-dias].ativo')?.classList.remove('ativo');
+  marcarPeriodoAtivo(null);
   carregar();
 }
 document.getElementById('dtIni').addEventListener('change', aoMudarData);
