@@ -1751,9 +1751,9 @@ def zap_pergunta(payload: dict = Body(...),
                               + ", ".join(sem_registro[:10]))
             resposta = "\n\n".join(partes)
     else:
-        resposta = ("🤖 *Sei responder sobre:* pedidos, faturamento, ticket, "
-                    "cancelamentos, meta, clientes sumidos e estoque — com períodos "
-                    "hoje / ontem / semana / mês / mês passado.\n"
+        resposta = ("🤖 *Oi, aqui é a MIA!* Sei responder sobre: pedidos, faturamento, "
+                    "ticket, cancelamentos, meta, clientes sumidos e estoque — com "
+                    "períodos hoje / ontem / semana / mês / mês passado.\n"
                     "Ex: _quantos pedidos teve hoje?_")
 
     return {"enviar": True, "texto": resposta}
