@@ -1727,9 +1727,32 @@ def zap_pergunta(payload: dict = Body(...),
     elif "pedido" in q:
         resposta = (f"🧾 Pedidos {rotulo}: *{int(r['pedidos'])}*\n"
                     f"💰 Faturamento: {brl(float(r['fat']))}")
+    elif any(p in q for p in ("estoque", "insumo", "posição")):
+        ep = estoque_plano()
+        criticos, sem_registro = [], []
+        for i in ep["itens"]:
+            if i["estoque"] is None:
+                sem_registro.append(i["insumo"])
+                continue
+            dias = i["estoque"] / i["consumo_dia"] if i["consumo_dia"] > 0 else 999
+            if dias < 3:
+                criticos.append((i["insumo"], dias))
+        criticos.sort(key=lambda x: x[1])
+        if not criticos and not sem_registro:
+            resposta = "📦 Estoque ok — nenhum insumo com cobertura crítica (menos de 3 dias)."
+        else:
+            partes = ["📦 *Posição de estoque*"]
+            if criticos:
+                linhas = "\n".join(f"• {nome}: {dias:.1f} dia(s) de cobertura"
+                                   for nome, dias in criticos[:10])
+                partes.append(f"⚠️ *Crítico (menos de 3 dias):*\n{linhas}")
+            if sem_registro:
+                partes.append("❓ *Sem estoque cadastrado:* "
+                              + ", ".join(sem_registro[:10]))
+            resposta = "\n\n".join(partes)
     else:
         resposta = ("🤖 *Sei responder sobre:* pedidos, faturamento, ticket, "
-                    "cancelamentos, meta e clientes sumidos — com períodos "
+                    "cancelamentos, meta, clientes sumidos e estoque — com períodos "
                     "hoje / ontem / semana / mês / mês passado.\n"
                     "Ex: _quantos pedidos teve hoje?_")
 
