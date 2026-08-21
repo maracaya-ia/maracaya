@@ -1728,7 +1728,7 @@ def zap_pergunta(payload: dict = Body(...),
         resposta = (f"🧾 Pedidos {rotulo}: *{int(r['pedidos'])}*\n"
                     f"💰 Faturamento: {brl(float(r['fat']))}")
     elif any(p in q for p in ("estoque", "insumo", "posição")):
-        ep = estoque_plano()
+        ep = estoque_plano(cobertura_dias=30, seguranca_pct=20)
         criticos, sem_registro = [], []
         for i in ep["itens"]:
             if i["estoque"] is None:
