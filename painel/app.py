@@ -1644,9 +1644,13 @@ def zap_cmv():
 
 @app.post("/api/zap/pergunta")
 def zap_pergunta(payload: dict = Body(...),
-                 grupo: str = Query(...), dono: str = Query(...)):
+                 grupo: str = Query(...), dono: str = Query(...),
+                 dono_lid: str = Query(None)):
     """Assistente do grupo: recebe o webhook da Evolution, responde perguntas
-    quando o contato da loja e mencionado no grupo configurado."""
+    quando o contato da loja e mencionado no grupo configurado.
+    A Evolution manda o contextInfo na raiz do "data" (nao dentro de
+    message.extendedTextMessage) e as vezes menciona por LID em vez de
+    numero de telefone - por isso checamos os dois formatos e os dois campos."""
     data = payload.get("data") or payload.get("body", {}).get("data") or {}
     key = data.get("key", {})
     remote = key.get("remoteJid", "")
@@ -1656,10 +1660,15 @@ def zap_pergunta(payload: dict = Body(...),
     msg = data.get("message", {}) or {}
     texto = (msg.get("conversation")
              or (msg.get("extendedTextMessage") or {}).get("text") or "")
-    ctx = (msg.get("extendedTextMessage") or {}).get("contextInfo", {}) or {}
+    ctx = (data.get("contextInfo")
+           or (msg.get("extendedTextMessage") or {}).get("contextInfo")
+           or {})
     mencionados = ctx.get("mentionedJid") or []
     dono_num = dono.split("@")[0]
-    if not any(dono_num in m for m in mencionados):
+    dono_lid_num = dono_lid.split("@")[0] if dono_lid else None
+    mencionou_dono = any(dono_num in m for m in mencionados) or (
+        dono_lid_num and any(dono_lid_num in m for m in mencionados))
+    if not mencionou_dono:
         return {"enviar": False, "texto": ""}
 
     q = texto.lower()
