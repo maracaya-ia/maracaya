@@ -176,8 +176,6 @@
   <div class="card c-4"><h2>Horário de pico</h2><div class="area"><canvas id="gHora"></canvas></div></div>
   <div class="card c-6"><h2>Campeões de venda</h2><div class="area"><canvas id="gProdutos"></canvas></div></div>
   <div class="card c-6"><h2>Movimento por dia da semana</h2><div class="area"><canvas id="gSemana"></canvas></div></div>
-  <div class="card c-6"><h2>Formas de pagamento</h2><div class="area"><canvas id="gPagamento"></canvas></div></div>
-  <div class="card c-6"><h2>Tipo de pedido</h2><div class="area"><canvas id="gTipo"></canvas></div></div>
   <div class="card c-12">
     <h2>Resumo das outras abas<span class="info" tabindex="0" data-tip="Média dos principais indicadores de cada área do painel, sempre numa janela fixa de 90 dias — não muda com o filtro de período aqui de cima, é uma referência estável. Clique em qualquer indicador pra ir direto pra aba.">?</span></h2>
     <div class="desc" style="color:var(--texto-suave); font-size:12px; margin-bottom:12px">Média dos últimos 90 dias, sempre — não segue o filtro de período acima</div>
@@ -199,15 +197,9 @@
 const R$ = v => (v ?? 0).toLocaleString('pt-BR', {style:'currency', currency:'BRL'});
 const NUM = v => (v ?? 0).toLocaleString('pt-BR');
 const DIAS_SEMANA = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
-const NOME_PGTO = {money:'Dinheiro', credit_card:'Crédito', debit_card:'Débito',
-  pix:'Pix', pix_auto:'Pix automático', meal_voucher:'Vale-refeição',
-  food_voucher:'Vale-alimentação', online_credit_card:'Crédito online',
-  ifood:'iFood (online)', ifood_voucher:'Voucher iFood', picpay:'PicPay',
-  bank_transfer:'Transferência', bank_slip:'Boleto', debt_book:'Fiado'};
 const NOME_CANAL = {ifood:'iFood', site:'Site próprio', portal:'Portal (balcão)',
   catalog:'Catálogo/Link', whatsapp:'WhatsApp', chatbot:'Chatbot', app:'App',
   food99:'99Food', '99food':'99Food', rappi:'Rappi', aiqfome:'Aiqfome', keeta:'Keeta'};
-const NOME_TIPO = {delivery:'Delivery', takeout:'Retirada', onsite:'No local', closed_table:'Mesa/Comanda'};
 
 let estado = {dias:30, marca:'todas', unidade:'todas', ini:null, fim:null, compIni:null, compFim:null};
 let graficos = {};
@@ -442,24 +434,6 @@ async function carregar(){
     datasets:[{data: porDow, backgroundColor:'#FFB25E', borderRadius:3}]},
     options:{maintainAspectRatio:false, plugins:{legend:{display:false}},
       scales:{y:{ticks:{precision:0}}}}});
-
-  // Pagamentos
-  desenhar('gPagamento', {type:'doughnut', data:{
-    labels: d.pagamentos.map(x => NOME_PGTO[x.forma] ?? x.forma),
-    datasets:[{data: d.pagamentos.map(x => +x.pedidos),
-      backgroundColor:['#FF7A2F','#FFB25E','#5BBB7B','#7A8CE8','#E15B5B','var(--texto-suave)','#D4C46A'],
-      borderColor:'#1D2027', borderWidth:2}]},
-    options:{maintainAspectRatio:false,
-      plugins:{legend:{position:'right', labels:{boxWidth:12}}}}});
-
-  // Tipos
-  desenhar('gTipo', {type:'doughnut', data:{
-    labels: d.tipos.map(x => NOME_TIPO[x.tipo] ?? x.tipo),
-    datasets:[{data: d.tipos.map(x => +x.pedidos),
-      backgroundColor:['#FF7A2F','#5BBB7B','#7A8CE8','#FFB25E'],
-      borderColor:'#1D2027', borderWidth:2}]},
-    options:{maintainAspectRatio:false,
-      plugins:{legend:{position:'right', labels:{boxWidth:12}}}}});
 
   // ---- pedagio dos marketplaces ----
   const semTaxa = d.canais.filter(c => c.comissao_pct === null && c.origem !== 'não informado').length;
