@@ -879,6 +879,36 @@ def sentinela():
         FROM webhook_eventos
     """, {})[0]
 
+    tzconcluido = f"(p.concluido_em AT TIME ZONE '{TZ}')"
+    tempo_entrega = consultar(f"""
+        WITH agora AS (
+            SELECT percentile_cont(0.5) WITHIN GROUP (
+                       ORDER BY extract(epoch FROM (p.concluido_em - p.criado_em)) / 60) AS mediana,
+                   count(*) AS n
+            FROM pedidos p
+            WHERE p.status IN ('closed', 'delivered')
+              AND p.concluido_em > p.criado_em
+              AND p.concluido_em >= now() - interval '60 minutes'
+              AND extract(epoch FROM (p.concluido_em - p.criado_em)) / 60 BETWEEN 1 AND 180
+        ),
+        hist AS (
+            SELECT extract(epoch FROM (p.concluido_em - p.criado_em)) / 60 AS minutos
+            FROM pedidos p
+            WHERE p.status IN ('closed', 'delivered')
+              AND p.concluido_em > p.criado_em
+              AND {tzconcluido}::date >= {tzagora}::date - 56
+              AND {tzconcluido}::date < {tzagora}::date
+              AND extract(dow FROM {tzconcluido}) = extract(dow FROM {tzagora})
+              AND {minuto(tzconcluido)} > {minuto(tzagora)} - 60
+              AND {minuto(tzconcluido)} <= {minuto(tzagora)}
+              AND extract(epoch FROM (p.concluido_em - p.criado_em)) / 60 BETWEEN 1 AND 180
+        )
+        SELECT (SELECT mediana FROM agora) AS hoje,
+               (SELECT n FROM agora) AS amostras_hoje,
+               (SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY minutos) FROM hist) AS tipico,
+               (SELECT count(*) FROM hist) AS amostras_hist
+    """, {})[0]
+
     alertas = []
     hoje, tipico = float(volume["hoje"]), float(volume["tipico"])
     amostras = int(volume["amostras"])
@@ -913,7 +943,20 @@ def sentinela():
             "texto": f"{canc:.0f} cancelamentos hoje (típico: {canc_tip:.0f}) — "
                      f"investigue: atraso na entrega? item em falta?"})
 
-    # 5. dia excepcional (aviso bom)
+    # 5. tempo de entrega/preparo muito acima do tipico na ultima hora
+    tempo_hoje = float(tempo_entrega["hoje"]) if tempo_entrega["hoje"] is not None else None
+    tempo_tipico = float(tempo_entrega["tipico"]) if tempo_entrega["tipico"] is not None else None
+    amostras_hoje_tempo = int(tempo_entrega["amostras_hoje"])
+    amostras_hist_tempo = int(tempo_entrega["amostras_hist"])
+    if (tempo_hoje is not None and tempo_tipico is not None
+            and amostras_hoje_tempo >= 3 and amostras_hist_tempo >= 4
+            and tempo_tipico >= 15 and tempo_hoje >= 1.4 * tempo_tipico):
+        alertas.append({"nivel": "atencao", "icone": "🐌",
+            "texto": f"Tempo de entrega/preparo subiu pra {tempo_hoje:.0f} min "
+                     f"na última hora (típico: {tempo_tipico:.0f} min) — "
+                     f"confere cozinha e motoboys disponíveis."})
+
+    # 6. dia excepcional (aviso bom)
     if amostras >= 4 and tipico >= 5 and hoje >= 1.5 * tipico:
         alta = 100 * (hoje / tipico - 1)
         alertas.append({"nivel": "boa", "icone": "🚀",
