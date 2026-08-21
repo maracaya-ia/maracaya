@@ -1975,22 +1975,29 @@ def estoque_plano(cobertura_dias: int = Query(30, ge=7, le=60),
         SELECT f.insumo, f.unidade,
                sum(v.por_dia * f.qtd) AS consumo_dia,
                coalesce(fi.fornecedor, '—') AS fornecedor,
-               fe.estoque_atual
+               fe.estoque_atual,
+               ic.custo_unitario
         FROM vendas v
         JOIN ficha_tecnica f ON f.produto = v.produto
         LEFT JOIN insumo_fornecedor fi ON fi.insumo = f.insumo
         LEFT JOIN insumo_estoque fe ON fe.insumo = f.insumo
-        GROUP BY f.insumo, f.unidade, fi.fornecedor, fe.estoque_atual
+        LEFT JOIN insumo_custo ic ON ic.insumo = f.insumo
+        GROUP BY f.insumo, f.unidade, fi.fornecedor, fe.estoque_atual, ic.custo_unitario
         ORDER BY (f.unidade = 'kg') DESC, 3 DESC
     """, {})
 
     seg = 1 + seguranca_pct / 100.0
     itens = []
+    custo_dia_total = 0.0
     for i in insumos:
         consumo_dia = float(i["consumo_dia"]) * fator
         necessidade = consumo_dia * cobertura_dias * seg
         estoque = float(i["estoque_atual"]) if i["estoque_atual"] is not None else None
         comprar = max(necessidade - estoque, 0) if estoque is not None else necessidade
+        custo_unitario = float(i["custo_unitario"]) if i["custo_unitario"] is not None else None
+        custo_dia = consumo_dia * custo_unitario if custo_unitario is not None else None
+        if custo_dia is not None:
+            custo_dia_total += custo_dia
         itens.append({
             "insumo": i["insumo"], "unidade": i["unidade"],
             "fornecedor": i["fornecedor"],
@@ -1998,10 +2005,14 @@ def estoque_plano(cobertura_dias: int = Query(30, ge=7, le=60),
             "necessidade": round(necessidade, 2),
             "estoque": estoque,
             "comprar": round(comprar, 2),
+            "custo_unitario": custo_unitario,
+            "custo_dia": round(custo_dia, 2) if custo_dia is not None else None,
         })
 
+    sem_custo = sum(1 for i in itens if i["custo_unitario"] is None)
     return {"itens": itens, "fator_tendencia": round(fator, 3),
-            "cobertura_dias": cobertura_dias, "seguranca_pct": seguranca_pct}
+            "cobertura_dias": cobertura_dias, "seguranca_pct": seguranca_pct,
+            "custo_dia_total": round(custo_dia_total, 2), "sem_custo": sem_custo}
 
 
 @app.post("/api/estoque")
@@ -2019,6 +2030,26 @@ def salvar_estoque(dados: dict = Body(...)):
         ON CONFLICT (insumo) DO UPDATE
             SET estoque_atual = EXCLUDED.estoque_atual, atualizado_em = now()
     """, {"i": insumo, "q": qtd})
+    return {"ok": True}
+
+
+@app.post("/api/insumo_custo")
+def salvar_insumo_custo(dados: dict = Body(...)):
+    insumo = str(dados.get("insumo", "")).strip()
+    if not insumo:
+        return {"ok": False, "erro": "insumo vazio"}
+    try:
+        custo = float(dados.get("custo_unitario"))
+    except (TypeError, ValueError):
+        return {"ok": False, "erro": "custo inválido"}
+    if custo < 0:
+        return {"ok": False, "erro": "custo inválido"}
+    executar("""
+        INSERT INTO insumo_custo (insumo, custo_unitario, atualizado_em)
+        VALUES (%(i)s, %(c)s, now())
+        ON CONFLICT (insumo) DO UPDATE
+            SET custo_unitario = EXCLUDED.custo_unitario, atualizado_em = now()
+    """, {"i": insumo, "c": custo})
     return {"ok": True}
 
 
