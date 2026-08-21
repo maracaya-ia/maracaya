@@ -45,6 +45,11 @@
   input.custo:focus{border-color:var(--brasa); outline:none}
   input.custo.salvo{border-color:var(--ok)}
   .classe{font-size:12px; white-space:nowrap}
+  input.busca{width:100%; max-width:320px; background:var(--fundo); color:var(--texto);
+    border:1px solid var(--borda); border-radius:8px; padding:9px 12px;
+    font-family:'Inter'; font-size:13px}
+  input.busca:focus{border-color:var(--brasa); outline:none}
+  .vazio-busca{color:var(--texto-suave); font-size:13px; padding:16px 0; text-align:center}
   .btn-excluir{background:none; border:1px solid var(--borda); color:var(--texto-suave);
     border-radius:6px; padding:5px 8px; cursor:pointer; font-size:13px; line-height:1}
   .btn-excluir:hover{border-color:var(--alerta); color:var(--alerta)}
@@ -112,6 +117,8 @@
   <div class="card c-12">
     <h2>Produtos e custos<span class="info" tabindex="0" data-tip="Digite o CMV (custo de mercadoria: insumos + embalagem) de cada produto e aperte Enter ou clique fora — salva na hora e o quadrante se redesenha. Margem = preço médio praticado − custo. Lucro total = margem unitária × quantidade vendida no período.">?</span></h2>
     <div class="desc">Cadastre o CMV direto aqui — Enter salva. Preço médio vem das vendas reais do período.</div>
+    <input type="search" id="buscaProduto" class="busca" placeholder="🔍 Buscar produto…" style="margin-bottom:12px">
+    <div id="semResultado" class="vazio-busca" hidden>Nenhum produto encontrado.</div>
     <div style="overflow-x:auto"><table id="tProdutos">
       <thead><tr>
         <th>Produto</th><th>Vendidos</th><th>Preço médio</th><th>Custo (CMV)</th>
@@ -226,7 +233,7 @@ async function carregar(){
 
   // tabela
   const todos = [...comCusto, ...semCusto.map(p => ({...p, margem:null, margem_pct:null, lucro:null, classe:null}))];
-  document.querySelector('#tProdutos tbody').innerHTML = todos.map(p => `<tr>
+  document.querySelector('#tProdutos tbody').innerHTML = todos.map(p => `<tr data-nome="${p.nome}">
     <td>${p.nome}</td>
     <td class="num">${NUM(p.qtd)}</td>
     <td class="num">${R$(p.preco_medio)}</td>
@@ -254,6 +261,8 @@ async function carregar(){
       if (j.ok){ inp.classList.add('salvo'); setTimeout(carregar, 400); }
     });
   });
+
+  filtrarTabela();
 
   document.querySelectorAll('.btn-excluir').forEach(btn => {
     btn.addEventListener('click', async () => {
@@ -329,6 +338,25 @@ document.getElementById('selMarca').addEventListener('change', e => {
 document.getElementById('selJanela').addEventListener('change', e => {
   estado.dias = +e.target.value; carregar();
 });
+
+function normaliza(s){
+  return (s ?? '').toString().toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
+function filtrarTabela(){
+  const termo = normaliza(document.getElementById('buscaProduto').value.trim());
+  const linhas = document.querySelectorAll('#tProdutos tbody tr');
+  let visiveis = 0;
+  linhas.forEach(tr => {
+    const nome = normaliza(tr.dataset.nome);
+    const bate = !termo || nome.includes(termo);
+    tr.hidden = !bate;
+    if (bate) visiveis++;
+  });
+  document.getElementById('semResultado').hidden = !(termo && visiveis === 0);
+}
+document.getElementById('buscaProduto').addEventListener('input', filtrarTabela);
 
 carregar();
 </script>
