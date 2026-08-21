@@ -52,6 +52,24 @@ def static_logo_escura():
                         media_type="image/png")
 
 
+@app.get("/favicon.ico")
+def static_favicon_ico():
+    return FileResponse(os.path.join(os.path.dirname(__file__), "favicon.ico"),
+                        media_type="image/x-icon")
+
+
+@app.get("/static/favicon-32.png")
+def static_favicon_32():
+    return FileResponse(os.path.join(os.path.dirname(__file__), "favicon-32.png"),
+                        media_type="image/png")
+
+
+@app.get("/static/apple-touch-icon.png")
+def static_apple_touch_icon():
+    return FileResponse(os.path.join(os.path.dirname(__file__), "apple-touch-icon.png"),
+                        media_type="image/png")
+
+
 def consultar(sql, params):
     with psycopg2.connect(**PG) as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
