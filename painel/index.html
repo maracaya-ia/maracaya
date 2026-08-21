@@ -351,7 +351,7 @@ async function carregarResumoOutrasAbas(){
       item('/clientes', 'Clientes', '% clientes recorrentes', d.clientes.pct_recorrentes.toFixed(0) + '%'),
       item('/cardapio', 'Cardápio', 'Produto mais vendido', d.cardapio.top_produto ?? '—'),
       item('/cardapio', 'Cardápio', 'Cobertura de CMV', d.cardapio.cobertura_cmv.toFixed(0) + '%'),
-      item('/bairros', 'Bairros', 'Região campeã', d.bairros.nome ? `${d.bairros.nome} (${d.bairros.pct.toFixed(0)}%)` : '—'),
+      item('/bairros', 'Bairros', 'Condomínio/quadra campeão', d.bairros.nome ? `${d.bairros.nome} (${d.bairros.pct.toFixed(0)}%)` : '—'),
       item('/dre', 'DRE', 'Margem líquida (90d)', d.dre.margem_pct.toFixed(1) + '%'),
     ].join('');
   }catch(e){ /* resumo nunca derruba o painel */ }

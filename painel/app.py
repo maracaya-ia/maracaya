@@ -307,20 +307,27 @@ def resumo_geral(marca: str = Query("todas"), unidade: str = Query("todas")):
     # extrapola o CMV da fatia sem custo cadastrado pelo % medio da fatia mapeada
     cmv_total = cmv_map + ((rec_itens - rec_map) * (cmv_map / rec_map) if rec_map > 0 else 0)
 
+    # so conta pedidos com condominio/quadra (regiao) de verdade cadastrado -
+    # nao cai pro bairro genérico, senão "sem regiao" vira um falso campeao
+    total_delivery = consultar(f"""
+        SELECT count(*) AS n FROM pedidos p
+        WHERE p.status <> 'canceled' AND p.tipo = 'delivery'
+          AND p.criado_em >= now() - interval '90 days' {filtro_marca}
+    """, params)[0]["n"]
     bairro_top = consultar(f"""
-        WITH b AS (
-            SELECT coalesce(nullif(trim(p.regiao), ''), nullif(trim(p.bairro), ''),
-                             'Sem endereço') AS bairro
-            FROM pedidos p
-            WHERE p.status <> 'canceled' AND p.tipo = 'delivery'
-              AND p.criado_em >= now() - interval '90 days'
-              {filtro_marca}
-        )
-        SELECT bairro, count(*) AS pedidos,
-               round(100.0 * count(*) / sum(count(*)) OVER (), 1) AS pct
-        FROM b GROUP BY bairro ORDER BY 2 DESC LIMIT 1
+        SELECT nullif(trim(p.regiao), '') AS regiao, count(*) AS pedidos
+        FROM pedidos p
+        WHERE p.status <> 'canceled' AND p.tipo = 'delivery'
+          AND p.criado_em >= now() - interval '90 days'
+          AND nullif(trim(p.regiao), '') IS NOT NULL
+          {filtro_marca}
+        GROUP BY 1 ORDER BY 2 DESC LIMIT 1
     """, params)
     bairro_top = bairro_top[0] if bairro_top else None
+    if bairro_top:
+        bairro_top = {"bairro": bairro_top["regiao"],
+                      "pct": round(100 * bairro_top["pedidos"] / total_delivery, 1)
+                             if total_delivery > 0 else 0}
 
     vendas = consultar(f"""
         SELECT coalesce(sum(p.total), 0) AS receita
