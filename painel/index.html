@@ -49,6 +49,14 @@
   .kpi.destaque .valor{color:var(--brasa)}
   .kpi .sub{color:var(--texto-suave); font-size:12px; margin-top:6px}
 
+  .resumo-grade{display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px}
+  .resumo-item{background:var(--fundo); border:1px solid var(--borda); border-radius:10px;
+    padding:14px 16px; text-decoration:none; color:inherit; display:block; transition:border-color .15s}
+  .resumo-item:hover{border-color:var(--brasa)}
+  .resumo-item .aba{color:var(--texto-suave); font-size:11px; text-transform:uppercase; letter-spacing:.05em; margin-bottom:4px}
+  .resumo-item .rotulo{font-size:12.5px; margin-bottom:6px}
+  .resumo-item .valor{font-family:'IBM Plex Mono',monospace; font-size:19px; font-weight:600}
+
   .grade{display:grid; grid-template-columns:repeat(12,1fr); gap:12px}
   .card{
     background:var(--painel); border:1px solid var(--borda); border-radius:12px;
@@ -169,6 +177,11 @@
   <div class="card c-6"><h2>Movimento por dia da semana</h2><div class="area"><canvas id="gSemana"></canvas></div></div>
   <div class="card c-6"><h2>Formas de pagamento</h2><div class="area"><canvas id="gPagamento"></canvas></div></div>
   <div class="card c-6"><h2>Tipo de pedido</h2><div class="area"><canvas id="gTipo"></canvas></div></div>
+  <div class="card c-12">
+    <h2>Resumo das outras abas<span class="info" tabindex="0" data-tip="Média dos principais indicadores de cada área do painel, sempre numa janela fixa de 90 dias — não muda com o filtro de período aqui de cima, é uma referência estável. Clique em qualquer indicador pra ir direto pra aba.">?</span></h2>
+    <div class="desc" style="color:var(--texto-suave); font-size:12px; margin-bottom:12px">Média dos últimos 90 dias, sempre — não segue o filtro de período acima</div>
+    <div class="resumo-grade" id="resumoOutrasAbas"></div>
+  </div>
   <div class="card c-12">
     <h2>O pedágio dos marketplaces 💸<span class="info" tabindex="0" data-tip="Cadastre a comissão de cada canal (o % total que ele cobra por pedido: comissão + taxa de pagamento + planos). Digite e aperte Enter — salva na hora. Pedágio = bruto × comissão. Líquido = o que efetivamente sobra do canal. Canal próprio (site/portal) normalmente é 0%.">?</span></h2>
     <div class="desc" style="color:var(--texto-suave); font-size:12px; margin-bottom:12px" id="descCanais">Cadastre a comissão de cada canal e veja o que sobra de verdade</div>
@@ -321,9 +334,33 @@ function ligarInputMeta(){
   inp.addEventListener('blur', salvar);
 }
 
+async function carregarResumoOutrasAbas(){
+  try{
+    const r = await fetch(`/api/resumo_geral?marca=${encodeURIComponent(estado.marca)}&unidade=${encodeURIComponent(estado.unidade)}`);
+    const d = await r.json();
+    const item = (href, aba, rotulo, valor) => `
+      <a class="resumo-item" href="${href}">
+        <div class="aba">${aba}</div>
+        <div class="rotulo">${rotulo}</div>
+        <div class="valor">${valor}</div>
+      </a>`;
+    document.getElementById('resumoOutrasAbas').innerHTML = [
+      item('/operacao', 'Operação', 'Pedidos por dia (média)', NUM(d.operacao.pedidos_dia_medio)),
+      item('/operacao', 'Operação', 'Ticket médio', R$(d.operacao.ticket_medio)),
+      item('/clientes', 'Clientes', 'Gasto médio por cliente', R$(d.clientes.gasto_medio)),
+      item('/clientes', 'Clientes', '% clientes recorrentes', d.clientes.pct_recorrentes.toFixed(0) + '%'),
+      item('/cardapio', 'Cardápio', 'Produto mais vendido', d.cardapio.top_produto ?? '—'),
+      item('/cardapio', 'Cardápio', 'Cobertura de CMV', d.cardapio.cobertura_cmv.toFixed(0) + '%'),
+      item('/bairros', 'Bairros', 'Região campeã', d.bairros.nome ? `${d.bairros.nome} (${d.bairros.pct.toFixed(0)}%)` : '—'),
+      item('/dre', 'DRE', 'Margem líquida (90d)', d.dre.margem_pct.toFixed(1) + '%'),
+    ].join('');
+  }catch(e){ /* resumo nunca derruba o painel */ }
+}
+
 async function carregar(){
   medirMeta();
   vigiar();
+  carregarResumoOutrasAbas();
   let url = `/api/dados?dias=${estado.dias}&marca=${encodeURIComponent(estado.marca)}&unidade=${encodeURIComponent(estado.unidade)}`;
   if (estado.ini && estado.fim) url += `&inicio=${estado.ini}&fim=${estado.fim}`;
   if (estado.compIni && estado.compFim) url += `&comp_inicio=${estado.compIni}&comp_fim=${estado.compFim}`;

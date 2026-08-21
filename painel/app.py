@@ -231,6 +231,137 @@ def dados(dias: int = Query(30, ge=1, le=365),
     }
 
 
+@app.get("/api/resumo_geral")
+def resumo_geral(marca: str = Query("todas"), unidade: str = Query("todas")):
+    """Resumo com a media dos principais indicadores de cada aba do painel
+    (Clientes, Operacao, Cardapio, Bairros, DRE), janela fixa de 90 dias
+    pra ficar estavel independente do filtro de periodo da Visao geral."""
+    filtro_marca = ""
+    params = {}
+    if marca != "todas":
+        filtro_marca = "AND p.marca = %(marca)s"
+        params["marca"] = marca
+    if unidade != "todas":
+        filtro_marca += " AND p.unidade = %(unidade)s"
+        params["unidade"] = unidade
+
+    operacao = consultar(f"""
+        SELECT round(avg(p.total), 2) AS ticket_medio,
+               round(count(*)::numeric
+                     / nullif(count(DISTINCT (p.criado_em AT TIME ZONE '{TZ}')::date), 0), 1)
+                     AS pedidos_dia_medio
+        FROM pedidos p
+        WHERE p.status <> 'canceled'
+          AND p.criado_em >= now() - interval '90 days'
+          {filtro_marca}
+    """, params)[0]
+
+    clientes = consultar(f"""
+        WITH agg AS (
+            SELECT p.cliente_id,
+                   count(*) FILTER (WHERE p.status <> 'canceled') AS pedidos,
+                   coalesce(sum(p.total) FILTER (WHERE p.status <> 'canceled'), 0) AS gasto
+            FROM pedidos p
+            WHERE p.cliente_id IS NOT NULL {filtro_marca}
+            GROUP BY p.cliente_id
+            HAVING count(*) FILTER (WHERE p.status <> 'canceled') > 0
+        )
+        SELECT count(*) AS total,
+               count(*) FILTER (WHERE pedidos >= 2) AS recorrentes,
+               coalesce(round(avg(gasto), 2), 0) AS gasto_medio
+        FROM agg
+    """, params)[0]
+
+    top_produto = consultar(f"""
+        SELECT max(i.nome) AS nome, sum(i.quantidade)::int AS qtd
+        FROM pedido_itens i
+        JOIN pedidos p ON p.id = i.pedido_id
+        LEFT JOIN produto_alias a ON a.alias = lower(trim(i.nome))
+        WHERE p.status <> 'canceled'
+          AND p.criado_em >= now() - interval '90 days'
+          AND NOT EXISTS (
+              SELECT 1 FROM produto_excluido e
+              WHERE e.nome = coalesce(a.canonico, lower(trim(i.nome)))
+          )
+          {filtro_marca}
+        GROUP BY coalesce(a.canonico, lower(trim(i.nome)))
+        ORDER BY qtd DESC LIMIT 1
+    """, params)
+    top_produto = top_produto[0] if top_produto else None
+
+    cmv = consultar(f"""
+        SELECT coalesce(sum(i.total) FILTER (WHERE c.custo IS NOT NULL), 0) AS receita_mapeada,
+               coalesce(sum(i.quantidade * c.custo), 0) AS cmv_mapeado,
+               coalesce(sum(i.total), 0) AS receita_itens
+        FROM pedido_itens i
+        JOIN pedidos p ON p.id = i.pedido_id
+        LEFT JOIN produto_alias a ON a.alias = lower(trim(i.nome))
+        LEFT JOIN produto_custos c ON c.nome = coalesce(a.canonico, lower(trim(i.nome)))
+        WHERE p.status <> 'canceled'
+          AND p.criado_em >= now() - interval '90 days'
+          {filtro_marca}
+    """, params)[0]
+    rec_map, rec_itens = float(cmv["receita_mapeada"]), float(cmv["receita_itens"])
+    cmv_map = float(cmv["cmv_mapeado"])
+    cobertura_cmv = (100 * rec_map / rec_itens) if rec_itens > 0 else 0
+    # extrapola o CMV da fatia sem custo cadastrado pelo % medio da fatia mapeada
+    cmv_total = cmv_map + ((rec_itens - rec_map) * (cmv_map / rec_map) if rec_map > 0 else 0)
+
+    bairro_top = consultar(f"""
+        WITH b AS (
+            SELECT coalesce(nullif(trim(p.regiao), ''), nullif(trim(p.bairro), ''),
+                             'Sem endereço') AS bairro
+            FROM pedidos p
+            WHERE p.status <> 'canceled' AND p.tipo = 'delivery'
+              AND p.criado_em >= now() - interval '90 days'
+              {filtro_marca}
+        )
+        SELECT bairro, count(*) AS pedidos,
+               round(100.0 * count(*) / sum(count(*)) OVER (), 1) AS pct
+        FROM b GROUP BY bairro ORDER BY 2 DESC LIMIT 1
+    """, params)
+    bairro_top = bairro_top[0] if bairro_top else None
+
+    vendas = consultar(f"""
+        SELECT coalesce(sum(p.total), 0) AS receita
+        FROM pedidos p
+        WHERE p.status <> 'canceled' AND p.criado_em >= now() - interval '90 days' {filtro_marca}
+    """, params)[0]
+    pedagio = consultar(f"""
+        SELECT coalesce(sum(p.total * coalesce(t.comissao_pct, 0) / 100), 0) AS pedagio
+        FROM pedidos p LEFT JOIN canal_taxas t ON t.origem = p.origem
+        WHERE p.status <> 'canceled' AND p.criado_em >= now() - interval '90 days' {filtro_marca}
+    """, params)[0]
+    cfg_rows = consultar("SELECT chave, valor FROM dre_config", {})
+    cfg = {r["chave"]: float(r["valor"]) for r in cfg_rows}
+    entregas_q = consultar(f"""
+        SELECT count(*) FILTER (WHERE p.tipo = 'delivery') AS entregas
+        FROM pedidos p
+        WHERE p.status <> 'canceled' AND p.criado_em >= now() - interval '90 days' {filtro_marca}
+    """, params)[0]
+
+    receita = float(vendas["receita"])
+    imposto = receita * cfg.get("imposto_pct", 0) / 100
+    entrega = float(entregas_q["entregas"]) * cfg.get("custo_entrega", 0)
+    lucro = receita - float(pedagio["pedagio"]) - imposto - cmv_total - entrega
+    margem = (100 * lucro / receita) if receita > 0 else 0
+
+    return {
+        "operacao": {"ticket_medio": float(operacao["ticket_medio"] or 0),
+                     "pedidos_dia_medio": float(operacao["pedidos_dia_medio"] or 0)},
+        "clientes": {"total": int(clientes["total"]),
+                     "pct_recorrentes": round(100 * clientes["recorrentes"] / clientes["total"], 1)
+                                        if clientes["total"] > 0 else 0,
+                     "gasto_medio": float(clientes["gasto_medio"])},
+        "cardapio": {"top_produto": top_produto["nome"] if top_produto else None,
+                     "top_produto_qtd": int(top_produto["qtd"]) if top_produto else 0,
+                     "cobertura_cmv": round(cobertura_cmv, 0)},
+        "bairros": {"nome": bairro_top["bairro"] if bairro_top else None,
+                    "pct": float(bairro_top["pct"]) if bairro_top else 0},
+        "dre": {"margem_pct": round(margem, 1)},
+    }
+
+
 @app.get("/api/clientes")
 def analise_clientes(marca: str = Query("todas"),
                      unidade: str = Query("todas"),
