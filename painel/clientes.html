@@ -60,10 +60,19 @@
     text-transform:uppercase; letter-spacing:.05em; padding:4px 8px; text-align:center}
   .cohort th:first-child{text-align:left}
   .cohort td{padding:9px 8px; border-radius:8px; text-align:center;
-    font-family:'IBM Plex Mono',monospace}
-  .cohort td.rotulo{text-align:left; font-family:'Inter'; background:none}
+    font-family:'IBM Plex Mono',monospace; color:#EDEAE2}
+  .cohort td.rotulo{text-align:left; font-family:'Inter'; background:none; color:var(--texto)}
   .cohort td.rotulo small{color:var(--texto-suave); display:block; font-size:11px}
-  .cohort td.vazio{background:none}
+  .cohort td.vazio{background:none; color:var(--texto-suave)}
+  .info{display:inline-flex; align-items:center; justify-content:center;
+    width:16px; height:16px; margin-left:6px; border:1px solid var(--texto-suave);
+    border-radius:50%; font-size:10px; font-weight:600; color:var(--texto-suave);
+    cursor:help; position:relative; vertical-align:middle}
+  .info:hover::after, .info:focus::after{
+    content:attr(data-tip); position:absolute; bottom:140%; left:50%; transform:translateX(-50%);
+    width:min(300px, 72vw); background:#0E1013; border:1px solid var(--borda);
+    padding:10px 12px; border-radius:10px; font-size:12px; font-weight:400;
+    line-height:1.55; color:#EDEAE2; z-index:9; white-space:normal; text-align:left}
 </style>
 <link rel="stylesheet" href="/static/_tema.css">
 </head>
