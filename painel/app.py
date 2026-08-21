@@ -920,28 +920,42 @@ def sentinela():
     if sem_eventos is not None and sem_eventos > 45 and t60 >= 2:
         alertas.append({"nivel": "critico", "icone": "🔌",
             "texto": f"Sincronizador sem receber eventos há {sem_eventos:.0f} min "
-                     f"em horário de movimento — pedidos podem não estar chegando ao banco. "
-                     f"Confira: docker logs sync_maracaya"})
+                     f"em horário de movimento — pedidos podem não estar chegando ao banco.",
+            "dica": "Avise quem cuida da integração (Chatwoot/Saipos) agora. Enquanto isso, "
+                    "confere pedidos manualmente no WhatsApp e nos apps de entrega pra não perder venda."})
 
     # 2. silencio suspeito na ultima hora
     elif t60 >= 3 and h60 == 0:
         alertas.append({"nivel": "critico", "icone": "🔇",
-            "texto": f"Nenhum pedido na última hora — o típico nesse horário é {t60:.0f}. "
-                     f"Confere se o cardápio/loja está no ar."})
+            "texto": f"Nenhum pedido na última hora — o típico nesse horário é {t60:.0f}.",
+            "dica": "Testa fazer um pedido de teste no cardápio/site agora. Se não abrir, "
+                    "é isso — chama o suporte da plataforma (iFood/Saipos) na hora."})
 
     # 3. dia bem abaixo do tipico (so com base historica suficiente)
     if amostras >= 4 and tipico >= 8 and hoje < 0.6 * tipico:
         queda = 100 * (1 - hoje / tipico)
         alertas.append({"nivel": "atencao", "icone": "📉",
             "texto": f"Dia {queda:.0f}% abaixo do típico até agora "
-                     f"({hoje:.0f} pedidos vs {tipico:.0f} normais pra esse ponto do dia). "
-                     f"Dá tempo de reagir: post, disparo, promoção-relâmpago."})
+                     f"({hoje:.0f} pedidos vs {tipico:.0f} normais pra esse ponto do dia).",
+            "dica": "Dispara um cupom relâmpago pra base de clientes recorrentes "
+                    "(lista pronta em Clientes → Lista de resgate) ou reforça um impulsionamento "
+                    "por 2-3h nas redes."})
 
     # 4. cancelamentos anormais
     if canc >= 3 and canc >= 3 * max(canc_tip, 0.5):
+        motivo = consultar(f"""
+            SELECT coalesce(nullif(trim(motivo_cancelamento), ''), 'não informado') AS motivo,
+                   count(*) AS n
+            FROM pedidos p
+            WHERE p.status = 'canceled' AND {tzcriado}::date = {tzagora}::date
+            GROUP BY 1 ORDER BY 2 DESC LIMIT 1
+        """, {})
+        motivo_txt = (f' O motivo mais comum hoje: "{motivo[0]["motivo"]}" ({int(motivo[0]["n"])}x).'
+                      if motivo and motivo[0]["motivo"] != "não informado" else "")
         alertas.append({"nivel": "atencao", "icone": "🚫",
-            "texto": f"{canc:.0f} cancelamentos hoje (típico: {canc_tip:.0f}) — "
-                     f"investigue: atraso na entrega? item em falta?"})
+            "texto": f"{canc:.0f} cancelamentos hoje (típico: {canc_tip:.0f}).{motivo_txt}",
+            "dica": "Se for atraso, pode ser o mesmo problema do tempo de entrega — confere cozinha "
+                    "e motoboys. Se for item em falta, atualiza o cardápio agora pra não repetir."})
 
     # 5. tempo de entrega/preparo muito acima do tipico na ultima hora
     tempo_hoje = float(tempo_entrega["hoje"]) if tempo_entrega["hoje"] is not None else None
@@ -953,15 +967,16 @@ def sentinela():
             and tempo_tipico >= 15 and tempo_hoje >= 1.4 * tempo_tipico):
         alertas.append({"nivel": "atencao", "icone": "🐌",
             "texto": f"Tempo de entrega/preparo subiu pra {tempo_hoje:.0f} min "
-                     f"na última hora (típico: {tempo_tipico:.0f} min) — "
-                     f"confere cozinha e motoboys disponíveis."})
+                     f"na última hora (típico: {tempo_tipico:.0f} min).",
+            "dica": "Confere quantos motoboys estão online e se a cozinha tem fila. Se persistir "
+                    "por mais de 1h, é hora de chamar reforço ou pausar novos pedidos por um instante."})
 
     # 6. dia excepcional (aviso bom)
     if amostras >= 4 and tipico >= 5 and hoje >= 1.5 * tipico:
         alta = 100 * (hoje / tipico - 1)
         alertas.append({"nivel": "boa", "icone": "🚀",
-            "texto": f"Dia {alta:.0f}% acima do típico ({hoje:.0f} vs {tipico:.0f}) — "
-                     f"segura o estoque e avisa a equipe!"})
+            "texto": f"Dia {alta:.0f}% acima do típico ({hoje:.0f} vs {tipico:.0f}).",
+            "dica": "Garante que o estoque aguenta até o fim do dia e avisa a equipe pra segurar o ritmo."})
 
     niveis = [a["nivel"] for a in alertas]
     status = ("critico" if "critico" in niveis
@@ -1492,8 +1507,9 @@ def zap_sentinela():
     if s["status"] not in ("critico", "atencao"):
         return {"enviar": False, "texto": ""}
     icone = "🔴" if s["status"] == "critico" else "🟠"
-    corpo = "\n\n".join(f"{a['icone']} {a['texto']}" for a in s["alertas"]
-                          if a["nivel"] in ("critico", "atencao"))
+    corpo = "\n\n".join(
+        f"{a['icone']} {a['texto']}" + (f"\n💡 {a['dica']}" if a.get("dica") else "")
+        for a in s["alertas"] if a["nivel"] in ("critico", "atencao"))
     return {"enviar": True,
             "texto": f"{icone} *Sentinela — Grupo Maracayá*\n\n{corpo}"}
 

@@ -80,6 +80,7 @@
   .sentinela.atencao{background:rgba(255,178,94,.10); border:1px solid var(--brasa-clara)}
   .sentinela.critico{background:rgba(225,91,91,.12); border:1px solid var(--alerta)}
   .sentinela .linha{display:flex; gap:8px; align-items:flex-start}
+  .sentinela .linha.dica-sentinela{margin-left:26px; color:var(--texto-suave); font-size:12.5px}
   .meta{background:var(--painel); border:1px solid var(--borda); border-radius:12px;
     padding:14px 18px; margin-bottom:12px}
   .meta .topo{display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; margin-bottom:10px}
@@ -230,7 +231,9 @@ async function vigiar(){
       el.innerHTML = `<div class="linha">🟢 <span>Sentinela: operação dentro do normal · verificada às ${hora}</span></div>`;
     } else {
       el.innerHTML = s.alertas.map(a =>
-        `<div class="linha">${a.icone} <span>${a.texto}</span></div>`).join('') +
+        `<div class="linha">${a.icone} <span>${a.texto}</span></div>` +
+        (a.dica ? `<div class="linha dica-sentinela">💡 <span>${a.dica}</span></div>` : '')
+      ).join('') +
         `<div class="linha" style="color:var(--texto-suave)">🛡️ <span>Sentinela · verificada às ${hora} · compara com o típico das últimas 8 semanas nesse mesmo ponto do dia</span></div>`;
     }
     el.hidden = false;
