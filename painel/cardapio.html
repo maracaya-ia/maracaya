@@ -2,6 +2,7 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
+<script>document.documentElement.setAttribute('data-tema', localStorage.getItem('tema') || 'escuro');</script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Cardápio — Painel Operacional</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -141,8 +142,8 @@ const NUM = v => (+(v ?? 0)).toLocaleString('pt-BR');
 let estado = {marca:'todas', unidade:'todas', dias:90};
 let graficos = {};
 
-Chart.defaults.color = 'var(--texto-suave)';
-Chart.defaults.borderColor = '#2A2E38';
+Chart.defaults.color = getComputedStyle(document.documentElement).getPropertyValue('--texto-suave').trim() || '#8B8F99';
+Chart.defaults.borderColor = getComputedStyle(document.documentElement).getPropertyValue('--borda').trim() || '#2A2E38';
 Chart.defaults.font.family = 'Inter';
 
 const CORES = {'Estrela':'#5BBB7B','Burro de carga':'#FFB25E','Quebra-cabeça':'#7A8CE8','Abacaxi':'#E15B5B'};

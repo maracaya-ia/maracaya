@@ -40,9 +40,9 @@
   document.getElementById('btnTema').addEventListener('click', () => {
     const atual = document.documentElement.getAttribute('data-tema');
     const novo = atual === 'escuro' ? 'claro' : 'escuro';
-    document.documentElement.setAttribute('data-tema', novo);
     localStorage.setItem('tema', novo);
-    pintarBotao();
+    // recarrega pra redesenhar os graficos (Canvas nao acompanha a troca de tema sozinho)
+    location.reload();
   });
 
   // botão de recolher no mobile
