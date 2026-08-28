@@ -1539,14 +1539,61 @@ def zap_radar():
         FROM sumidos
     """, {})[0]
     n = int(d["clientes"])
-    if n == 0:
+
+    risco = consultar("""
+        WITH base AS (
+            SELECT p.cliente_id,
+                   count(*) FILTER (WHERE p.status <> 'canceled') AS pedidos,
+                   coalesce(sum(p.total) FILTER (WHERE p.status <> 'canceled'), 0) AS gasto,
+                   max(p.criado_em) FILTER (WHERE p.status <> 'canceled') AS ultimo
+            FROM pedidos p WHERE p.cliente_id IS NOT NULL
+            GROUP BY 1 HAVING count(*) FILTER (WHERE p.status <> 'canceled') >= 2
+        ),
+        intervalos AS (
+            SELECT p.cliente_id,
+                   extract(epoch FROM p.criado_em
+                       - lag(p.criado_em) OVER (PARTITION BY p.cliente_id
+                                                ORDER BY p.criado_em)) / 86400 AS dias
+            FROM pedidos p
+            WHERE p.cliente_id IS NOT NULL AND p.status <> 'canceled'
+        ),
+        media_cliente AS (
+            SELECT cliente_id, avg(dias) AS intervalo_medio
+            FROM intervalos WHERE dias IS NOT NULL
+            GROUP BY cliente_id HAVING count(*) >= 2 AND avg(dias) >= 1
+        ),
+        em_risco AS (
+            SELECT b.*, c.nome, mc.intervalo_medio,
+                   row_number() OVER (ORDER BY
+                       (extract(day FROM now() - b.ultimo) / mc.intervalo_medio) DESC) AS rn
+            FROM base b
+            JOIN clientes c ON c.id = b.cliente_id
+            JOIN media_cliente mc ON mc.cliente_id = b.cliente_id
+            WHERE extract(day FROM now() - b.ultimo) >= mc.intervalo_medio * 2
+              AND b.ultimo >= now() - interval '30 days'
+        )
+        SELECT (SELECT count(*) FROM em_risco) AS clientes,
+               coalesce(string_agg('• ' || nome || ' — costuma pedir a cada ' ||
+                   round(intervalo_medio) || 'd, já ' ||
+                   extract(day FROM now() - ultimo)::int || 'd sem pedir',
+                   E'\n' ORDER BY rn) FILTER (WHERE rn <= 5), '') AS top5
+        FROM em_risco
+    """, {})[0]
+    n_risco = int(risco["clientes"])
+
+    if n == 0 and n_risco == 0:
         return {"enviar": False, "texto": ""}
-    texto = (f"🚨 *Radar de clientes — Grupo Maracayá*\n\n"
-             f"{n} clientes recorrentes estão há 30+ dias sem pedir.\n"
-             f"💰 Eles já deixaram *R$ {float(d['gasto']):,.2f}* na chapa.\n\n"
-             f"*Top 5 pra resgatar:*\n{d['top5']}\n\n"
-             f"👉 Lista completa com telefones: painel → Clientes"
-             ).replace(",", "@").replace(".", ",").replace("@", ".")
+
+    partes = ["🚨 *Radar de clientes — Grupo Maracayá*"]
+    if n > 0:
+        partes.append(f"{n} clientes recorrentes estão há 30+ dias sem pedir.\n"
+                       f"💰 Eles já deixaram *R$ {float(d['gasto']):,.2f}* na chapa.\n\n"
+                       f"*Top 5 pra resgatar:*\n{d['top5']}")
+    if n_risco > 0:
+        partes.append(f"⚠️ *{n_risco} clientes em risco* — já passaram do próprio "
+                       f"padrão de compra, ainda não sumiram mas estão atrasados:\n{risco['top5']}")
+    partes.append("👉 Lista completa com telefones: painel → Clientes")
+    texto = "\n\n".join(partes).replace(",", "@").replace(".", ",").replace("@", ".")
     return {"enviar": True, "texto": texto}
 
 

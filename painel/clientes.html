@@ -146,6 +146,14 @@
     </table></div>
   </div>
   <div class="card c-6">
+    <h2>Em risco de sumir ⚠️<span class="info" tabindex="0" data-tip="Compara quantos dias o cliente já está sem pedir com o intervalo médio HISTÓRICO dele (não um número fixo pra todo mundo). Um cliente que sempre pede a cada 5 dias e já está há 12 sem pedir aparece aqui bem antes de completar os 30 dias da Lista de resgate — dá tempo de agir cedo.">?</span></h2>
+    <div class="desc">Já passou do próprio padrão de compra — ainda não sumiu, mas está atrasado</div>
+    <div style="overflow-x:auto"><table id="tRisco">
+      <thead><tr><th>Cliente</th><th>Costuma pedir a cada</th><th>Sem pedir há</th><th>Gastava</th></tr></thead>
+      <tbody></tbody>
+    </table></div>
+  </div>
+  <div class="card c-6">
     <h2>Lista de resgate 🚨</h2>
     <div class="desc">Pediram 2+ vezes e sumiram — os primeiros da fila pra campanha de WhatsApp</div>
     <div style="overflow-x:auto"><table id="tSumidos">
@@ -273,6 +281,14 @@ async function carregar(){
     <td class="num">${R$(c.gasto)}</td>
     <td class="dias">${c.dias_sem_pedido} dias</td>
   </tr>`).join('') || '<tr><td colspan="4" class="vazio">Ninguém sumido — ótimo sinal 🎉</td></tr>';
+
+  const tbRisco = document.querySelector('#tRisco tbody');
+  tbRisco.innerHTML = d.em_risco.map(c => `<tr>
+    <td>${c.nome ?? 'Sem nome'}<br><span class="fone">${fone(c.telefone)}</span></td>
+    <td class="num">${c.intervalo_medio} dias</td>
+    <td class="dias">${c.dias_sem_pedido} dias</td>
+    <td class="num">${R$(c.gasto)}</td>
+  </tr>`).join('') || '<tr><td colspan="4" class="vazio">Ninguém em risco agora 👍</td></tr>';
 
   // ---- cohorts de retencao ----
   try{
