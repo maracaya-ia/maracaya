@@ -511,6 +511,34 @@ def analise_clientes(marca: str = Query("todas"),
         ORDER BY a.gasto DESC LIMIT 30
     """, params)
 
+    em_risco = consultar(agg + f"""
+        , intervalos AS (
+            SELECT p.cliente_id,
+                   extract(epoch FROM p.criado_em
+                       - lag(p.criado_em) OVER (PARTITION BY p.cliente_id
+                                                ORDER BY p.criado_em)) / 86400 AS dias
+            FROM pedidos p
+            WHERE p.cliente_id IS NOT NULL AND p.status <> 'canceled' {filtros}
+        ),
+        media_cliente AS (
+            SELECT cliente_id, avg(dias) AS intervalo_medio
+            FROM intervalos WHERE dias IS NOT NULL
+            GROUP BY cliente_id
+            HAVING count(*) >= 2 AND avg(dias) >= 1
+        )
+        SELECT c.nome, c.telefone, a.pedidos, round(a.gasto, 2) AS gasto,
+               extract(day FROM now() - a.ultimo)::int AS dias_sem_pedido,
+               round(mc.intervalo_medio::numeric, 1) AS intervalo_medio
+        FROM agg a
+        JOIN clientes c ON c.id = a.cliente_id
+        JOIN media_cliente mc ON mc.cliente_id = a.cliente_id
+        WHERE extract(day FROM now() - a.ultimo) >= mc.intervalo_medio * 2
+          AND a.ultimo >= now() - (%(sumido)s || ' days')::interval
+          {filtro_tel}
+        ORDER BY (extract(day FROM now() - a.ultimo) / mc.intervalo_medio) DESC
+        LIMIT 30
+    """, params)
+
     sumidos_resumo = consultar(agg + """
         SELECT count(*) AS clientes,
                coalesce(round(sum(a.gasto), 2), 0) AS gasto_total
@@ -535,7 +563,9 @@ def analise_clientes(marca: str = Query("todas"),
     return {"kpis": kpis, "frequencia": frequencia, "recencia": recencia,
             "novos_semana": novos_semana, "ciclos": ciclos,
             "media_entre_pedidos": media_geral["media"],
-            "top": top, "sumidos": sumidos, "resgate": resgate, "sumidos_resumo": sumidos_resumo, "canais": canais, "marcas": marcas}
+            "top": top, "sumidos": sumidos, "em_risco": em_risco,
+            "resgate": resgate, "sumidos_resumo": sumidos_resumo,
+            "canais": canais, "marcas": marcas}
 
 
 @app.get("/api/operacao")
