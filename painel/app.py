@@ -4,6 +4,7 @@ Serve a pagina e um endpoint /api/dados com os agregados da operacao.
 """
 
 import os
+import unicodedata
 from fastapi import FastAPI, Query, Body
 from fastapi.responses import FileResponse
 import psycopg2
@@ -1691,6 +1692,31 @@ def zap_pergunta(payload: dict = Body(...),
 
     q = texto.lower()
 
+    # ----- unidade e marca -----
+    def _sem_acento(s):
+        return unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode("ascii").lower()
+
+    unidades_disp = [row["unidade"] for row in consultar(
+        "SELECT DISTINCT unidade FROM pedidos WHERE unidade IS NOT NULL "
+        "AND unidade <> 'Chomp' ORDER BY 1", {})]
+    marcas_disp = [row["marca"] for row in consultar(
+        "SELECT DISTINCT marca FROM pedidos WHERE marca IS NOT NULL ORDER BY 1", {})]
+
+    q_sem_acento = _sem_acento(q)
+    unidade_d = next((u for u in unidades_disp if _sem_acento(u) in q_sem_acento), None)
+    marca_d = next((m for m in marcas_disp if _sem_acento(m.split()[0]) in q_sem_acento), None)
+
+    filtro_extra = ""
+    params_extra = {}
+    if marca_d:
+        filtro_extra += " AND p.marca = %(marca_d)s"
+        params_extra["marca_d"] = marca_d
+    if unidade_d:
+        filtro_extra += " AND p.unidade = %(unidade_d)s"
+        params_extra["unidade_d"] = unidade_d
+    partes_filtro = [x for x in (marca_d, unidade_d) if x]
+    filtro_txt = f" _({' · '.join(partes_filtro)})_" if partes_filtro else ""
+
     # ----- periodo -----
     agora = f"(now() AT TIME ZONE '{TZ}')"
     dia = f"(p.criado_em AT TIME ZONE '{TZ}')::date"
@@ -1719,31 +1745,37 @@ def zap_pergunta(payload: dict = Body(...),
                coalesce(sum(p.total) FILTER (WHERE p.status <> 'canceled'), 0) AS fat,
                coalesce(avg(p.total) FILTER (WHERE p.status <> 'canceled'), 0) AS ticket,
                count(*) FILTER (WHERE p.status = 'canceled') AS canc
-        FROM pedidos p WHERE {cond}
-    """, {})[0]
+        FROM pedidos p WHERE {cond} {filtro_extra}
+    """, params_extra)[0]
+
+    aviso_filtro = (" (ainda não sei filtrar essa pergunta por unidade/marca)"
+                    if partes_filtro else "")
 
     # ----- intencao -----
     if "sumido" in q or "resgate" in q:
         s = zap_radar()
         resposta = s["texto"] if s["enviar"] else "✅ Nenhum cliente recorrente sumido há 30+ dias. Base quente!"
+        resposta += aviso_filtro
     elif "meta" in q:
-        m = meta_do_mes("todas")
+        m = meta_do_mes(marca_d or "todas", unidade_d or "todas")
         if m.get("meta"):
-            resposta = (f"🎯 *Meta do mês:* {brl(m['realizado'])} de {brl(m['meta'])} "
+            resposta = (f"🎯 *Meta do mês{filtro_txt}:* {brl(m['realizado'])} de {brl(m['meta'])} "
                         f"({m['pct']:.0f}%)\nFaltam {brl(m['falta'])} · precisa de "
                         f"{brl(m['necessario_por_dia'])}/dia · ritmo atual "
                         f"{brl(m['ritmo_atual'])}/dia {'✅' if m['no_ritmo'] else '⚠️'}")
+            if m.get("meta_e_do_grupo_todo"):
+                resposta += "\n⚠️ a meta é do grupo inteiro — só o realizado está filtrado pela unidade"
         else:
             resposta = "🎯 Nenhuma meta definida pro mês — define lá no painel!"
     elif "ticket" in q:
-        resposta = f"🎯 Ticket médio {rotulo}: *{brl(float(r['ticket']))}* ({int(r['pedidos'])} pedidos)"
+        resposta = f"🎯 Ticket médio {rotulo}{filtro_txt}: *{brl(float(r['ticket']))}* ({int(r['pedidos'])} pedidos)"
     elif "cancel" in q:
-        resposta = f"🚫 Cancelamentos {rotulo}: *{int(r['canc'])}*"
+        resposta = f"🚫 Cancelamentos {rotulo}{filtro_txt}: *{int(r['canc'])}*"
     elif any(p in q for p in ("fatur", "vendeu", "venda", "quanto fez", "receita")):
-        resposta = (f"💰 Faturamento {rotulo}: *{brl(float(r['fat']))}*\n"
+        resposta = (f"💰 Faturamento {rotulo}{filtro_txt}: *{brl(float(r['fat']))}*\n"
                     f"🧾 {int(r['pedidos'])} pedidos · ticket {brl(float(r['ticket']))}")
     elif "pedido" in q:
-        resposta = (f"🧾 Pedidos {rotulo}: *{int(r['pedidos'])}*\n"
+        resposta = (f"🧾 Pedidos {rotulo}{filtro_txt}: *{int(r['pedidos'])}*\n"
                     f"💰 Faturamento: {brl(float(r['fat']))}")
     elif any(p in q for p in ("estoque", "insumo", "posição")):
         ep = estoque_plano(cobertura_dias=30, seguranca_pct=20)
@@ -1768,11 +1800,13 @@ def zap_pergunta(payload: dict = Body(...),
                 partes.append("❓ *Sem estoque cadastrado:* "
                               + ", ".join(sem_registro[:10]))
             resposta = "\n\n".join(partes)
+        resposta += aviso_filtro
     else:
         resposta = ("🤖 *Oi, aqui é a MIA!* Sei responder sobre: pedidos, faturamento, "
                     "ticket, cancelamentos, meta, clientes sumidos e estoque — com "
-                    "períodos hoje / ontem / semana / mês / mês passado.\n"
-                    "Ex: _quantos pedidos teve hoje?_")
+                    "períodos hoje / ontem / semana / mês / mês passado, e você pode "
+                    "filtrar por unidade (Colorado, Sobradinho) ou marca (Chomp, Maracayá).\n"
+                    "Ex: _quanto a Chomp vendeu hoje?_ ou _quantos pedidos teve em Sobradinho essa semana?_")
 
     return {"enviar": True, "texto": resposta}
 
