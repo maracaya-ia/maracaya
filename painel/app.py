@@ -1877,6 +1877,24 @@ def zap_pergunta(payload: dict = Body(...),
     elif "pedido" in q:
         resposta = (f"🧾 Pedidos {rotulo}{filtro_txt}: *{int(r['pedidos'])}*\n"
                     f"💰 Faturamento: {brl(float(r['fat']))}")
+    elif any(p in q for p in ("tempo de entrega", "tempo médio", "tempo medio",
+                              "demora", "quanto tempo")):
+        te = consultar(f"""
+            SELECT percentile_cont(0.5) WITHIN GROUP (
+                       ORDER BY extract(epoch FROM (p.concluido_em - p.criado_em)) / 60) AS mediana,
+                   count(*) AS n
+            FROM pedidos p
+            WHERE p.status IN ('closed', 'delivered')
+              AND p.concluido_em > p.criado_em
+              AND extract(epoch FROM (p.concluido_em - p.criado_em)) / 60 BETWEEN 1 AND 180
+              AND {cond} {filtro_extra}
+        """, params_extra)[0]
+        n_te = int(te["n"])
+        if n_te == 0:
+            resposta = f"⏱️ Sem pedidos concluídos {rotulo}{filtro_txt} pra calcular tempo de entrega."
+        else:
+            resposta = (f"⏱️ Tempo médio de entrega/preparo {rotulo}{filtro_txt}: "
+                        f"*{float(te['mediana']):.0f} min* ({n_te} pedidos medidos)")
     elif any(p in q for p in ("estoque", "insumo", "posição")):
         ep = estoque_plano(cobertura_dias=30, seguranca_pct=20)
         criticos, sem_registro = [], []
@@ -1903,10 +1921,11 @@ def zap_pergunta(payload: dict = Body(...),
         resposta += aviso_filtro
     else:
         resposta = ("🤖 *Oi, aqui é a MIA!* Sei responder sobre: pedidos, faturamento, "
-                    "ticket, cancelamentos, meta, clientes sumidos e estoque — com "
-                    "períodos hoje / ontem / semana / mês / mês passado, e você pode "
-                    "filtrar por unidade (Colorado, Sobradinho) ou marca (Chomp, Maracayá).\n"
-                    "Ex: _quanto a Chomp vendeu hoje?_ ou _quantos pedidos teve em Sobradinho essa semana?_")
+                    "ticket, cancelamentos, meta, clientes sumidos, estoque e tempo de "
+                    "entrega — com períodos hoje / ontem / segunda a domingo (com ou sem "
+                    "\"passada\") / semana / mês / mês passado, e você pode filtrar por "
+                    "unidade (Colorado, Sobradinho) ou marca (Chomp, Maracayá).\n"
+                    "Ex: _quanto a Chomp vendeu hoje?_ ou _qual o tempo de entrega na segunda?_")
 
     return {"enviar": True, "texto": resposta}
 
