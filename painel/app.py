@@ -1773,6 +1773,22 @@ def zap_pergunta(payload: dict = Body(...),
     def _sem_acento(s):
         return unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode("ascii").lower()
 
+    _DIAS_SEMANA_MIA = [
+        (("segunda-feira", "segunda"), 0, "segunda-feira", "na"),
+        (("terca-feira", "terca"), 1, "terça-feira", "na"),
+        (("quarta-feira", "quarta"), 2, "quarta-feira", "na"),
+        (("quinta-feira", "quinta"), 3, "quinta-feira", "na"),
+        (("sexta-feira", "sexta"), 4, "sexta-feira", "na"),
+        (("sabado",), 5, "sábado", "no"),
+        (("domingo",), 6, "domingo", "no"),
+    ]
+
+    def _dia_semana_match(q_sa):
+        for aliases, offset, nome_bonito, artigo in _DIAS_SEMANA_MIA:
+            if any(a in q_sa for a in aliases):
+                return offset, nome_bonito, artigo
+        return None
+
     unidades_disp = [row["unidade"] for row in consultar(
         "SELECT DISTINCT unidade FROM pedidos WHERE unidade IS NOT NULL "
         "AND unidade <> 'Chomp' ORDER BY 1", {})]
@@ -1811,6 +1827,13 @@ def zap_pergunta(payload: dict = Body(...),
         cond = (f"{dia} >= (date_trunc('month', {agora}) - interval '1 month')::date "
                 f"AND {dia} < date_trunc('month', {agora})::date")
         rotulo = "no mês passado"
+    elif _dia_semana_match(q_sem_acento) is not None:
+        offset, nome_bonito, artigo = _dia_semana_match(q_sem_acento)
+        passada = "passad" in q_sem_acento
+        recuo = 7 if passada else 0
+        cond = f"{dia} = date_trunc('week', {agora})::date + {offset} - {recuo}"
+        sufixo = (" passada" if artigo == "na" else " passado") if passada else ""
+        rotulo = f"{artigo} {nome_bonito}{sufixo}"
     else:
         cond, rotulo = f"{dia} >= date_trunc('month', {agora})::date", "no mês (até agora)"
 
