@@ -4,7 +4,9 @@ Serve a pagina e um endpoint /api/dados com os agregados da operacao.
 """
 
 import os
+import re
 import unicodedata
+from datetime import date, timedelta
 from fastapi import FastAPI, Query, Body
 from fastapi.responses import FileResponse
 import psycopg2
@@ -1789,6 +1791,37 @@ def zap_pergunta(payload: dict = Body(...),
                 return offset, nome_bonito, artigo
         return None
 
+    def _resolver_data(trecho_sa, hoje_d):
+        """Tenta achar uma data especifica num trecho de texto sem acento:
+        dd/mm, um numero de dia solto (mes/ano atual), dia da semana
+        (com ou sem 'passada'), hoje ou ontem. Devolve None se nao achar."""
+        m = re.search(r"\b([0-3]?\d)/([01]?\d)\b", trecho_sa)
+        if m:
+            d, mth = int(m.group(1)), int(m.group(2))
+            try:
+                return date(hoje_d.year, mth, d)
+            except ValueError:
+                return None
+        m = re.search(r"\b([0-3]?\d)\b", trecho_sa)
+        if m:
+            try:
+                return date(hoje_d.year, hoje_d.month, int(m.group(1)))
+            except ValueError:
+                return None
+        achado = _dia_semana_match(trecho_sa)
+        if achado is not None:
+            offset, _, _ = achado
+            segunda_semana = hoje_d - timedelta(days=hoje_d.isoweekday() - 1)
+            base = segunda_semana + timedelta(days=offset)
+            if "passad" in trecho_sa:
+                base -= timedelta(days=7)
+            return base
+        if "hoje" in trecho_sa:
+            return hoje_d
+        if "ontem" in trecho_sa:
+            return hoje_d - timedelta(days=1)
+        return None
+
     unidades_disp = [row["unidade"] for row in consultar(
         "SELECT DISTINCT unidade FROM pedidos WHERE unidade IS NOT NULL "
         "AND unidade <> 'Chomp' ORDER BY 1", {})]
@@ -1852,7 +1885,38 @@ def zap_pergunta(payload: dict = Body(...),
                     if partes_filtro else "")
 
     # ----- intencao -----
-    if "sumido" in q or "resgate" in q:
+    if "compar" in q_sem_acento:
+        hoje_d = consultar(f"SELECT {agora}::date AS d", {})[0]["d"]
+        trecho = re.sub(r"@\S+", "", q_sem_acento)
+        trecho = re.sub(r"\bcompar\w*\b", "", trecho).strip()
+        lados = re.split(r"\s+(?:e|vs|versus|com|x)\s+", trecho)
+        data_a = _resolver_data(lados[0], hoje_d) if len(lados) >= 1 else None
+        data_b = _resolver_data(lados[1], hoje_d) if len(lados) >= 2 else None
+        if not data_a or not data_b:
+            resposta = ("🤔 Não consegui entender as duas datas pra comparar. "
+                        "Tenta algo tipo: _compare domingo 23 com domingo 30_ "
+                        "ou _compare segunda passada e essa segunda_")
+        else:
+            def _metricas_dia(d):
+                return consultar(f"""
+                    SELECT count(*) FILTER (WHERE p.status <> 'canceled') AS pedidos,
+                           coalesce(sum(p.total) FILTER (WHERE p.status <> 'canceled'), 0) AS fat
+                    FROM pedidos p
+                    WHERE (p.criado_em AT TIME ZONE '{TZ}')::date = %(d)s {filtro_extra}
+                """, {**params_extra, "d": d})[0]
+            ma, mb = _metricas_dia(data_a), _metricas_dia(data_b)
+            fat_a, fat_b = float(ma["fat"]), float(mb["fat"])
+            if fat_a > 0:
+                delta = 100 * (fat_b - fat_a) / fat_a
+            else:
+                delta = 100.0 if fat_b > 0 else 0.0
+            seta = "🔼" if fat_b >= fat_a else "🔽"
+            resposta = (f"📊 *Comparativo{filtro_txt}*\n\n"
+                        f"{data_a.strftime('%d/%m')}: {brl(fat_a)} · {int(ma['pedidos'])} pedidos\n"
+                        f"{data_b.strftime('%d/%m')}: {brl(fat_b)} · {int(mb['pedidos'])} pedidos\n\n"
+                        f"{seta} {abs(delta):.0f}% "
+                        f"{'a mais' if fat_b >= fat_a else 'a menos'} em {data_b.strftime('%d/%m')}")
+    elif "sumido" in q or "resgate" in q:
         s = zap_radar()
         resposta = s["texto"] if s["enviar"] else "✅ Nenhum cliente recorrente sumido há 30+ dias. Base quente!"
         resposta += aviso_filtro
@@ -1924,8 +1988,10 @@ def zap_pergunta(payload: dict = Body(...),
                     "ticket, cancelamentos, meta, clientes sumidos, estoque e tempo de "
                     "entrega — com períodos hoje / ontem / segunda a domingo (com ou sem "
                     "\"passada\") / semana / mês / mês passado, e você pode filtrar por "
-                    "unidade (Colorado, Sobradinho) ou marca (Chomp, Maracayá).\n"
-                    "Ex: _quanto a Chomp vendeu hoje?_ ou _qual o tempo de entrega na segunda?_")
+                    "unidade (Colorado, Sobradinho) ou marca (Chomp, Maracayá). Também "
+                    "comparo dois dias.\n"
+                    "Ex: _quanto a Chomp vendeu hoje?_ · _tempo de entrega na segunda?_ · "
+                    "_compare domingo 23 com domingo 30_")
 
     return {"enviar": True, "texto": resposta}
 
