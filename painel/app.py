@@ -1097,12 +1097,57 @@ def dre(marca: str = Query("todas"), unidade: str = Query("todas"), periodo: str
         {base}
     """, params)[0]
 
+    # Formula validada pedido-a-pedido no "Sistema Lucro" (planilha externa,
+    # integrada em 2026-09-09): iFood cobra 12% comissao + 3.2% taxa de
+    # transacao sobre o SUBTOTAL (nao o total com entrega). Canais proprios
+    # (balcao/site/etc) nao pagam comissao de marketplace, so a taxa de
+    # adquirente do cartao/Pix (~3.99%) sobre o valor efetivamente pago
+    # (subtotal + entrega - desconto). 99Food/food99 ficam com o % manual
+    # cadastrado em canal_taxas por enquanto (regra da Chomp la e mais
+    # complexa - comissao variavel por distancia - fica pra uma proxima
+    # etapa).
     pedagio = consultar(f"""
-        SELECT coalesce(sum(p.total * coalesce(t.comissao_pct, 0) / 100), 0) AS pedagio,
-               coalesce(sum(p.total) FILTER (WHERE t.comissao_pct IS NULL
-                   AND p.origem IS NOT NULL), 0) AS bruto_sem_taxa
+        SELECT coalesce(sum(
+            CASE
+                WHEN p.origem = 'ifood' THEN p.subtotal * (0.12 + 0.032)
+                WHEN p.origem IN ('99food', 'food99')
+                    THEN p.total * coalesce(t.comissao_pct, 0) / 100
+                ELSE greatest(p.subtotal + p.taxa_entrega - p.desconto, 0) * 0.0399
+            END
+        ), 0) AS pedagio,
+               coalesce(sum(p.total) FILTER (
+                   WHERE p.origem IN ('99food', 'food99') AND t.comissao_pct IS NULL
+               ), 0) AS bruto_sem_taxa
         FROM pedidos p LEFT JOIN canal_taxas t ON t.origem = p.origem
         WHERE p.status <> 'canceled' AND {cond} {filtro_marca}
+    """, params)[0]
+
+    # Custo de motoboy: tabela real de reposicao por faixa de frete cobrado
+    # (Maracaya, marca <> Chomp Burger - a Chomp entrega sempre via
+    # iFood/99Food, sem motoboy proprio, fica pra outra etapa). Pedidos cujo
+    # frete nao bate em nenhuma faixa cadastrada caem no fallback (media
+    # antiga configuravel), pra nao subestimar o custo silenciosamente.
+    frete_calc = consultar(f"""
+        WITH fr AS (
+            SELECT
+                CASE
+                    WHEN p.marca <> 'Chomp Burger' AND p.origem IN ('catalog', 'site delivery (saipos)')
+                        THEN 8.0
+                    WHEN p.marca <> 'Chomp Burger' AND round(p.taxa_entrega) = 5 THEN greatest(6  - p.taxa_entrega, 0)
+                    WHEN p.marca <> 'Chomp Burger' AND round(p.taxa_entrega) = 6 THEN greatest(7  - p.taxa_entrega, 0)
+                    WHEN p.marca <> 'Chomp Burger' AND round(p.taxa_entrega) = 7 THEN greatest(9  - p.taxa_entrega, 0)
+                    WHEN p.marca <> 'Chomp Burger' AND round(p.taxa_entrega) = 8 THEN greatest(11 - p.taxa_entrega, 0)
+                    WHEN p.marca <> 'Chomp Burger' AND round(p.taxa_entrega) = 9 THEN greatest(12 - p.taxa_entrega, 0)
+                    WHEN p.marca <> 'Chomp Burger' AND round(p.taxa_entrega) = 10 THEN greatest(15 - p.taxa_entrega, 0)
+                    WHEN p.marca <> 'Chomp Burger' AND round(p.taxa_entrega) = 22 THEN greatest(22 - p.taxa_entrega, 0)
+                    ELSE NULL
+                END AS custo_tabela
+            FROM pedidos p
+            WHERE p.status <> 'canceled' AND p.tipo = 'delivery' AND {cond} {filtro_marca}
+        )
+        SELECT coalesce(sum(custo_tabela), 0) AS frete_tabela,
+               count(*) FILTER (WHERE custo_tabela IS NULL) AS entregas_sem_tabela
+        FROM fr
     """, params)[0]
 
     cmv = consultar(f"""
@@ -1122,7 +1167,9 @@ def dre(marca: str = Query("todas"), unidade: str = Query("todas"), periodo: str
     descontos = float(vendas["descontos"])
     ped = float(pedagio["pedagio"])
     imposto = receita * cfg.get("imposto_pct", 0) / 100
-    entrega = float(vendas["entregas"]) * cfg.get("custo_entrega", 0)
+    frete_tabela = float(frete_calc["frete_tabela"])
+    entregas_sem_tabela = int(frete_calc["entregas_sem_tabela"])
+    entrega = frete_tabela + entregas_sem_tabela * cfg.get("custo_entrega", 0)
 
     rec_map = float(cmv["receita_mapeada"])
     cmv_map = float(cmv["cmv_mapeado"])
@@ -1140,13 +1187,17 @@ def dre(marca: str = Query("todas"), unidade: str = Query("todas"), periodo: str
             {"t": "+", "rotulo": "Vendas cheias (antes de descontos)", "valor": receita + descontos},
             {"t": "-", "rotulo": "Descontos e cupons", "valor": descontos},
             {"t": "=", "rotulo": "Receita realizada", "valor": receita},
-            {"t": "-", "rotulo": "Comissões de canais (pedágio)", "valor": ped},
+            {"t": "-", "rotulo": "Comissões de canais (pedágio)", "valor": ped,
+             "nota": "iFood: 12% + 3,2% sobre o subtotal · Balcão/Site/outros: 3,99% sobre o "
+                     "valor pago · 99Food: % manual cadastrado (Chomp fica pra próxima etapa)"},
             {"t": "-", "rotulo": f"Impostos ({cfg.get('imposto_pct', 0):.1f}%)", "valor": imposto},
             {"t": "-", "rotulo": "CMV — custo dos produtos", "valor": cmv_total,
              "nota": f"{cobertura:.0f}% da receita com custo cadastrado"
                      + ("; restante estimado pela média" if cobertura < 99 else "")},
             {"t": "-", "rotulo": "Custo de entrega (motoboy)", "valor": entrega,
-             "nota": f"{int(vendas['entregas'])} entregas × R$ {cfg.get('custo_entrega', 0):.2f}"},
+             "nota": f"{int(vendas['entregas']) - entregas_sem_tabela} entregas pela tabela real "
+                     f"de repasse + {entregas_sem_tabela} pela média R$ {cfg.get('custo_entrega', 0):.2f} "
+                     "(fora da tabela ou Chomp)"},
             {"t": "=", "rotulo": "Lucro bruto (antes das despesas fixas)", "valor": lucro},
         ],
         "resumo": {"receita": receita, "lucro": lucro, "margem": margem,
