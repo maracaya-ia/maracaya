@@ -110,6 +110,11 @@ def pagina_dre():
     return FileResponse(os.path.join(os.path.dirname(__file__), "dre.html"))
 
 
+@app.get("/performance")
+def pagina_performance():
+    return FileResponse(os.path.join(os.path.dirname(__file__), "performance.html"))
+
+
 @app.get("/compras")
 def pagina_compras():
     return FileResponse(os.path.join(os.path.dirname(__file__), "compras.html"))

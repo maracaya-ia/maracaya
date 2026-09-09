@@ -7,6 +7,7 @@
     {href:'/cardapio',   nome:'Cardápio',    icone:'🍔'},
     {href:'/bairros',    nome:'Bairros',     icone:'🗺️'},
     {href:'/dre',        nome:'DRE',         icone:'💰'},
+    {href:'/performance',nome:'Performance', icone:'📈'},
     {href:'/compras',    nome:'Compras',     icone:'🛒'},
     {href:'/lancar-nota',nome:'Lançar Nota', icone:'🧾'},
   ];

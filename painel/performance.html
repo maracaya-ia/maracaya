@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<script>document.documentElement.setAttribute('data-tema', localStorage.getItem('tema') || 'escuro');</script>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Performance — Painel Operacional</title>
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="icon" href="/static/favicon-32.png" type="image/png" sizes="32x32">
+<link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700&family=Inter:wght@400;500&family=IBM+Plex+Mono:wght@500;600&family=Material+Symbols+Outlined&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box; margin:0; padding:0}
+  body{background:var(--fundo); color:var(--texto);
+    font-family:'Inter',system-ui,sans-serif; font-size:14px; padding:24px}
+  header{display:flex; align-items:center; gap:16px; flex-wrap:wrap; margin-bottom:24px}
+  h1{font-family:'Sora',sans-serif; font-size:20px; font-weight:700; letter-spacing:-.02em}
+  h1 .marca{color:var(--brasa)}
+  .controles{margin-left:auto; display:flex; gap:8px; flex-wrap:wrap}
+  select,.periodo button{background:var(--painel); color:var(--texto); border:1px solid var(--borda);
+    border-radius:8px; padding:8px 12px; font-family:'Inter'; font-size:13px; cursor:pointer}
+  .periodo{display:flex; gap:4px}
+  .periodo button.ativo{border-color:var(--brasa); color:var(--brasa)}
+
+  .material-symbols-outlined{font-family:'Material Symbols Outlined'; font-weight:normal; font-style:normal;
+    font-size:20px; line-height:1; letter-spacing:normal; text-transform:none; display:inline-block;
+    white-space:nowrap; word-wrap:normal; direction:ltr; -webkit-font-feature-settings:'liga'; font-feature-settings:'liga'}
+
+  .faixa{background:#0B0D11; border-radius:14px; padding:14px 18px; display:flex; align-items:center;
+    gap:12px; margin-bottom:18px; color:#EDEAE2}
+  .faixa .material-symbols-outlined{color:var(--brasa)}
+  .faixa .eyebrow{font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:#8B8F99; margin-bottom:2px}
+  .faixa .titulo{font-family:'Sora',sans-serif; font-size:14px; font-weight:700}
+
+  .card{background:var(--painel); border:1px solid var(--borda); border-radius:12px; padding:18px}
+  h2{font-family:'Sora'; font-size:14px; font-weight:600; margin-bottom:4px}
+
+  /* ---- Cards de KPI ---- */
+  .kpi-cards{display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:18px}
+  @media(max-width:950px){.kpi-cards{grid-template-columns:repeat(2,1fr)}}
+  .kpi-card{background:var(--painel); border:1px solid var(--borda); border-radius:14px; padding:18px 16px}
+  .kpi-card-icon{width:38px; height:38px; border-radius:50%; display:flex; align-items:center;
+    justify-content:center; margin-bottom:10px}
+  .kpi-card-icon.tom-primaria{background:rgba(255,122,47,.14); color:var(--brasa)}
+  .kpi-card-icon.tom-alta{background:rgba(76,169,104,.14); color:var(--ok)}
+  .kpi-card-icon.tom-muted{background:var(--fundo); color:var(--texto-suave)}
+  .kpi-label{color:var(--texto-suave); font-size:11px; text-transform:uppercase; letter-spacing:.05em;
+    font-weight:500; margin-bottom:4px}
+  .kpi-num{font-family:'IBM Plex Mono',monospace; font-size:24px; font-weight:600; font-variant-numeric:tabular-nums}
+  .kpi-compare{margin-top:12px; padding-top:10px; border-top:1px solid var(--borda); font-size:12px}
+  .kpi-compare div{display:flex; justify-content:space-between; padding:3px 0; color:var(--texto-suave)}
+  .kpi-compare span:last-child{color:var(--texto); font-family:'IBM Plex Mono',monospace; font-weight:600}
+
+  /* ---- Resumo narrativo ---- */
+  .resumo{margin-bottom:18px; display:grid; grid-template-columns:repeat(3,1fr); gap:20px}
+  @media(max-width:950px){.resumo{grid-template-columns:1fr}}
+  .resumo h3{font-family:'Sora',sans-serif; font-size:13px; text-transform:uppercase; letter-spacing:.03em;
+    margin-bottom:8px; color:var(--texto)}
+  .resumo p{font-size:13px; line-height:1.6; color:var(--texto-suave)}
+  .resumo p b{color:var(--brasa)}
+
+  /* ---- Barras ---- */
+  .bars-wrap{margin-bottom:18px}
+  .bars{display:grid; grid-template-columns:repeat(5,1fr); gap:16px; align-items:end; height:170px;
+    padding:0 4px; margin-top:10px; border-bottom:1px solid var(--borda)}
+  .bar-col{display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:100%}
+  .bar-value{font-family:'IBM Plex Mono',monospace; font-weight:600; font-size:12px; margin-bottom:6px}
+  .bar{width:100%; max-width:52px; border-radius:5px 5px 0 0; background:linear-gradient(180deg,var(--brasa-clara),var(--brasa))}
+  .bar-labels{display:grid; grid-template-columns:repeat(5,1fr); gap:16px; padding:8px 4px 0}
+  .bar-labels span{display:block; text-align:center; font-size:11px; color:var(--texto-suave)}
+
+  /* ---- DRE (igual /dre) ---- */
+  .card.dre-card{background:#0B0D11; border-color:#1C1F26}
+  .dre{width:100%; display:flex; flex-direction:column}
+  .dre-linha{display:flex; justify-content:space-between; align-items:baseline; gap:12px;
+    padding:12px 2px; border-bottom:1px solid #23262E}
+  .dre-linha:last-child{border-bottom:none}
+  .dre-rotulo{font-size:14px; color:#C9CCD3}
+  .dre-nota{display:block; color:#6E7280; font-size:11px; margin-top:4px; font-weight:400; line-height:1.6}
+  .dre-valor{font-family:'IBM Plex Mono',monospace; font-weight:600; font-size:15px; color:#EDEAE2;
+    white-space:nowrap; font-variant-numeric:tabular-nums}
+  .dre-linha.soma, .dre-linha.final{
+    margin:10px 0; padding:14px 2px; border:none; border-radius:0;
+    border-top:2px solid var(--brasa); border-bottom:2px solid var(--brasa)}
+  .dre-linha.soma .dre-rotulo, .dre-linha.final .dre-rotulo{
+    font-family:'Sora',sans-serif; font-weight:700; font-size:14px; color:#fff;
+    text-transform:uppercase; letter-spacing:.03em}
+  .dre-linha.soma .dre-valor, .dre-linha.final .dre-valor{color:var(--brasa); font-weight:700}
+  .dre-linha.final .dre-valor{font-size:24px; font-weight:800}
+
+  .rodape{color:var(--texto-suave); font-size:12px; margin-top:20px}
+</style>
+<link rel="stylesheet" href="/static/_tema.css">
+</head>
+<body>
+
+<header>
+  <h1>Performance <span class="marca">— Grupo Maracayá</span></h1>
+  <div class="controles">
+    <select id="selUnidade" aria-label="Unidade">
+      <option value="todas">Todas as unidades</option>
+    </select>
+    <select id="selMarca"><option value="todas">Todas as marcas</option></select>
+    <div class="periodo" role="group">
+      <button data-p="hoje">Hoje</button>
+      <button data-p="ontem">Ontem</button>
+      <button data-p="semana_atual">Semana</button>
+      <button data-p="mes_atual" class="ativo">Este mês</button>
+      <button data-p="mes_passado">Mês passado</button>
+      <button data-p="30">30 dias</button>
+    </div>
+  </div>
+</header>
+
+<div class="faixa">
+  <span class="material-symbols-outlined">calendar_month</span>
+  <div>
+    <div class="eyebrow" id="faixaEyebrow">Este mês</div>
+    <div class="titulo">Destaques do período</div>
+  </div>
+</div>
+
+<section class="kpi-cards" id="kpiCards"></section>
+
+<section class="card resumo" id="resumo"></section>
+
+<section class="card bars-wrap">
+  <h2>Custos e descontos do período</h2>
+  <div class="bars" id="bars"></div>
+  <div class="bar-labels" id="barLabels"></div>
+</section>
+
+<section class="card dre-card">
+  <h2 style="color:#fff">DRE do período</h2>
+  <div class="dre" id="tbDre" style="margin-top:10px"></div>
+</section>
+
+<p class="rodape" id="atualizadoEm">Carregando…</p>
+
+<script>
+const R$ = v => (+(v ?? 0)).toLocaleString('pt-BR', {style:'currency', currency:'BRL'});
+const R$0 = v => (+(v ?? 0)).toLocaleString('pt-BR', {style:'currency', currency:'BRL', maximumFractionDigits:0});
+const NUM = v => (+(v ?? 0)).toLocaleString('pt-BR');
+let estado = {marca:'todas', unidade:'todas', periodo:'mes_atual'};
+
+function linha(linhas, prefixo){
+  return linhas.find(l => l.rotulo.startsWith(prefixo))?.valor ?? 0;
+}
+
+async function carregar(){
+  const r = await fetch(`/api/dre?marca=${encodeURIComponent(estado.marca)}&unidade=${encodeURIComponent(estado.unidade)}&periodo=${estado.periodo}`);
+  const d = await r.json();
+
+  const sel = document.getElementById('selMarca');
+  if (sel.options.length === 1){
+    d.marcas.forEach(m => sel.add(new Option(m.marca, m.marca)));
+  }
+
+  const L = d.linhas, res = d.resumo;
+  const vendas = linha(L, 'Vendas cheias');
+  const descontos = linha(L, 'Descontos');
+  const receita = linha(L, 'Receita realizada');
+  const comissoes = linha(L, 'Comissões');
+  const impostos = linha(L, 'Impostos');
+  const cmv = linha(L, 'CMV');
+  const entrega = linha(L, 'Custo de entrega');
+  const pedidos = res.pedidos || 0;
+  const repasseReal = receita - comissoes;
+
+  document.getElementById('faixaEyebrow').textContent =
+    document.querySelector('.periodo .ativo')?.textContent + (estado.marca !== 'todas' ? ` · ${estado.marca}` : '');
+
+  document.getElementById('kpiCards').innerHTML = `
+    <div class="kpi-card">
+      <div class="kpi-card-icon tom-primaria"><span class="material-symbols-outlined">payments</span></div>
+      <div class="kpi-label">Repasse real</div>
+      <div class="kpi-num">${R$(repasseReal)}</div>
+      <div class="kpi-compare"><div><span>Repasse por pedido</span><span>${R$(pedidos ? repasseReal/pedidos : 0)}</span></div></div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-card-icon tom-primaria"><span class="material-symbols-outlined">account_balance_wallet</span></div>
+      <div class="kpi-label">Lucro total</div>
+      <div class="kpi-num">${R$(res.lucro)}</div>
+      <div class="kpi-compare">
+        <div><span>Margem</span><span>${res.margem.toFixed(1)}%</span></div>
+        <div><span>Lucro médio/pedido</span><span>${R$(pedidos ? res.lucro/pedidos : 0)}</span></div>
+      </div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-card-icon tom-alta"><span class="material-symbols-outlined">trending_up</span></div>
+      <div class="kpi-label">Margem média</div>
+      <div class="kpi-num">${res.margem.toFixed(1)}%</div>
+      <div class="kpi-compare">
+        <div><span>Ticket médio</span><span>${R$(pedidos ? vendas/pedidos : 0)}</span></div>
+        <div><span>Pedidos</span><span>${NUM(pedidos)}</span></div>
+      </div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-card-icon tom-muted"><span class="material-symbols-outlined">receipt_long</span></div>
+      <div class="kpi-label">Pedidos</div>
+      <div class="kpi-num">${NUM(pedidos)}</div>
+      <div class="kpi-compare">
+        <div><span>Valor bruto total</span><span>${R$(vendas)}</span></div>
+        <div><span>CMV</span><span>${R$(cmv)}</span></div>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('resumo').innerHTML = `
+    <div>
+      <h3>Receita e lucro</h3>
+      <p>O período fechou com <b>${R$(receita)}</b> de receita realizada e <b>${R$(res.lucro)}</b> de lucro bruto, margem de <b>${res.margem.toFixed(1)}%</b>.</p>
+    </div>
+    <div>
+      <h3>Custos e comissões</h3>
+      <p>Comissões de canais somaram <b>${R$(comissoes)}</b>. CMV ficou em <b>${R$(cmv)}</b> e custo de entrega em <b>${R$(entrega)}</b>.</p>
+    </div>
+    <div>
+      <h3>Descontos e impostos</h3>
+      <p>Descontos e cupons custaram <b>${R$(descontos)}</b>. Impostos somaram <b>${R$(impostos)}</b> no período.</p>
+    </div>
+  `;
+
+  const barrasDados = [
+    {rotulo:'Descontos', valor:descontos},
+    {rotulo:'Comissões', valor:comissoes},
+    {rotulo:'Impostos', valor:impostos},
+    {rotulo:'CMV', valor:cmv},
+    {rotulo:'Entrega', valor:entrega},
+  ];
+  const max = Math.max(...barrasDados.map(b => b.valor), 1);
+  document.getElementById('bars').innerHTML = barrasDados.map(b => `
+    <div class="bar-col">
+      <span class="bar-value">${R$0(b.valor)}</span>
+      <div class="bar" style="height:${Math.max(6, (b.valor / max) * 150)}px"></div>
+    </div>`).join('');
+  document.getElementById('barLabels').innerHTML = barrasDados.map(b => `<span>${b.rotulo}</span>`).join('');
+
+  document.getElementById('tbDre').innerHTML = L.map(l => {
+    const ehFinal = l.rotulo.startsWith('Lucro');
+    const cls = ehFinal ? 'final' : (l.t === '=' ? 'soma' : '');
+    const prefixo = l.t === '-' ? '(−) ' : '';
+    const rotulo = ehFinal || l.t === '=' ? l.rotulo : `${prefixo}${l.rotulo}`;
+    return `<div class="dre-linha ${cls}">
+      <div><span class="dre-rotulo">${rotulo}</span>${l.nota ? `<span class="dre-nota">${l.nota}</span>` : ''}</div>
+      <span class="dre-valor">${l.t === '-' ? '−' : ''}${R$(Math.abs(l.valor))}</span>
+    </div>`;
+  }).join('');
+
+  document.getElementById('atualizadoEm').textContent =
+    'Atualizado às ' + new Date().toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'}) +
+    ' · DRE gerencial simplificado — não substitui a contabilidade oficial';
+}
+
+document.querySelectorAll('.periodo button').forEach(b =>
+  b.addEventListener('click', () => {
+    document.querySelector('.periodo .ativo')?.classList.remove('ativo');
+    b.classList.add('ativo');
+    estado.periodo = b.dataset.p;
+    carregar();
+  }));
+
+document.getElementById('selUnidade').addEventListener('change', e => {
+  estado.unidade = e.target.value;
+  carregar();
+});
+fetch('/api/unidades').then(r => r.json()).then(d => {
+  const sel = document.getElementById('selUnidade');
+  (d.unidades || []).forEach(u => {
+    const o = document.createElement('option');
+    o.value = u; o.textContent = u; sel.appendChild(o);
+  });
+});
+document.getElementById('selMarca').addEventListener('change', e => {
+  estado.marca = e.target.value; carregar();
+});
+
+carregar();
+setInterval(carregar, 5 * 60 * 1000);
+</script>
+<script src="/static/_tema.js"></script>
+</body>
+</html>
