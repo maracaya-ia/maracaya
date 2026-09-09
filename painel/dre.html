@@ -9,7 +9,7 @@
 <link rel="icon" href="/static/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700&family=Inter:wght@400;500&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700&family=Inter:wght@400;500&family=IBM+Plex+Mono:wght@500;600&family=Material+Symbols+Outlined&display=swap" rel="stylesheet">
 <style>
   
   *{box-sizing:border-box; margin:0; padding:0}
@@ -35,17 +35,34 @@
   .c-12{grid-column:span 12} .c-8{grid-column:span 8} .c-4{grid-column:span 4}
   @media(max-width:950px){.c-8,.c-4{grid-column:span 12}}
 
-  .dre{width:100%; border-collapse:collapse; font-size:14px}
-  .dre td{padding:10px 12px; border-bottom:1px solid var(--borda)}
-  .dre tr:last-child td{border-bottom:none}
-  .dre td.num{font-family:'IBM Plex Mono',monospace; text-align:right; white-space:nowrap}
-  .dre tr.soma td{font-weight:600; border-top:2px solid var(--borda); background:rgba(255,255,255,.02)}
-  .dre tr.final td{font-family:'Sora'; font-size:16px; border-top:2px solid var(--brasa)}
-  .dre .sinal{color:var(--texto-suave); width:22px; font-family:'IBM Plex Mono',monospace}
-  .dre .nota{display:block; color:var(--texto-suave); font-size:11px; margin-top:3px; font-weight:400}
+  .material-symbols-outlined{font-family:'Material Symbols Outlined'; font-weight:normal; font-style:normal;
+    font-size:18px; line-height:1; letter-spacing:normal; text-transform:none; display:inline-block;
+    white-space:nowrap; word-wrap:normal; direction:ltr; -webkit-font-feature-settings:'liga'; font-feature-settings:'liga'}
+
+  .dre{width:100%; display:flex; flex-direction:column}
+  .dre-linha{display:flex; align-items:flex-start; gap:12px; padding:12px 2px; border-bottom:1px solid var(--borda)}
+  .dre-linha:last-child{border-bottom:none}
+  .dre-icone{width:32px; height:32px; border-radius:50%; flex-shrink:0; margin-top:1px;
+    display:flex; align-items:center; justify-content:center}
+  .dre-icone.tom-add{background:rgba(76,169,104,.14); color:var(--ok)}
+  .dre-icone.tom-sub{background:rgba(225,91,91,.14); color:var(--alerta)}
+  .dre-icone.tom-soma{background:rgba(255,122,47,.14); color:var(--brasa)}
+  .dre-corpo{flex:1; min-width:0; display:flex; justify-content:space-between; align-items:baseline; gap:12px; flex-wrap:wrap}
+  .dre-rotulo{font-size:14px}
+  .dre-nota{display:block; color:var(--texto-suave); font-size:11px; margin-top:4px; font-weight:400; line-height:1.6}
+  .dre-valor{font-family:'IBM Plex Mono',monospace; font-weight:600; font-size:15px; white-space:nowrap; font-variant-numeric:tabular-nums}
+  .dre-linha.soma{background:rgba(255,255,255,.025); border-radius:8px; margin:2px 0}
+  .dre-linha.final{margin-top:8px; padding:16px 14px; border:none; border-radius:12px;
+    border-top:2px solid var(--brasa); border-bottom:2px solid var(--brasa); background:rgba(255,122,47,.07)}
+  .dre-linha.final .dre-rotulo{font-family:'Sora',sans-serif; font-weight:700; font-size:15px;
+    text-transform:uppercase; letter-spacing:.03em}
+  .dre-linha.final .dre-valor{font-size:23px; font-weight:800}
   .neg{color:var(--alerta)} .pos{color:var(--ok)}
 
   .kpi-lucro{text-align:center; padding:22px 18px}
+  .kpi-lucro .badge{width:44px; height:44px; border-radius:50%; margin:0 auto 12px;
+    display:flex; align-items:center; justify-content:center; background:rgba(255,122,47,.14); color:var(--brasa)}
+  .kpi-lucro .badge .material-symbols-outlined{font-size:24px}
   .kpi-lucro .rotulo{color:var(--texto-suave); font-size:12px; text-transform:uppercase; letter-spacing:.06em}
   .kpi-lucro .valor{font-family:'IBM Plex Mono',monospace; font-size:34px; font-weight:600; margin:10px 0 4px}
   .kpi-lucro .margem{font-size:14px}
@@ -99,11 +116,12 @@
   <div class="card c-8">
     <h2>Demonstrativo do resultado<span class="info" tabindex="0" data-tip="Do bruto ao que sobra, linha a linha. CMV vem dos custos cadastrados na aba Cardápio; a fatia de produtos sem custo é estimada pela média dos mapeados (a nota da linha mostra a cobertura). Comissões vêm do card de pedágio da Visão geral. Impostos e custo de entrega são os parâmetros ao lado.">?</span></h2>
     <div class="desc" id="descDre">Lucro bruto estimado — antes das despesas fixas (aluguel, salários, contas)</div>
-    <table class="dre"><tbody id="tbDre"></tbody></table>
+    <div class="dre" id="tbDre"></div>
   </div>
 
   <div class="c-4" style="display:flex; flex-direction:column; gap:12px">
     <div class="card kpi-lucro">
+      <div class="badge"><span class="material-symbols-outlined">savings</span></div>
       <div class="rotulo">Sobrou na chapa</div>
       <div class="valor" id="kLucro">—</div>
       <div class="margem" id="kMargem">—</div>
@@ -129,6 +147,18 @@ const R$ = v => (+(v ?? 0)).toLocaleString('pt-BR', {style:'currency', currency:
 const NUM = v => (+(v ?? 0)).toLocaleString('pt-BR');
 let estado = {marca:'todas', unidade:'todas', periodo:'mes_atual'};
 
+function icone(rotulo){
+  if (rotulo.startsWith('Vendas cheias')) return 'point_of_sale';
+  if (rotulo.startsWith('Descontos')) return 'local_offer';
+  if (rotulo.startsWith('Receita realizada')) return 'account_balance_wallet';
+  if (rotulo.startsWith('Comissões')) return 'percent';
+  if (rotulo.startsWith('Impostos')) return 'receipt_long';
+  if (rotulo.startsWith('CMV')) return 'inventory_2';
+  if (rotulo.startsWith('Custo de entrega')) return 'moped';
+  if (rotulo.startsWith('Lucro')) return 'savings';
+  return 'circle';
+}
+
 async function carregar(){
   const r = await fetch(`/api/dre?marca=${encodeURIComponent(estado.marca)}&unidade=${encodeURIComponent(estado.unidade)}&periodo=${estado.periodo}`);
   const d = await r.json();
@@ -139,13 +169,17 @@ async function carregar(){
   }
 
   document.getElementById('tbDre').innerHTML = d.linhas.map(l => {
-    const cls = l.t === '=' ? (l.rotulo.startsWith('Lucro') ? 'final' : 'soma') : '';
-    const corValor = l.t === '-' ? 'neg' : (l.rotulo.startsWith('Lucro') ? (l.valor >= 0 ? 'pos' : 'neg') : '');
-    return `<tr class="${cls}">
-      <td class="sinal">${l.t === '=' ? '=' : (l.t === '-' ? '(−)' : '(+)')}</td>
-      <td>${l.rotulo}${l.nota ? `<span class="nota">${l.nota}</span>` : ''}</td>
-      <td class="num ${corValor}">${l.t === '-' ? '−' : ''}${R$(Math.abs(l.valor))}</td>
-    </tr>`;
+    const ehFinal = l.rotulo.startsWith('Lucro');
+    const cls = ehFinal ? 'final' : (l.t === '=' ? 'soma' : '');
+    const corValor = l.t === '-' ? 'neg' : (ehFinal ? (l.valor >= 0 ? 'pos' : 'neg') : '');
+    const tom = l.t === '-' ? 'tom-sub' : (l.t === '+' ? 'tom-add' : 'tom-soma');
+    return `<div class="dre-linha ${cls}">
+      <div class="dre-icone ${tom}"><span class="material-symbols-outlined">${icone(l.rotulo)}</span></div>
+      <div class="dre-corpo">
+        <div><span class="dre-rotulo">${l.rotulo}</span>${l.nota ? `<span class="dre-nota">${l.nota}</span>` : ''}</div>
+        <span class="dre-valor ${corValor}">${l.t === '-' ? '−' : ''}${R$(Math.abs(l.valor))}</span>
+      </div>
+    </div>`;
   }).join('');
 
   const res = d.resumo;
