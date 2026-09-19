@@ -62,12 +62,13 @@
 
   /* ---- Barras ---- */
   .bars-wrap{margin-bottom:18px}
-  .bars{display:grid; grid-template-columns:repeat(5,1fr); gap:16px; align-items:end; height:170px;
+  .bars{display:grid; grid-template-columns:repeat(6,1fr); gap:16px; align-items:end; height:170px;
+    background-image:repeating-linear-gradient(to top, transparent, transparent 33px, var(--borda) 33px, var(--borda) 34px);
     padding:0 4px; margin-top:10px; border-bottom:1px solid var(--borda)}
   .bar-col{display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:100%}
   .bar-value{font-family:'IBM Plex Mono',monospace; font-weight:600; font-size:12px; margin-bottom:6px}
   .bar{width:100%; max-width:52px; border-radius:5px 5px 0 0; background:linear-gradient(180deg,var(--brasa-clara),var(--brasa))}
-  .bar-labels{display:grid; grid-template-columns:repeat(5,1fr); gap:16px; padding:8px 4px 0}
+  .bar-labels{display:grid; grid-template-columns:repeat(6,1fr); gap:16px; padding:8px 4px 0}
   .bar-labels span{display:block; text-align:center; font-size:11px; color:var(--texto-suave)}
 
   /* ---- DRE (igual /dre) ---- */
@@ -161,9 +162,10 @@
 <section class="card resumo" id="resumo"></section>
 
 <section class="card bars-wrap">
-  <h2>Custos e descontos do período</h2>
+  <h2>Custos e promoções</h2>
   <div class="bars" id="bars"></div>
   <div class="bar-labels" id="barLabels"></div>
+  <p style="font-size:11.5px;color:var(--texto-suave);margin-top:12px;line-height:1.5">Promoção da loja: desconto custeado pela Maracayá (já descontado no lucro). Promoção do iFood: investimento do iFood — informativo, não afeta o lucro.</p>
 </section>
 
 <section class="card dre-card">
@@ -177,10 +179,10 @@
   <div class="tabela-wrap">
     <table class="ped">
       <thead><tr>
-        <th>Pedido</th><th>Data</th><th>Canal</th><th>Total</th><th>Comissão</th><th>Imposto</th>
+        <th>Pedido</th><th>Data</th><th>Canal</th><th>Subtotal</th><th>Desc. loja</th><th>Comissão + taxa</th><th>Imposto</th>
         <th>CMV</th><th>Frete</th><th>Lucro</th><th>Margem</th>
       </tr></thead>
-      <tbody id="tbPedidos"><tr><td colspan="10" class="txt">Carregando…</td></tr></tbody>
+      <tbody id="tbPedidos"><tr><td colspan="11" class="txt">Carregando…</td></tr></tbody>
     </table>
   </div>
 
@@ -226,7 +228,8 @@ async function carregar(){
   const cmv = linha(L, 'CMV');
   const entrega = linha(L, 'Custo de entrega');
   const pedidos = res.pedidos || 0;
-  const repasseReal = receita - comissoes;
+  const repasseReal = res.repasse_real;
+  const T = 'font-size:12px;color:var(--texto-suave)';
 
   document.getElementById('faixaEyebrow').textContent =
     document.querySelector('#periodos .ativo')?.textContent + (estado.canal !== 'todos' ? ` · ${document.querySelector('#canais .ativo').textContent}` : '') + (estado.marca !== 'todas' ? ` · ${estado.marca}` : '');
@@ -243,7 +246,7 @@ async function carregar(){
       <div class="kpi-label">Lucro total</div>
       <div class="kpi-num">${R$(res.lucro)}</div>
       <div class="kpi-compare">
-        <div><span>Margem</span><span>${res.margem.toFixed(1)}%</span></div>
+        <div><span>Margem s/ subtotal</span><span>${res.margem.toFixed(1)}%</span></div>
         <div><span>Lucro médio/pedido</span><span>${R$(pedidos ? res.lucro/pedidos : 0)}</span></div>
       </div>
     </div>
@@ -267,33 +270,35 @@ async function carregar(){
     </div>
   `;
 
+  const canalTxt = estado.canal === 'ifood' ? 'iFood' : estado.canal === '99food' ? '99Food' : 'dos canais';
   document.getElementById('resumo').innerHTML = `
     <div>
-      <h3>Receita e lucro</h3>
-      <p>O período fechou com <b>${R$(receita)}</b> de receita realizada e <b>${R$(res.lucro)}</b> de lucro bruto, margem de <b>${res.margem.toFixed(1)}%</b>.</p>
+      <h3>Repasse e lucro</h3>
+      <p>O período fechou com <b>${R$(repasseReal)}</b> de repasse real ${estado.canal === 'todos' ? 'dos canais' : 'do ' + canalTxt} (já com descontos da loja) e <b>${R$(res.lucro)}</b> de lucro líquido.</p>
     </div>
     <div>
       <h3>Custos e comissões</h3>
-      <p>Comissões de canais somaram <b>${R$(comissoes)}</b>. CMV ficou em <b>${R$(cmv)}</b> e custo de entrega em <b>${R$(entrega)}</b>.</p>
+      <p>Comissão de marketplace somou <b>${R$(res.comissao)}</b> e taxa de transação/adquirência <b>${R$(res.taxa_transacao)}</b>. Custo de frete ficou em <b>${R$(res.custo_frete)}</b> no total do período.</p>
     </div>
     <div>
-      <h3>Descontos e impostos</h3>
-      <p>Descontos e cupons custaram <b>${R$(descontos)}</b>. Impostos somaram <b>${R$(impostos)}</b> no período.</p>
+      <h3>Promoções</h3>
+      <p>A loja custeou <b>${R$(res.promo_loja)}</b> em descontos, enquanto o iFood investiu <b>${R$(res.promo_ifood)}</b> em promoções próprias — valor que não afeta o lucro da Maracayá.</p>
     </div>
   `;
 
   const barrasDados = [
-    {rotulo:'Descontos', valor:descontos},
-    {rotulo:'Comissões', valor:comissoes},
-    {rotulo:'Impostos', valor:impostos},
-    {rotulo:'CMV', valor:cmv},
-    {rotulo:'Entrega', valor:entrega},
+    {rotulo:'CMV', valor:res.cmv},
+    {rotulo:'Custo de frete', valor:res.custo_frete},
+    {rotulo:'Taxa de transação', valor:res.taxa_transacao},
+    {rotulo:'Comissão marketplace', valor:res.comissao},
+    {rotulo:'Promoção da loja', valor:res.promo_loja},
+    {rotulo:'Promoção do iFood', valor:res.promo_ifood},
   ];
   const max = Math.max(...barrasDados.map(b => b.valor), 1);
   document.getElementById('bars').innerHTML = barrasDados.map(b => `
     <div class="bar-col">
       <span class="bar-value">${R$0(b.valor)}</span>
-      <div class="bar" style="height:${Math.max(6, (b.valor / max) * 150)}px"></div>
+      <div class="bar" style="height:${Math.max(6, (b.valor / max) * 140)}px"></div>
     </div>`).join('');
   document.getElementById('barLabels').innerHTML = barrasDados.map(b => `<span>${b.rotulo}</span>`).join('');
 
@@ -358,11 +363,11 @@ async function carregarPedidos(){
       <td class="txt">#${p.numero ?? p.id}</td>
       <td class="txt">${fmtData(p.data)}</td>
       <td class="txt">${p.origem ?? '—'}</td>
-      <td>${R$(p.total)}</td><td>${R$(p.comissao)}</td><td>${R$(p.imposto)}</td>
+      <td>${R$(p.subtotal)}</td><td>${R$(p.desconto_loja)}</td><td>${R$(p.comissao + p.taxa_transacao)}</td><td>${R$(p.imposto)}</td>
       <td>${R$(p.cmv)}</td><td>${R$(p.frete)}</td>
       <td class="${clsMargem(p.lucro)}">${R$(p.lucro)}</td>
       <td class="${clsMargem(p.margem)}">${p.margem.toFixed(1)}%</td>
-    </tr>`).join('') : '<tr><td colspan="10" class="txt">Sem pedidos no período.</td></tr>';
+    </tr>`).join('') : '<tr><td colspan="11" class="txt">Sem pedidos no período.</td></tr>';
 }
 
 document.getElementById('tbPedidos').addEventListener('click', async e => {
@@ -375,14 +380,16 @@ document.getElementById('tbPedidos').addEventListener('click', async e => {
   document.getElementById('detResumo').innerHTML =
     `<div style="color:var(--texto-suave); font-size:12px; margin-bottom:6px">#${p.numero ?? p.id} · ${fmtData(p.data)} · ${p.origem ?? '—'} · ${p.marca ?? ''} · ${p.tipo}</div>` +
     linhaDet('Subtotal', R$(p.subtotal)) +
-    linhaDet('(+) Entrega cobrada', R$(p.entrega_cobrada)) +
-    linhaDet('(−) Desconto', '−' + R$(p.desconto)) +
-    linhaDet('= Total pago', R$(p.total), 'tot') +
-    linhaDet('(−) Comissão do canal', '−' + R$(p.comissao)) +
+    (p.marca === 'Chomp Burger' ? linhaDet('Entrega cobrada (fica com a plataforma)', R$(p.entrega_cobrada)) : linhaDet('(+) Entrega cobrada', R$(p.entrega_cobrada))) +
+    linhaDet('(−) Desconto da loja', '−' + R$(p.desconto_loja)) +
+    (p.desconto_ifood > 0 ? linhaDet('Promoção do iFood (paga pelo iFood — não afeta)', R$(p.desconto_ifood)) : '') +
+    linhaDet('= Receita realizada', R$(p.receita), 'tot') +
+    linhaDet('(−) Comissão do marketplace', '−' + R$(p.comissao)) +
+    linhaDet('(−) Taxa de transação / adquirência', '−' + R$(p.taxa_transacao)) +
     linhaDet('(−) Impostos', '−' + R$(p.imposto)) +
     linhaDet('(−) CMV', '−' + R$(p.cmv)) +
-    linhaDet('(−) Custo de entrega', '−' + R$(p.frete)) +
-    linhaDet(`= Lucro · margem ${p.margem.toFixed(1)}%`, R$(p.lucro), 'tot');
+    linhaDet('(−) ' + ({gratis:'Frete grátis — repasse integral ao motoboy', tabela:'Custo de entrega (repasse − frete pago)', site:'Motoboy do Site', chomp:'Logística da plataforma', estimado:'Custo de entrega (estimado pela média)'}[p.tipo_frete] || 'Custo de entrega'), '−' + R$(p.frete)) +
+    linhaDet(`= Lucro · margem ${p.margem.toFixed(1)}% s/ subtotal`, R$(p.lucro), 'tot');
   document.getElementById('detItens').innerHTML = '<tr><td colspan="4">Carregando…</td></tr>';
   document.getElementById('detalhe').classList.add('aberto');
   const itens = await (await fetch(`/api/pedido_itens?pedido_id=${p.id}`)).json();

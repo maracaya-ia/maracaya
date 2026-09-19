@@ -1067,7 +1067,7 @@ _SQL_COMISSAO = """CASE
     WHEN p.origem = 'ifood' THEN p.subtotal * (0.12 + 0.032)
     WHEN p.origem IN ('99food', 'food99')
         THEN p.subtotal * (0.032 + CASE WHEN p.marca = 'Chomp Burger' THEN 0.089 ELSE 0 END)
-    ELSE greatest(p.subtotal + p.taxa_entrega - p.desconto, 0) * 0.0399
+    ELSE greatest(p.subtotal + p.taxa_entrega - coalesce(p.desconto_loja, p.desconto, 0), 0) * 0.0399
 END"""
 
 _CANAIS = {
@@ -1112,208 +1112,294 @@ def _filtro_periodo(marca, unidade, periodo, canal="todos"):
     return cond, filtro_marca, params
 
 
+# ---------------------------------------------------------------------------
+# Motor de calculo por pedido - regras validadas pedido a pedido no "Sistema
+# Lucro" (Cardapio Web). DRE, analitico por pedido e Performance saem daqui,
+# entao a soma dos pedidos sempre bate com o DRE.
+# ---------------------------------------------------------------------------
+TABELA_FRETE = {5: 6, 6: 7, 7: 9, 8: 11, 9: 12, 10: 15, 22: 22}
+LIMITE_FRETE_GRATIS = 9
+CUSTO_MOTOBOY_SITE = 8.0
+TARIFA_99_CHOMP = 0.089
+LOGISTICA_CHOMP_99 = [(4.99, 3.00), (8.24, 5.00), (10.99, 7.00), (float("inf"), 8.50)]
+COMISSAO_VARIAVEL_CHOMP = {"ate_3km": 3.99, "3_a_5km": 5.99, "5_a_7km": 7.99}
+LIMITE_KM_3_A_5 = 5.0
+LOJA_LAT, LOJA_LNG = -15.671791, -47.842354
+ORIGENS_SITE = ("catalog", "site delivery (saipos)")
+
+
+def R(v):
+    return "R$ " + f"{v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+def _rota_km(lat, lng):
+    """Distancia de rota loja->cliente via OSRM publico (None se falhar)."""
+    import json as _json
+    import urllib.request
+    url = (f"http://router.project-osrm.org/route/v1/driving/"
+           f"{LOJA_LNG},{LOJA_LAT};{lng},{lat}?overview=false")
+    try:
+        with urllib.request.urlopen(url, timeout=4) as resp:
+            d = _json.load(resp)
+        if d.get("code") != "Ok":
+            return None
+        return d["routes"][0]["distance"] / 1000.0
+    except Exception:
+        return None
+
+
+def _completar_distancias(pendentes, maximo):
+    """Calcula e guarda (cache) a distancia de rota dos pedidos Chomp/iFood sem desconto de frete."""
+    feitos = {}
+    for pid, lat, lng in pendentes[:maximo]:
+        km = _rota_km(float(lat), float(lng))
+        if km is None:
+            continue
+        executar("INSERT INTO pedido_distancia (pedido_id, km) VALUES (%(p)s, %(k)s) "
+                 "ON CONFLICT (pedido_id) DO UPDATE SET km = EXCLUDED.km, calculado_em = now()",
+                 {"p": pid, "k": round(km, 2)})
+        feitos[pid] = km
+    return feitos
+
+
+def _aquecer_distancias():
+    try:
+        pend = consultar("""
+            SELECT p.id, p.lat, p.lng FROM pedidos p
+            LEFT JOIN pedido_distancia d ON d.pedido_id = p.id
+            WHERE p.marca = 'Chomp Burger' AND p.origem = 'ifood' AND p.tipo = 'delivery'
+              AND p.status <> 'canceled' AND coalesce(p.desconto_loja, 0) = 0
+              AND p.lat IS NOT NULL AND p.lng IS NOT NULL AND d.pedido_id IS NULL
+            ORDER BY p.criado_em DESC LIMIT 400
+        """, {})
+        _completar_distancias([(r["id"], r["lat"], r["lng"]) for r in pend], 400)
+    except Exception:
+        pass
+
+
+@app.on_event("startup")
+def _iniciar_aquecimento():
+    import threading
+    threading.Thread(target=_aquecer_distancias, daemon=True).start()
+
+
+def _custo_logistica_chomp_99(entrega):
+    for limite, custo in LOGISTICA_CHOMP_99:
+        if entrega <= limite:
+            return custo
+    return LOGISTICA_CHOMP_99[-1][1]
+
+
+def _calcular_pedido(r, cfg, razao_cmv):
+    sub, ent = float(r["subtotal"]), float(r["taxa_entrega"])
+    dl, di = float(r["desconto_loja"]), float(r["desconto_ifood"])
+    origem, marca = r["origem"], r["marca"]
+    chomp = marca == "Chomp Burger"
+    delivery = r["tipo"] == "delivery"
+    ifood = origem == "ifood"
+    n99 = origem in ("99food", "food99")
+    site = origem in ORIGENS_SITE
+
+    # --- comissao / taxa ---
+    if ifood:
+        comissao, taxa = sub * 0.12, sub * 0.032
+    elif n99:
+        comissao, taxa = (sub * TARIFA_99_CHOMP if chomp else 0.0), sub * 0.032
+    else:
+        comissao, taxa = 0.0, max(sub + ent - dl, 0) * 0.0399
+
+    # --- custo de entrega / logistica ---
+    tipo_frete, plataforma = "nenhum", False
+    if not delivery and not (chomp and (ifood or n99)):
+        frete = 0.0
+    elif site:
+        frete, tipo_frete = CUSTO_MOTOBOY_SITE, "site"
+    elif chomp and ifood:
+        plataforma = True
+        if dl > 0:
+            frete, tipo_frete = COMISSAO_VARIAVEL_CHOMP["ate_3km"], "chomp"
+        elif r.get("km") is not None:
+            km = float(r["km"])
+            frete = COMISSAO_VARIAVEL_CHOMP["3_a_5km" if km <= LIMITE_KM_3_A_5 else "5_a_7km"]
+            tipo_frete = "chomp"
+        else:
+            frete, tipo_frete = COMISSAO_VARIAVEL_CHOMP["3_a_5km"], "estimado"
+    elif chomp and n99:
+        frete, tipo_frete, plataforma = _custo_logistica_chomp_99(ent), "chomp", True
+    elif chomp:
+        frete = 0.0
+    else:
+        rep = TABELA_FRETE.get(round(ent))
+        if rep is None:
+            frete, tipo_frete = float(cfg.get("custo_entrega", 0)), "estimado"
+        elif ent <= LIMITE_FRETE_GRATIS and round(dl, 2) >= round(ent, 2):
+            frete, tipo_frete = float(rep), "gratis"
+        else:
+            frete, tipo_frete = max(rep - ent, 0.0), "tabela"
+
+    # --- receita / repasse / lucro ---
+    bruto = sub if chomp else sub + ent
+    receita = bruto - dl
+    repasse = receita - comissao - taxa - (frete if plataforma else 0.0)
+    imposto = receita * float(cfg.get("imposto_pct", 0)) / 100
+    rec_map = float(r["rec_map"])
+    cmv = float(r["cmv_map"]) + max(float(r["rec_total"]) - rec_map, 0) * razao_cmv
+    lucro = receita - comissao - taxa - imposto - cmv - frete
+    return {
+        "id": r["id"], "numero": r["order_id_cw"], "data": r["criado_em"].isoformat(),
+        "origem": origem, "marca": marca, "unidade": r["unidade"], "tipo": r["tipo"],
+        "subtotal": sub, "entrega_cobrada": ent, "desconto_loja": dl, "desconto_ifood": di,
+        "total": float(r["total"]), "bruto": bruto, "receita": receita,
+        "comissao": comissao, "taxa_transacao": taxa, "imposto": imposto, "cmv": cmv,
+        "frete": frete, "tipo_frete": tipo_frete, "repasse": repasse,
+        "lucro": lucro, "margem": (100 * lucro / sub) if sub > 0 else 0.0,
+        "_rec_map": rec_map, "_rec_total": float(r["rec_total"]),
+    }
+
+
+def _calcular_periodo(cond, filtro_marca, params):
+    cfg = {r["chave"]: float(r["valor"]) for r in consultar("SELECT chave, valor FROM dre_config", {})}
+    rows = consultar(f"""
+        SELECT p.id, p.order_id_cw, p.criado_em, p.origem, p.marca, p.unidade, p.tipo,
+               p.subtotal, p.taxa_entrega, p.total, p.lat, p.lng, d.km,
+               coalesce(p.desconto_loja, p.desconto, 0) AS desconto_loja,
+               coalesce(p.desconto_ifood, 0) AS desconto_ifood,
+               coalesce(it.cmv_map, 0) + coalesce(op.cmv_map, 0) AS cmv_map,
+               coalesce(it.rec_map, 0) + coalesce(op.rec_map, 0) AS rec_map,
+               coalesce(it.rec_total, 0) + coalesce(op.rec_total, 0) AS rec_total
+        FROM pedidos p
+        LEFT JOIN pedido_distancia d ON d.pedido_id = p.id
+        LEFT JOIN (
+            SELECT i.pedido_id,
+                   sum(i.quantidade * c.custo) AS cmv_map,
+                   sum(i.total) FILTER (WHERE c.custo IS NOT NULL) AS rec_map,
+                   sum(i.total) AS rec_total
+            FROM pedido_itens i
+            LEFT JOIN produto_custos c ON c.nome = lower(trim(i.nome))
+            GROUP BY i.pedido_id
+        ) it ON it.pedido_id = p.id
+        LEFT JOIN (
+            SELECT i.pedido_id,
+                   sum(coalesce(co.quantidade, 1) * c.custo) AS cmv_map,
+                   sum(co.preco * coalesce(co.quantidade, 1)) FILTER (WHERE c.custo IS NOT NULL) AS rec_map,
+                   sum(co.preco * coalesce(co.quantidade, 1)) AS rec_total
+            FROM pedido_complementos co
+            JOIN pedido_itens i ON i.id = co.pedido_item_id
+            LEFT JOIN produto_custos c ON c.nome = lower(trim(co.nome))
+            WHERE co.preco > 0
+            GROUP BY i.pedido_id
+        ) op ON op.pedido_id = p.id
+        WHERE p.status <> 'canceled' AND {cond} {filtro_marca}
+        ORDER BY p.criado_em DESC
+    """, params)
+
+    # completa (com limite) a distancia de rota dos Chomp/iFood ainda sem cache
+    pend = [(r["id"], r["lat"], r["lng"]) for r in rows
+            if r["marca"] == "Chomp Burger" and r["origem"] == "ifood" and r["tipo"] == "delivery"
+            and r["km"] is None and float(r["desconto_loja"]) == 0 and r["lat"] and r["lng"]]
+    if pend:
+        novos = _completar_distancias(pend, 6)
+        for r in rows:
+            if r["id"] in novos:
+                r["km"] = novos[r["id"]]
+
+    tot_map = sum(float(r["rec_map"]) for r in rows)
+    tot_cmv = sum(float(r["cmv_map"]) for r in rows)
+    razao = (tot_cmv / tot_map) if tot_map > 0 else 0.0
+    return [_calcular_pedido(r, cfg, razao) for r in rows], cfg
+
+
+def _agregar(linhas):
+    s = lambda k: sum(l[k] for l in linhas)
+    rec_tot = s("_rec_total")
+    cont = lambda t: sum(1 for l in linhas if l["tipo_frete"] == t)
+    return {
+        "bruto": s("bruto"), "receita": s("receita"), "subtotal": s("subtotal"),
+        "comissao": s("comissao"), "taxa": s("taxa_transacao"), "imposto": s("imposto"),
+        "cmv": s("cmv"), "frete": s("frete"), "repasse": s("repasse"), "lucro": s("lucro"),
+        "promo_loja": s("desconto_loja"), "promo_ifood": s("desconto_ifood"),
+        "cobertura": (100 * s("_rec_map") / rec_tot) if rec_tot > 0 else 0,
+        "margem": (100 * s("lucro") / s("subtotal")) if s("subtotal") > 0 else 0,
+        "fr_tabela": cont("tabela"), "fr_gratis": cont("gratis"), "fr_site": cont("site"),
+        "fr_chomp": cont("chomp"), "fr_estimado": cont("estimado"),
+    }
+
+
 @app.get("/api/dre")
 def dre(marca: str = Query("todas"), unidade: str = Query("todas"), periodo: str = Query("mes_atual"),
         canal: str = Query("todos")):
     cond, filtro_marca, params = _filtro_periodo(marca, unidade, periodo, canal)
+    linhas, cfg = _calcular_periodo(cond, filtro_marca, params)
+    a = _agregar(linhas)
 
-    base = f"""
-        FROM pedidos p
-        WHERE p.status <> 'canceled' AND {cond} {filtro_marca}
-    """
-
-    vendas = consultar(f"""
-        SELECT count(*) AS pedidos,
-               count(*) FILTER (WHERE p.tipo = 'delivery') AS entregas,
-               coalesce(sum(p.total), 0) AS receita,
-               coalesce(sum(p.desconto), 0) AS descontos
-        {base}
-    """, params)[0]
-
-    # Formula validada pedido-a-pedido no "Sistema Lucro" (planilha externa,
-    # integrada em 2026-09-09): iFood cobra 12% comissao + 3.2% taxa de
-    # transacao sobre o SUBTOTAL (nao o total com entrega). Canais proprios
-    # (balcao/site/etc) nao pagam comissao de marketplace, so a taxa de
-    # adquirente do cartao/Pix (~3.99%) sobre o valor efetivamente pago
-    # (subtotal + entrega - desconto). 99Food/food99 ficam com o % manual
-    # cadastrado em canal_taxas por enquanto (regra da Chomp la e mais
-    # complexa - comissao variavel por distancia - fica pra uma proxima
-    # etapa).
-    pedagio = consultar(f"""
-        SELECT coalesce(sum({_SQL_COMISSAO}), 0) AS pedagio, 0 AS bruto_sem_taxa
-        FROM pedidos p
-        WHERE p.status <> 'canceled' AND {cond} {filtro_marca}
-    """, params)[0]
-
-    # Custo de motoboy: tabela real de reposicao por faixa de frete cobrado
-    # (Maracaya, marca <> Chomp Burger - a Chomp entrega sempre via
-    # iFood/99Food, sem motoboy proprio, fica pra outra etapa). Pedidos cujo
-    # frete nao bate em nenhuma faixa cadastrada caem no fallback (media
-    # antiga configuravel), pra nao subestimar o custo silenciosamente.
-    frete_calc = consultar(f"""
-        WITH fr AS (
-            SELECT
-                CASE
-                    WHEN p.marca <> 'Chomp Burger' AND p.origem IN ('catalog', 'site delivery (saipos)')
-                        THEN 8.0
-                    WHEN p.marca <> 'Chomp Burger' AND round(p.taxa_entrega) = 5 THEN greatest(6  - p.taxa_entrega, 0)
-                    WHEN p.marca <> 'Chomp Burger' AND round(p.taxa_entrega) = 6 THEN greatest(7  - p.taxa_entrega, 0)
-                    WHEN p.marca <> 'Chomp Burger' AND round(p.taxa_entrega) = 7 THEN greatest(9  - p.taxa_entrega, 0)
-                    WHEN p.marca <> 'Chomp Burger' AND round(p.taxa_entrega) = 8 THEN greatest(11 - p.taxa_entrega, 0)
-                    WHEN p.marca <> 'Chomp Burger' AND round(p.taxa_entrega) = 9 THEN greatest(12 - p.taxa_entrega, 0)
-                    WHEN p.marca <> 'Chomp Burger' AND round(p.taxa_entrega) = 10 THEN greatest(15 - p.taxa_entrega, 0)
-                    WHEN p.marca <> 'Chomp Burger' AND round(p.taxa_entrega) = 22 THEN greatest(22 - p.taxa_entrega, 0)
-                    ELSE NULL
-                END AS custo_tabela
-            FROM pedidos p
-            WHERE p.status <> 'canceled' AND p.tipo = 'delivery' AND {cond} {filtro_marca}
-        )
-        SELECT coalesce(sum(custo_tabela), 0) AS frete_tabela,
-               count(*) FILTER (WHERE custo_tabela IS NULL) AS entregas_sem_tabela
-        FROM fr
-    """, params)[0]
-
-    cmv = consultar(f"""
-        SELECT coalesce(sum(i.total) FILTER (WHERE c.custo IS NOT NULL), 0) AS receita_mapeada,
-               coalesce(sum(i.quantidade * c.custo), 0) AS cmv_mapeado,
-               coalesce(sum(i.total), 0) AS receita_itens
-        FROM pedido_itens i
-        JOIN pedidos p ON p.id = i.pedido_id
-        LEFT JOIN produto_custos c ON c.nome = lower(trim(i.nome))
-        WHERE p.status <> 'canceled' AND {cond} {filtro_marca}
-    """, params)[0]
-
-    cfg_rows = consultar("SELECT chave, valor FROM dre_config", {})
-    cfg = {r["chave"]: float(r["valor"]) for r in cfg_rows}
-
-    receita = float(vendas["receita"])
-    descontos = float(vendas["descontos"])
-    ped = float(pedagio["pedagio"])
-    imposto = receita * cfg.get("imposto_pct", 0) / 100
-    frete_tabela = float(frete_calc["frete_tabela"])
-    entregas_sem_tabela = int(frete_calc["entregas_sem_tabela"])
-    entrega = frete_tabela + entregas_sem_tabela * cfg.get("custo_entrega", 0)
-
-    rec_map = float(cmv["receita_mapeada"])
-    cmv_map = float(cmv["cmv_mapeado"])
-    rec_itens = float(cmv["receita_itens"])
-    cobertura = (100 * rec_map / rec_itens) if rec_itens > 0 else 0
-    # extrapola o CMV da fatia sem custo usando o % medio da fatia mapeada
-    cmv_estimado_resto = ((rec_itens - rec_map) * (cmv_map / rec_map)) if rec_map > 0 else 0
-    cmv_total = cmv_map + cmv_estimado_resto
-
-    lucro = receita - ped - imposto - cmv_total - entrega
-    margem = (100 * lucro / receita) if receita > 0 else 0
+    n_entregas = sum(1 for l in linhas if l["tipo"] == "delivery")
+    nota_comissao = (f"Comissão {R(a['comissao'])} + taxa de transação/adquirência {R(a['taxa'])} · "
+                     "iFood 12% + 3,2% s/ subtotal · 99Food 3,2% (Chomp +8,9%) · Balcão/Site 3,99% s/ valor pago")
+    nota_desc = (f"Só desconto bancado pela loja. Promoções do iFood ({R(a['promo_ifood'])}) "
+                 "são pagas pelo iFood e não afetam o lucro") if a["promo_ifood"] > 0 else None
+    nota_frete = (f"{a['fr_tabela']} pela tabela real de repasse · {a['fr_gratis']} com frete grátis (custo integral)"
+                  f" · {a['fr_site']} Site (R$ 8,00) · {a['fr_chomp']} Chomp (logística da plataforma)"
+                  f" · {a['fr_estimado']} estimadas pela média R$ {cfg.get('custo_entrega', 0):.2f}")
 
     return {
         "linhas": [
-            {"t": "+", "rotulo": "Vendas cheias (antes de descontos)", "valor": receita + descontos},
-            {"t": "-", "rotulo": "Descontos e cupons", "valor": descontos},
-            {"t": "=", "rotulo": "Receita realizada", "valor": receita},
-            {"t": "-", "rotulo": "Comissões de canais (pedágio)", "valor": ped,
-             "nota": "iFood: 12% + 3,2% s/ subtotal · 99Food: 3,2% s/ subtotal (Chomp: +8,9% Tarifa 99) · "
-                     "Balcão/Site: 3,99% s/ valor pago — tudo automático por canal"},
-            {"t": "-", "rotulo": f"Impostos ({cfg.get('imposto_pct', 0):.1f}%)", "valor": imposto},
-            {"t": "-", "rotulo": "CMV — custo dos produtos", "valor": cmv_total,
-             "nota": f"{cobertura:.0f}% da receita com custo cadastrado"
-                     + ("; restante estimado pela média" if cobertura < 99 else "")},
-            {"t": "-", "rotulo": "Custo de entrega (motoboy)", "valor": entrega,
-             "nota": f"{int(vendas['entregas']) - entregas_sem_tabela} entregas pela tabela real "
-                     f"de repasse + {entregas_sem_tabela} pela média R$ {cfg.get('custo_entrega', 0):.2f} "
-                     "(fora da tabela ou Chomp)"},
-            {"t": "=", "rotulo": "Lucro bruto (antes das despesas fixas)", "valor": lucro},
+            {"t": "+", "rotulo": "Vendas cheias (antes de descontos)", "valor": a["bruto"]},
+            {"t": "-", "rotulo": "Descontos da loja e cupons", "valor": a["promo_loja"],
+             **({"nota": nota_desc} if nota_desc else {})},
+            {"t": "=", "rotulo": "Receita realizada", "valor": a["receita"]},
+            {"t": "-", "rotulo": "Comissões de canais (pedágio)", "valor": a["comissao"] + a["taxa"],
+             "nota": nota_comissao},
+            {"t": "-", "rotulo": f"Impostos ({cfg.get('imposto_pct', 0):.1f}%)", "valor": a["imposto"]},
+            {"t": "-", "rotulo": "CMV — custo dos produtos", "valor": a["cmv"],
+             "nota": f"{a['cobertura']:.0f}% da receita com custo cadastrado"
+                     + ("; restante estimado pela média" if a["cobertura"] < 99 else "")},
+            {"t": "-", "rotulo": "Custo de entrega (motoboy)", "valor": a["frete"], "nota": nota_frete},
+            {"t": "=", "rotulo": "Lucro bruto (antes das despesas fixas)", "valor": a["lucro"]},
         ],
-        "resumo": {"receita": receita, "lucro": lucro, "margem": margem,
-                   "pedidos": int(vendas["pedidos"]), "cobertura_cmv": cobertura,
-                   "bruto_sem_taxa": float(pedagio["bruto_sem_taxa"])},
+        "resumo": {"receita": a["receita"], "lucro": a["lucro"], "margem": a["margem"],
+                   "pedidos": len(linhas), "entregas": n_entregas, "cobertura_cmv": a["cobertura"],
+                   "bruto_sem_taxa": 0,
+                   "repasse_real": a["repasse"], "comissao": a["comissao"], "taxa_transacao": a["taxa"],
+                   "custo_frete": a["frete"], "cmv": a["cmv"], "promo_loja": a["promo_loja"],
+                   "promo_ifood": a["promo_ifood"], "impostos": a["imposto"], "subtotal": a["subtotal"],
+                   "vendas_cheias": a["bruto"]},
         "config": cfg,
         "marcas": consultar(
             "SELECT DISTINCT marca FROM pedidos WHERE marca IS NOT NULL ORDER BY 1", {}),
     }
 
 
-_SQL_FRETE = """CASE
-    WHEN p.tipo <> 'delivery' THEN 0
-    WHEN p.marca <> 'Chomp Burger' AND p.origem IN ('catalog', 'site delivery (saipos)') THEN 8.0
-    WHEN p.marca <> 'Chomp Burger' AND round(p.taxa_entrega) = 5 THEN greatest(6  - p.taxa_entrega, 0)
-    WHEN p.marca <> 'Chomp Burger' AND round(p.taxa_entrega) = 6 THEN greatest(7  - p.taxa_entrega, 0)
-    WHEN p.marca <> 'Chomp Burger' AND round(p.taxa_entrega) = 7 THEN greatest(9  - p.taxa_entrega, 0)
-    WHEN p.marca <> 'Chomp Burger' AND round(p.taxa_entrega) = 8 THEN greatest(11 - p.taxa_entrega, 0)
-    WHEN p.marca <> 'Chomp Burger' AND round(p.taxa_entrega) = 9 THEN greatest(12 - p.taxa_entrega, 0)
-    WHEN p.marca <> 'Chomp Burger' AND round(p.taxa_entrega) = 10 THEN greatest(15 - p.taxa_entrega, 0)
-    WHEN p.marca <> 'Chomp Burger' AND round(p.taxa_entrega) = 22 THEN greatest(22 - p.taxa_entrega, 0)
-    ELSE NULL
-END"""
-
-
 @app.get("/api/pedidos_lucro")
 def pedidos_lucro(marca: str = Query("todas"), unidade: str = Query("todas"),
                   periodo: str = Query("mes_atual"), limite: int = Query(300),
                   canal: str = Query("todos")):
-    """Analitico por pedido, com as mesmas regras de custo do /api/dre."""
+    """Analitico por pedido - mesmas regras (e mesmos totais) do /api/dre."""
     cond, filtro_marca, params = _filtro_periodo(marca, unidade, periodo, canal)
-    params["limite"] = max(min(limite, 1000), 1)
-    cfg = {r["chave"]: float(r["valor"]) for r in consultar("SELECT chave, valor FROM dre_config", {})}
-    imposto_pct = cfg.get("imposto_pct", 0)
-    custo_entrega = cfg.get("custo_entrega", 0)
-
-    linhas = consultar(f"""
-        SELECT p.id, p.order_id_cw, p.criado_em, p.origem, p.marca, p.unidade, p.tipo,
-               p.subtotal, p.taxa_entrega, p.desconto, p.total,
-               {_SQL_COMISSAO} AS comissao,
-               {_SQL_FRETE} AS frete_tabela,
-               coalesce(it.cmv_map, 0) AS cmv_map,
-               coalesce(it.rec_map, 0) AS rec_map,
-               coalesce(it.rec_itens, 0) AS rec_itens
-        FROM pedidos p
-        LEFT JOIN (
-            SELECT i.pedido_id,
-                   sum(i.quantidade * c.custo) AS cmv_map,
-                   sum(i.total) FILTER (WHERE c.custo IS NOT NULL) AS rec_map,
-                   sum(i.total) AS rec_itens
-            FROM pedido_itens i
-            LEFT JOIN produto_custos c ON c.nome = lower(trim(i.nome))
-            GROUP BY i.pedido_id
-        ) it ON it.pedido_id = p.id
-        WHERE p.status <> 'canceled' AND {cond} {filtro_marca}
-        ORDER BY p.criado_em DESC
-        LIMIT %(limite)s
-    """, params)
-
-    tot_map = sum(float(r["rec_map"]) for r in linhas)
-    tot_cmv = sum(float(r["cmv_map"]) for r in linhas)
-    razao = (tot_cmv / tot_map) if tot_map > 0 else 0
-
-    saida = []
-    for r in linhas:
-        total = float(r["total"])
-        cmv = float(r["cmv_map"]) + max(float(r["rec_itens"]) - float(r["rec_map"]), 0) * razao
-        frete = float(r["frete_tabela"]) if r["frete_tabela"] is not None else (
-            custo_entrega if r["tipo"] == "delivery" else 0)
-        comissao = float(r["comissao"])
-        imposto = total * imposto_pct / 100
-        lucro = total - comissao - imposto - cmv - frete
-        saida.append({
-            "id": r["id"], "numero": r["order_id_cw"], "data": r["criado_em"].isoformat(),
-            "origem": r["origem"], "marca": r["marca"], "unidade": r["unidade"], "tipo": r["tipo"],
-            "subtotal": float(r["subtotal"]), "entrega_cobrada": float(r["taxa_entrega"]),
-            "desconto": float(r["desconto"]), "total": total,
-            "comissao": comissao, "imposto": imposto, "cmv": cmv, "frete": frete,
-            "lucro": lucro, "margem": (100 * lucro / total) if total > 0 else 0,
-        })
-    return {"pedidos": saida, "config": cfg}
+    linhas, cfg = _calcular_periodo(cond, filtro_marca, params)
+    return {"pedidos": [{k: v for k, v in l.items() if not k.startswith("_")} for l in linhas[:max(min(limite, 1000), 1)]], "config": cfg}
 
 
 @app.get("/api/pedido_itens")
 def pedido_itens(pedido_id: int = Query(...)):
-    return consultar("""
+    itens = consultar("""
         SELECT i.nome, i.quantidade, i.total, c.custo,
-               (i.quantidade * c.custo) AS custo_total
+               (i.quantidade * c.custo) AS custo_total, false AS opcional
         FROM pedido_itens i
         LEFT JOIN produto_custos c ON c.nome = lower(trim(i.nome))
         WHERE i.pedido_id = %(id)s
         ORDER BY i.total DESC
     """, {"id": pedido_id})
+    opcionais = consultar("""
+        SELECT co.nome, coalesce(co.quantidade, 1) AS quantidade,
+               co.preco * coalesce(co.quantidade, 1) AS total, c.custo,
+               (coalesce(co.quantidade, 1) * c.custo) AS custo_total, true AS opcional
+        FROM pedido_complementos co
+        JOIN pedido_itens i ON i.id = co.pedido_item_id
+        LEFT JOIN produto_custos c ON c.nome = lower(trim(co.nome))
+        WHERE i.pedido_id = %(id)s AND co.preco > 0
+        ORDER BY 3 DESC
+    """, {"id": pedido_id})
+    return itens + opcionais
 
 
 @app.post("/api/dre_config")
