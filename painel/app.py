@@ -1061,8 +1061,7 @@ def salvar_taxa(dados: dict = Body(...)):
     return {"ok": True}
 
 
-@app.get("/api/dre")
-def dre(marca: str = Query("todas"), unidade: str = Query("todas"), periodo: str = Query("mes_atual")):
+def _filtro_periodo(marca, unidade, periodo):
     filtro_marca = ""
     params = {}
     if marca != "todas":
@@ -1088,6 +1087,12 @@ def dre(marca: str = Query("todas"), unidade: str = Query("todas"), periodo: str
     else:
         params["dias"] = max(min(int(periodo), 365), 1)
         cond = "p.criado_em >= now() - (%(dias)s || ' days')::interval"
+    return cond, filtro_marca, params
+
+
+@app.get("/api/dre")
+def dre(marca: str = Query("todas"), unidade: str = Query("todas"), periodo: str = Query("mes_atual")):
+    cond, filtro_marca, params = _filtro_periodo(marca, unidade, periodo)
 
     base = f"""
         FROM pedidos p
@@ -1212,6 +1217,96 @@ def dre(marca: str = Query("todas"), unidade: str = Query("todas"), periodo: str
         "marcas": consultar(
             "SELECT DISTINCT marca FROM pedidos WHERE marca IS NOT NULL ORDER BY 1", {}),
     }
+
+
+_SQL_COMISSAO = """CASE
+    WHEN p.origem = 'ifood' THEN p.subtotal * (0.12 + 0.032)
+    WHEN p.origem IN ('99food', 'food99') THEN p.total * coalesce(t.comissao_pct, 0) / 100
+    ELSE greatest(p.subtotal + p.taxa_entrega - p.desconto, 0) * 0.0399
+END"""
+
+_SQL_FRETE = """CASE
+    WHEN p.tipo <> 'delivery' THEN 0
+    WHEN p.marca <> 'Chomp Burger' AND p.origem IN ('catalog', 'site delivery (saipos)') THEN 8.0
+    WHEN p.marca <> 'Chomp Burger' AND round(p.taxa_entrega) = 5 THEN greatest(6  - p.taxa_entrega, 0)
+    WHEN p.marca <> 'Chomp Burger' AND round(p.taxa_entrega) = 6 THEN greatest(7  - p.taxa_entrega, 0)
+    WHEN p.marca <> 'Chomp Burger' AND round(p.taxa_entrega) = 7 THEN greatest(9  - p.taxa_entrega, 0)
+    WHEN p.marca <> 'Chomp Burger' AND round(p.taxa_entrega) = 8 THEN greatest(11 - p.taxa_entrega, 0)
+    WHEN p.marca <> 'Chomp Burger' AND round(p.taxa_entrega) = 9 THEN greatest(12 - p.taxa_entrega, 0)
+    WHEN p.marca <> 'Chomp Burger' AND round(p.taxa_entrega) = 10 THEN greatest(15 - p.taxa_entrega, 0)
+    WHEN p.marca <> 'Chomp Burger' AND round(p.taxa_entrega) = 22 THEN greatest(22 - p.taxa_entrega, 0)
+    ELSE NULL
+END"""
+
+
+@app.get("/api/pedidos_lucro")
+def pedidos_lucro(marca: str = Query("todas"), unidade: str = Query("todas"),
+                  periodo: str = Query("mes_atual"), limite: int = Query(300)):
+    """Analitico por pedido, com as mesmas regras de custo do /api/dre."""
+    cond, filtro_marca, params = _filtro_periodo(marca, unidade, periodo)
+    params["limite"] = max(min(limite, 1000), 1)
+    cfg = {r["chave"]: float(r["valor"]) for r in consultar("SELECT chave, valor FROM dre_config", {})}
+    imposto_pct = cfg.get("imposto_pct", 0)
+    custo_entrega = cfg.get("custo_entrega", 0)
+
+    linhas = consultar(f"""
+        SELECT p.id, p.order_id_cw, p.criado_em, p.origem, p.marca, p.unidade, p.tipo,
+               p.subtotal, p.taxa_entrega, p.desconto, p.total,
+               {_SQL_COMISSAO} AS comissao,
+               {_SQL_FRETE} AS frete_tabela,
+               coalesce(it.cmv_map, 0) AS cmv_map,
+               coalesce(it.rec_map, 0) AS rec_map,
+               coalesce(it.rec_itens, 0) AS rec_itens
+        FROM pedidos p
+        LEFT JOIN canal_taxas t ON t.origem = p.origem
+        LEFT JOIN (
+            SELECT i.pedido_id,
+                   sum(i.quantidade * c.custo) AS cmv_map,
+                   sum(i.total) FILTER (WHERE c.custo IS NOT NULL) AS rec_map,
+                   sum(i.total) AS rec_itens
+            FROM pedido_itens i
+            LEFT JOIN produto_custos c ON c.nome = lower(trim(i.nome))
+            GROUP BY i.pedido_id
+        ) it ON it.pedido_id = p.id
+        WHERE p.status <> 'canceled' AND {cond} {filtro_marca}
+        ORDER BY p.criado_em DESC
+        LIMIT %(limite)s
+    """, params)
+
+    tot_map = sum(float(r["rec_map"]) for r in linhas)
+    tot_cmv = sum(float(r["cmv_map"]) for r in linhas)
+    razao = (tot_cmv / tot_map) if tot_map > 0 else 0
+
+    saida = []
+    for r in linhas:
+        total = float(r["total"])
+        cmv = float(r["cmv_map"]) + max(float(r["rec_itens"]) - float(r["rec_map"]), 0) * razao
+        frete = float(r["frete_tabela"]) if r["frete_tabela"] is not None else (
+            custo_entrega if r["tipo"] == "delivery" else 0)
+        comissao = float(r["comissao"])
+        imposto = total * imposto_pct / 100
+        lucro = total - comissao - imposto - cmv - frete
+        saida.append({
+            "id": r["id"], "numero": r["order_id_cw"], "data": r["criado_em"].isoformat(),
+            "origem": r["origem"], "marca": r["marca"], "unidade": r["unidade"], "tipo": r["tipo"],
+            "subtotal": float(r["subtotal"]), "entrega_cobrada": float(r["taxa_entrega"]),
+            "desconto": float(r["desconto"]), "total": total,
+            "comissao": comissao, "imposto": imposto, "cmv": cmv, "frete": frete,
+            "lucro": lucro, "margem": (100 * lucro / total) if total > 0 else 0,
+        })
+    return {"pedidos": saida, "config": cfg}
+
+
+@app.get("/api/pedido_itens")
+def pedido_itens(pedido_id: int = Query(...)):
+    return consultar("""
+        SELECT i.nome, i.quantidade, i.total, c.custo,
+               (i.quantidade * c.custo) AS custo_total
+        FROM pedido_itens i
+        LEFT JOIN produto_custos c ON c.nome = lower(trim(i.nome))
+        WHERE i.pedido_id = %(id)s
+        ORDER BY i.total DESC
+    """, {"id": pedido_id})
 
 
 @app.post("/api/dre_config")
