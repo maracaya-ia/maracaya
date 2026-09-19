@@ -130,7 +130,14 @@
       <option value="todas">Todas as unidades</option>
     </select>
     <select id="selMarca"><option value="todas">Todas as marcas</option></select>
-    <div class="periodo" role="group">
+    <div class="periodo" id="canais" role="group" aria-label="Canal de venda">
+      <button data-c="todos" class="ativo">Todos os canais</button>
+      <button data-c="ifood">iFood</button>
+      <button data-c="99food">99 Food</button>
+      <button data-c="balcao">Balcão</button>
+      <button data-c="site">Site</button>
+    </div>
+    <div class="periodo" id="periodos" role="group">
       <button data-p="hoje">Hoje</button>
       <button data-p="ontem">Ontem</button>
       <button data-p="semana_atual">Semana</button>
@@ -195,14 +202,14 @@
 const R$ = v => (+(v ?? 0)).toLocaleString('pt-BR', {style:'currency', currency:'BRL'});
 const R$0 = v => (+(v ?? 0)).toLocaleString('pt-BR', {style:'currency', currency:'BRL', maximumFractionDigits:0});
 const NUM = v => (+(v ?? 0)).toLocaleString('pt-BR');
-let estado = {marca:'todas', unidade:'todas', periodo:'mes_atual'};
+let estado = {marca:'todas', unidade:'todas', periodo:'mes_atual', canal:'todos'};
 
 function linha(linhas, prefixo){
   return linhas.find(l => l.rotulo.startsWith(prefixo))?.valor ?? 0;
 }
 
 async function carregar(){
-  const r = await fetch(`/api/dre?marca=${encodeURIComponent(estado.marca)}&unidade=${encodeURIComponent(estado.unidade)}&periodo=${estado.periodo}`);
+  const r = await fetch(`/api/dre?marca=${encodeURIComponent(estado.marca)}&unidade=${encodeURIComponent(estado.unidade)}&periodo=${estado.periodo}&canal=${estado.canal}`);
   const d = await r.json();
 
   const sel = document.getElementById('selMarca');
@@ -222,7 +229,7 @@ async function carregar(){
   const repasseReal = receita - comissoes;
 
   document.getElementById('faixaEyebrow').textContent =
-    document.querySelector('.periodo .ativo')?.textContent + (estado.marca !== 'todas' ? ` · ${estado.marca}` : '');
+    document.querySelector('#periodos .ativo')?.textContent + (estado.canal !== 'todos' ? ` · ${document.querySelector('#canais .ativo').textContent}` : '') + (estado.marca !== 'todas' ? ` · ${estado.marca}` : '');
 
   document.getElementById('kpiCards').innerHTML = `
     <div class="kpi-card">
@@ -306,9 +313,17 @@ async function carregar(){
     ' · DRE gerencial simplificado — não substitui a contabilidade oficial';
 }
 
-document.querySelectorAll('.periodo button').forEach(b =>
+document.querySelectorAll('#canais button').forEach(b =>
   b.addEventListener('click', () => {
-    document.querySelector('.periodo .ativo')?.classList.remove('ativo');
+    document.querySelector('#canais .ativo')?.classList.remove('ativo');
+    b.classList.add('ativo');
+    estado.canal = b.dataset.c;
+    carregar(); carregarPedidos();
+  }));
+
+document.querySelectorAll('#periodos button').forEach(b =>
+  b.addEventListener('click', () => {
+    document.querySelector('#periodos .ativo')?.classList.remove('ativo');
     b.classList.add('ativo');
     estado.periodo = b.dataset.p;
     carregar(); carregarPedidos();
@@ -334,7 +349,7 @@ const fmtData = iso => new Date(iso).toLocaleString('pt-BR', {day:'2-digit', mon
 const clsMargem = m => m >= 0 ? 'm-pos' : 'm-neg';
 
 async function carregarPedidos(){
-  const r = await fetch(`/api/pedidos_lucro?marca=${encodeURIComponent(estado.marca)}&unidade=${encodeURIComponent(estado.unidade)}&periodo=${estado.periodo}`);
+  const r = await fetch(`/api/pedidos_lucro?marca=${encodeURIComponent(estado.marca)}&unidade=${encodeURIComponent(estado.unidade)}&periodo=${estado.periodo}&canal=${estado.canal}`);
   const d = await r.json();
   pedidosCache = d.pedidos;
   document.getElementById('detalhe').classList.remove('aberto');

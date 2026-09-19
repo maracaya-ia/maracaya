@@ -231,14 +231,13 @@ def dados(dias: int = Query(30, ge=1, le=365),
         SELECT coalesce(p.origem, 'não informado') AS origem,
                count(*) AS pedidos,
                round(sum(p.total), 2) AS bruto,
-               t.comissao_pct,
-               round(sum(p.total) * coalesce(t.comissao_pct, 0) / 100, 2) AS pedagio,
-               round(sum(p.total) * (1 - coalesce(t.comissao_pct, 0) / 100), 2) AS liquido
+               round(100 * sum(COMISSAO) / nullif(sum(p.total), 0), 2) AS comissao_pct,
+               round(sum(COMISSAO), 2) AS pedagio,
+               round(sum(p.total) - sum(COMISSAO), 2) AS liquido
         {fechados}
-        GROUP BY 1, t.comissao_pct
+        GROUP BY 1
         ORDER BY 3 DESC
-    """.replace("FROM pedidos p",
-                "FROM pedidos p LEFT JOIN canal_taxas t ON t.origem = p.origem"), params)
+    """.replace("COMISSAO", _SQL_COMISSAO), params)
 
     marcas = consultar(
         "SELECT DISTINCT marca FROM pedidos WHERE marca IS NOT NULL ORDER BY 1", {})
@@ -361,8 +360,8 @@ def resumo_geral(marca: str = Query("todas"), unidade: str = Query("todas")):
         WHERE p.status <> 'canceled' AND p.criado_em >= now() - interval '90 days' {filtro_marca}
     """, params)[0]
     pedagio = consultar(f"""
-        SELECT coalesce(sum(p.total * coalesce(t.comissao_pct, 0) / 100), 0) AS pedagio
-        FROM pedidos p LEFT JOIN canal_taxas t ON t.origem = p.origem
+        SELECT coalesce(sum({_SQL_COMISSAO}), 0) AS pedagio
+        FROM pedidos p
         WHERE p.status <> 'canceled' AND p.criado_em >= now() - interval '90 days' {filtro_marca}
     """, params)[0]
     cfg_rows = consultar("SELECT chave, valor FROM dre_config", {})
@@ -1061,11 +1060,34 @@ def salvar_taxa(dados: dict = Body(...)):
     return {"ok": True}
 
 
-def _filtro_periodo(marca, unidade, periodo):
-    filtro_marca = ""
+# Comissao por canal, 100% por regra (validada em extratos reais no "Sistema Lucro"):
+# iFood 12% + 3,2% s/ subtotal | 99Food: 3,2% s/ subtotal (+8,9% "Tarifa 99" so na Chomp)
+# | Balcao/Site/outros: adquirente ~3,99% s/ valor pago (subtotal + entrega - desconto).
+_SQL_COMISSAO = """CASE
+    WHEN p.origem = 'ifood' THEN p.subtotal * (0.12 + 0.032)
+    WHEN p.origem IN ('99food', 'food99')
+        THEN p.subtotal * (0.032 + CASE WHEN p.marca = 'Chomp Burger' THEN 0.089 ELSE 0 END)
+    ELSE greatest(p.subtotal + p.taxa_entrega - p.desconto, 0) * 0.0399
+END"""
+
+_CANAIS = {
+    "ifood": "p.origem = 'ifood'",
+    "99food": "p.origem IN ('99food', 'food99')",
+    "site": "p.origem IN ('catalog', 'site delivery (saipos)')",
+    "balcao": "p.origem NOT IN ('ifood', '99food', 'food99', 'catalog', 'site delivery (saipos)')",
+}
+
+
+def _filtro_canal(canal):
+    c = _CANAIS.get(canal)
+    return f" AND {c}" if c else ""
+
+
+def _filtro_periodo(marca, unidade, periodo, canal="todos"):
+    filtro_marca = _filtro_canal(canal)
     params = {}
     if marca != "todas":
-        filtro_marca = "AND p.marca = %(marca)s"
+        filtro_marca += " AND p.marca = %(marca)s"
         params["marca"] = marca
     if unidade != "todas":
         filtro_marca += " AND p.unidade = %(unidade)s"
@@ -1091,8 +1113,9 @@ def _filtro_periodo(marca, unidade, periodo):
 
 
 @app.get("/api/dre")
-def dre(marca: str = Query("todas"), unidade: str = Query("todas"), periodo: str = Query("mes_atual")):
-    cond, filtro_marca, params = _filtro_periodo(marca, unidade, periodo)
+def dre(marca: str = Query("todas"), unidade: str = Query("todas"), periodo: str = Query("mes_atual"),
+        canal: str = Query("todos")):
+    cond, filtro_marca, params = _filtro_periodo(marca, unidade, periodo, canal)
 
     base = f"""
         FROM pedidos p
@@ -1117,18 +1140,8 @@ def dre(marca: str = Query("todas"), unidade: str = Query("todas"), periodo: str
     # complexa - comissao variavel por distancia - fica pra uma proxima
     # etapa).
     pedagio = consultar(f"""
-        SELECT coalesce(sum(
-            CASE
-                WHEN p.origem = 'ifood' THEN p.subtotal * (0.12 + 0.032)
-                WHEN p.origem IN ('99food', 'food99')
-                    THEN p.total * coalesce(t.comissao_pct, 0) / 100
-                ELSE greatest(p.subtotal + p.taxa_entrega - p.desconto, 0) * 0.0399
-            END
-        ), 0) AS pedagio,
-               coalesce(sum(p.total) FILTER (
-                   WHERE p.origem IN ('99food', 'food99') AND t.comissao_pct IS NULL
-               ), 0) AS bruto_sem_taxa
-        FROM pedidos p LEFT JOIN canal_taxas t ON t.origem = p.origem
+        SELECT coalesce(sum({_SQL_COMISSAO}), 0) AS pedagio, 0 AS bruto_sem_taxa
+        FROM pedidos p
         WHERE p.status <> 'canceled' AND {cond} {filtro_marca}
     """, params)[0]
 
@@ -1198,8 +1211,8 @@ def dre(marca: str = Query("todas"), unidade: str = Query("todas"), periodo: str
             {"t": "-", "rotulo": "Descontos e cupons", "valor": descontos},
             {"t": "=", "rotulo": "Receita realizada", "valor": receita},
             {"t": "-", "rotulo": "Comissões de canais (pedágio)", "valor": ped,
-             "nota": "iFood: 12% + 3,2% sobre o subtotal · Balcão/Site/outros: 3,99% sobre o "
-                     "valor pago · 99Food: % manual cadastrado (Chomp fica pra próxima etapa)"},
+             "nota": "iFood: 12% + 3,2% s/ subtotal · 99Food: 3,2% s/ subtotal (Chomp: +8,9% Tarifa 99) · "
+                     "Balcão/Site: 3,99% s/ valor pago — tudo automático por canal"},
             {"t": "-", "rotulo": f"Impostos ({cfg.get('imposto_pct', 0):.1f}%)", "valor": imposto},
             {"t": "-", "rotulo": "CMV — custo dos produtos", "valor": cmv_total,
              "nota": f"{cobertura:.0f}% da receita com custo cadastrado"
@@ -1219,12 +1232,6 @@ def dre(marca: str = Query("todas"), unidade: str = Query("todas"), periodo: str
     }
 
 
-_SQL_COMISSAO = """CASE
-    WHEN p.origem = 'ifood' THEN p.subtotal * (0.12 + 0.032)
-    WHEN p.origem IN ('99food', 'food99') THEN p.total * coalesce(t.comissao_pct, 0) / 100
-    ELSE greatest(p.subtotal + p.taxa_entrega - p.desconto, 0) * 0.0399
-END"""
-
 _SQL_FRETE = """CASE
     WHEN p.tipo <> 'delivery' THEN 0
     WHEN p.marca <> 'Chomp Burger' AND p.origem IN ('catalog', 'site delivery (saipos)') THEN 8.0
@@ -1241,9 +1248,10 @@ END"""
 
 @app.get("/api/pedidos_lucro")
 def pedidos_lucro(marca: str = Query("todas"), unidade: str = Query("todas"),
-                  periodo: str = Query("mes_atual"), limite: int = Query(300)):
+                  periodo: str = Query("mes_atual"), limite: int = Query(300),
+                  canal: str = Query("todos")):
     """Analitico por pedido, com as mesmas regras de custo do /api/dre."""
-    cond, filtro_marca, params = _filtro_periodo(marca, unidade, periodo)
+    cond, filtro_marca, params = _filtro_periodo(marca, unidade, periodo, canal)
     params["limite"] = max(min(limite, 1000), 1)
     cfg = {r["chave"]: float(r["valor"]) for r in consultar("SELECT chave, valor FROM dre_config", {})}
     imposto_pct = cfg.get("imposto_pct", 0)
@@ -1258,7 +1266,6 @@ def pedidos_lucro(marca: str = Query("todas"), unidade: str = Query("todas"),
                coalesce(it.rec_map, 0) AS rec_map,
                coalesce(it.rec_itens, 0) AS rec_itens
         FROM pedidos p
-        LEFT JOIN canal_taxas t ON t.origem = p.origem
         LEFT JOIN (
             SELECT i.pedido_id,
                    sum(i.quantidade * c.custo) AS cmv_map,
