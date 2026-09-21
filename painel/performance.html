@@ -179,10 +179,10 @@
   <div class="tabela-wrap">
     <table class="ped">
       <thead><tr>
-        <th>Pedido</th><th>Data</th><th>Canal</th><th>Subtotal</th><th>Desc. loja</th><th>Comissão + taxa</th><th>Imposto</th>
+        <th>Pedido</th><th>Data</th><th>Canal</th><th>Subtotal</th><th>Desc. loja</th><th>Comissão + taxa</th>
         <th>CMV</th><th>Frete</th><th>Lucro</th><th>Margem</th>
       </tr></thead>
-      <tbody id="tbPedidos"><tr><td colspan="11" class="txt">Carregando…</td></tr></tbody>
+      <tbody id="tbPedidos"><tr><td colspan="10" class="txt">Carregando…</td></tr></tbody>
     </table>
   </div>
 
@@ -363,11 +363,11 @@ async function carregarPedidos(){
       <td class="txt">#${p.numero ?? p.id}</td>
       <td class="txt">${fmtData(p.data)}</td>
       <td class="txt">${p.origem ?? '—'}</td>
-      <td>${R$(p.subtotal)}</td><td>${R$(p.desconto_loja)}</td><td>${R$(p.comissao + p.taxa_transacao)}</td><td>${R$(p.imposto)}</td>
+      <td>${R$(p.subtotal)}</td><td>${R$(p.desconto_loja)}</td><td>${R$(p.comissao + p.taxa_transacao)}</td>
       <td>${R$(p.cmv)}</td><td>${R$(p.frete)}</td>
       <td class="${clsMargem(p.lucro)}">${R$(p.lucro)}</td>
       <td class="${clsMargem(p.margem)}">${p.margem.toFixed(1)}%</td>
-    </tr>`).join('') : '<tr><td colspan="11" class="txt">Sem pedidos no período.</td></tr>';
+    </tr>`).join('') : '<tr><td colspan="10" class="txt">Sem pedidos no período.</td></tr>';
 }
 
 document.getElementById('tbPedidos').addEventListener('click', async e => {
