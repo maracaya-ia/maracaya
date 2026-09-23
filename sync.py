@@ -123,7 +123,7 @@ def salvar(cur, loja_id, o):
     desc_ifood = sum((d.get("total") or 0) for d in (o.get("discounts") or [])
                      if d.get("sponsorship") == "ifood")
     desc_loja = descontos - desc_ifood
-    numero_curto = str(o.get("external_display_id") or o.get("display_id") or order_id)
+    numero_curto = str(o.get("display_id") or order_id)
     soma_itens = sum((i.get("total_price") or 0) for i in (o.get("items") or []))
     pagamentos = o.get("payments") or []
     forma_pgto = pagamentos[0].get("payment_method") if pagamentos else None
