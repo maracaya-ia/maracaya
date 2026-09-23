@@ -164,6 +164,7 @@ def salvar_pedido(cur, loja_id, o):
     desc_ifood = sum((d.get("total") or 0) for d in (o.get("discounts") or [])
                      if d.get("sponsorship") == "ifood")
     desc_loja = descontos - desc_ifood
+    numero_curto = str(o.get("external_display_id") or o.get("display_id") or order_id)
     soma_itens = sum((i.get("total_price") or 0) for i in (o.get("items") or []))
     pagamentos = o.get("payments") or []
     forma_pgto = pagamentos[0].get("payment_method") if pagamentos else None
@@ -178,8 +179,8 @@ def salvar_pedido(cur, loja_id, o):
         INSERT INTO pedidos (loja_id, order_id_cw, cliente_id, status, tipo, origem,
                              subtotal, taxa_entrega, desconto, total, forma_pagamento,
                              cupom, criado_em, concluido_em, motivo_cancelamento,
-                             desconto_loja, desconto_ifood)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                             desconto_loja, desconto_ifood, numero_curto)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (loja_id, order_id_cw) DO NOTHING
         RETURNING id
         """,
@@ -187,7 +188,7 @@ def salvar_pedido(cur, loja_id, o):
          o.get("status"), o.get("order_type"), o.get("sales_channel"),
          soma_itens, o.get("delivery_fee") or 0, descontos, total,
          forma_pgto, cupom, o.get("created_at"), o.get("updated_at"),
-         o.get("cancellation_reason"), desc_loja, desc_ifood),
+         o.get("cancellation_reason"), desc_loja, desc_ifood, numero_curto),
     )
     row = cur.fetchone()
     if row is None:

@@ -1246,7 +1246,7 @@ def _calcular_pedido(r, cfg, razao_cmv):
     cmv = float(r["cmv_map"]) + max(float(r["rec_total"]) - rec_map, 0) * razao_cmv
     lucro = receita - comissao - taxa - imposto - cmv - frete
     return {
-        "id": r["id"], "numero": r["order_id_cw"], "data": r["criado_em"].isoformat(),
+        "id": r["id"], "numero": r["numero_curto"], "data": r["criado_em"].isoformat(),
         "origem": origem, "marca": marca, "unidade": r["unidade"], "tipo": r["tipo"],
         "subtotal": sub, "entrega_cobrada": ent, "desconto_loja": dl, "desconto_ifood": di,
         "total": float(r["total"]), "bruto": bruto, "receita": receita,
@@ -1260,7 +1260,8 @@ def _calcular_pedido(r, cfg, razao_cmv):
 def _calcular_periodo(cond, filtro_marca, params):
     cfg = {r["chave"]: float(r["valor"]) for r in consultar("SELECT chave, valor FROM dre_config", {})}
     rows = consultar(f"""
-        SELECT p.id, p.order_id_cw, p.criado_em, p.origem, p.marca, p.unidade, p.tipo,
+        SELECT p.id, p.order_id_cw, coalesce(p.numero_curto, p.order_id_cw) AS numero_curto,
+               p.criado_em, p.origem, p.marca, p.unidade, p.tipo,
                p.subtotal, p.taxa_entrega, p.total, p.lat, p.lng, d.km,
                coalesce(p.desconto_loja, p.desconto, 0) AS desconto_loja,
                coalesce(p.desconto_ifood, 0) AS desconto_ifood,
