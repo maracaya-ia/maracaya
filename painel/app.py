@@ -2215,20 +2215,61 @@ def zap_pergunta(payload: dict = Body(...),
         else:
             filtro_periodo = f"AND p.criado_em >= now() - interval '{JANELA_DIAS} days' AND {dia} < {agora}::date"
 
+        # Combos tem um refrigerante FIXO cadastrado na ficha tecnica (ex: sempre
+        # "Guaraná Normal"), mas o cliente escolhe o sabor de verdade no pedido -
+        # essa escolha fica so no complemento ("Refrigerante Coca-Cola Zero Lata"),
+        # nunca no nome do produto. Sem esse ajuste o consumo de refrigerante saia
+        # quase todo pro sabor cadastrado por padrao na ficha, bem longe do real.
+        # Quando existe complemento reconhecido, ele substitui o insumo fixo da
+        # ficha; sem complemento (pedido antigo/sem essa info), mantem o fixo.
+        _CASE_REFRI = """CASE
+            WHEN co.nome ILIKE '%%coca%%' AND co.nome ILIKE '%%zero%%' THEN 'Coca Zero'
+            WHEN co.nome ILIKE '%%coca%%' THEN 'Coca Normal'
+            WHEN co.nome ILIKE '%%guaran%%' THEN 'Guaraná Normal'
+            WHEN co.nome ILIKE '%%fanta%%' THEN 'Fanta Laranja'
+            WHEN co.nome ILIKE '%%sprite%%' THEN 'Sprite'
+            WHEN co.nome ILIKE '%%heineken%%' THEN 'Heineken'
+            WHEN co.nome ILIKE '%%stella%%' THEN 'Stella Artois'
+            WHEN co.nome ILIKE '%%suco%%' AND co.nome ILIKE '%%uva%%' THEN 'Suco Del Valle Uva'
+            WHEN co.nome ILIKE '%%suco%%' AND co.nome ILIKE '%%maracuj%%' THEN 'Suco Del Valle Maracujá'
+            WHEN co.nome ILIKE '%%suco%%' THEN 'Suco (genérico)'
+            WHEN co.nome ILIKE '%%agua%%' AND co.nome ILIKE '%%gas%%' THEN 'Água com Gás'
+            WHEN co.nome ILIKE '%%agua%%' THEN 'Água Normal'
+            WHEN co.nome ILIKE '%%cerveja%%' THEN 'Cerveja (genérica)'
+            WHEN co.nome ILIKE '%%refriger%%' THEN 'Refrigerante (genérico)'
+        END"""
+        _SODAS = ("'Coca Zero','Coca Normal','Guaraná Normal','Fanta Laranja','Sprite',"
+                  "'Heineken','Stella Artois','Suco Del Valle Uva','Suco Del Valle Maracujá',"
+                  "'Suco (genérico)','Água com Gás','Água Normal','Cerveja (genérica)',"
+                  "'Refrigerante (genérico)'")
         rows = consultar(f"""
-            WITH dia_itens AS (
-                SELECT {dia} AS d,
-                       coalesce(a.canonico, lower(trim(i.nome))) AS produto,
-                       sum(i.quantidade) AS qtd
+            WITH base AS (
+                SELECT {dia} AS d, i.id AS item_id, i.quantidade,
+                       coalesce(a.canonico, lower(trim(i.nome))) AS produto
                 FROM pedido_itens i
                 JOIN pedidos p ON p.id = i.pedido_id
                 LEFT JOIN produto_alias a ON a.alias = lower(trim(i.nome))
                 WHERE p.status <> 'canceled' {filtro_periodo} {filtro_extra}
-                GROUP BY 1, 2
+            ),
+            receita AS (
+                SELECT b.d, f.insumo, f.unidade, b.quantidade * f.qtd AS consumo, f.qtd AS porcao
+                FROM base b
+                JOIN ficha_tecnica f ON f.produto = b.produto
+                WHERE NOT (
+                    b.produto ILIKE 'combo%%' AND f.insumo IN ({_SODAS})
+                    AND EXISTS (SELECT 1 FROM pedido_complementos co
+                                WHERE co.pedido_item_id = b.item_id AND {_CASE_REFRI} IS NOT NULL)
+                )
+            ),
+            refri_real AS (
+                SELECT b.d, {_CASE_REFRI} AS insumo, 'un' AS unidade,
+                       coalesce(co.quantidade, 1) AS consumo, 1::numeric AS porcao
+                FROM base b
+                JOIN pedido_complementos co ON co.pedido_item_id = b.item_id
+                WHERE b.produto ILIKE 'combo%%' AND {_CASE_REFRI} IS NOT NULL
             )
-            SELECT dv.d, f.insumo, f.unidade, sum(dv.qtd * f.qtd) AS consumo,
-                   min(f.qtd) AS porcao
-            FROM dia_itens dv JOIN ficha_tecnica f ON f.produto = dv.produto
+            SELECT d, insumo, unidade, sum(consumo) AS consumo, min(porcao) AS porcao
+            FROM (SELECT * FROM receita UNION ALL SELECT * FROM refri_real) t
             GROUP BY 1, 2, 3
         """, params_extra)
         n_dias = len({r_["d"] for r_ in rows})
