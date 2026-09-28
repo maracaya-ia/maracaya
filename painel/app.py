@@ -2198,6 +2198,98 @@ def zap_pergunta(payload: dict = Body(...),
                     f"🚫 *Sem telefone: {sem_n}* ({pct(sem_n):.0f}%) — top 10 por gasto:\n"
                     f"{_lista('NOT (' + tem_tel + ')', False)}\n\n"
                     "👉 Lista completa: painel → Clientes")
+    elif (("consumo" in q_sem_acento
+           or re.search(r"\b(uso|usa|usamos|gasto|gasta|gastamos|consumimos|consome|preciso|precisa)\b", q_sem_acento))
+          and ("quant" in q_sem_acento or "media" in q_sem_acento or "consumo" in q_sem_acento)):
+        # ---- consumo medio de insumos (vendas x ficha tecnica) por dia da semana ----
+        achado_dia = _dia_semana_match(q_sem_acento)
+        JANELA_DIAS = 56
+        filtro_dow = f"AND extract(isodow FROM {dia}) = {achado_dia[0] + 1}" if achado_dia else ""
+        rows = consultar(f"""
+            WITH dia_itens AS (
+                SELECT {dia} AS d,
+                       coalesce(a.canonico, lower(trim(i.nome))) AS produto,
+                       sum(i.quantidade) AS qtd
+                FROM pedido_itens i
+                JOIN pedidos p ON p.id = i.pedido_id
+                LEFT JOIN produto_alias a ON a.alias = lower(trim(i.nome))
+                WHERE p.status <> 'canceled'
+                  AND p.criado_em >= now() - interval '{JANELA_DIAS} days'
+                  AND {dia} < {agora}::date
+                  {filtro_dow} {filtro_extra}
+                GROUP BY 1, 2
+            )
+            SELECT dv.d, f.insumo, f.unidade, sum(dv.qtd * f.qtd) AS consumo,
+                   min(f.qtd) AS porcao
+            FROM dia_itens dv JOIN ficha_tecnica f ON f.produto = dv.produto
+            GROUP BY 1, 2, 3
+        """, params_extra)
+        n_dias = len({r_["d"] for r_ in rows})
+        if achado_dia:
+            o_, nb, _ = achado_dia
+            plural = nb.replace("-feira", "s-feiras") if "-feira" in nb else nb + "s"
+            quando = f"{plural}"
+            periodo_txt = f"últimos {JANELA_DIAS // 7} {plural} ({n_dias} com vendas)"
+        else:
+            quando, periodo_txt = "dia (todos os dias)", f"últimos {JANELA_DIAS} dias ({n_dias} dias com vendas)"
+
+        agreg = {}
+        for r_ in rows:
+            a_ = agreg.setdefault(r_["insumo"], {"un": r_["unidade"], "tot": 0.0, "max": 0.0,
+                                                  "porcao": float(r_["porcao"])})
+            v_ = float(r_["consumo"])
+            a_["tot"] += v_
+            a_["max"] = max(a_["max"], v_)
+
+        # filtro por insumo citado na pergunta (carne, batata, queijo...)
+        _stop = {"mia", "uso", "usa", "por", "que", "dia", "com", "sem", "quantas", "quantos",
+                 "quanto", "quanta", "media", "consumo", "gasto", "gasta", "preciso", "precisa",
+                 "usamos", "gastamos", "consumimos", "consome", "hoje", "ontem", "semana", "insumo",
+                 "insumos", "todos", "todas", "para", "vez", "tem", "fica", "quais", "qual"}
+        tokens = [t for t in re.findall(r"[a-z]+", re.sub(r"@\S+", "", q_sem_acento))
+                  if len(t) >= 3 and t not in _stop and _dia_semana_match(t) is None]
+
+        def _variantes(t):
+            v = {t}
+            if t.endswith("s"):
+                v.add(t[:-1])
+            if t.endswith(("aes", "oes")):
+                v.add(t[:-3] + "ao")
+            return v
+
+        nomes_ok = {n_: _sem_acento(n_) for n_ in agreg}
+        filtrados = {n_ for n_, ns in nomes_ok.items()
+                     if any(vv in ns for t in tokens for vv in _variantes(t))}
+        escolhidos = filtrados if filtrados else set(agreg)
+
+        def _fmt_num(x, casas):
+            return f"{x:,.{casas}f}".replace(",", "@").replace(".", ",").replace("@", ".")
+
+        linhas_kg, linhas_un = [], []
+        for nome_ in sorted(escolhidos, key=lambda n_: -agreg[n_]["tot"]):
+            a_ = agreg[nome_]
+            media = a_["tot"] / n_dias if n_dias else 0
+            maximo = a_["max"]
+            if a_["un"] == "kg":
+                gramas = a_["porcao"] * 1000
+                porcoes = f" (~{media / a_['porcao']:.0f} porções de {gramas:.0f}g)" if a_["porcao"] > 0 else ""
+                linhas_kg.append(f"• {nome_}: *{_fmt_num(media, 1)} kg*{porcoes} · máx {_fmt_num(maximo, 1)} kg")
+            else:
+                linhas_un.append(f"• {nome_}: *{media:.0f} un* · máx {maximo:.0f}")
+
+        if not n_dias or not (linhas_kg or linhas_un):
+            resposta = f"📦 Sem vendas suficientes pra calcular consumo médio de {quando}{filtro_txt}."
+        else:
+            partes = [f"📦 *Consumo médio por {quando}*{filtro_txt}",
+                      f"_base: {periodo_txt}_"]
+            if not filtrados and tokens:
+                partes.append("_não achei esse insumo — mostrando todos_")
+            if linhas_kg:
+                partes.append("*Por peso:*\n" + "\n".join(linhas_kg))
+            if linhas_un:
+                partes.append("*Por unidade:*\n" + "\n".join(linhas_un))
+            partes.append("_calculado pelas vendas × ficha técnica; não inclui adicionais/complementos_")
+            resposta = "\n\n".join(partes)
     elif "meta" in q:
         m = meta_do_mes(marca_d or "todas", unidade_d or "todas")
         if m.get("meta"):
@@ -2263,13 +2355,13 @@ def zap_pergunta(payload: dict = Body(...),
         resposta += aviso_filtro
     else:
         resposta = ("🤖 *Oi, aqui é a MIA!* Sei responder sobre: pedidos, faturamento, "
-                    "ticket, cancelamentos, meta, clientes sumidos, clientes com/sem telefone, estoque e tempo de "
+                    "ticket, cancelamentos, meta, clientes sumidos, clientes com/sem telefone, consumo médio de insumos por dia da semana, estoque e tempo de "
                     "entrega — com períodos hoje / ontem / segunda a domingo (com ou sem "
                     "\"passada\") / semana / mês / mês passado, e você pode filtrar por "
                     "unidade (Colorado, Sobradinho) ou marca (Chomp, Maracayá). Também "
                     "comparo dois dias.\n"
                     "Ex: _quanto a Chomp vendeu hoje?_ · _tempo de entrega na segunda?_ · "
-                    "_compare domingo 23 com domingo 30_ · _clientes com e sem telefone_")
+                    "_compare domingo 23 com domingo 30_ · _clientes com e sem telefone_ · _quantas carnes uso no domingo?_")
 
     return {"enviar": True, "texto": resposta}
 
