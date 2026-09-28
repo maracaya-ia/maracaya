@@ -2267,8 +2267,12 @@ def zap_pergunta(payload: dict = Body(...),
                and any(p in q_sem_acento for p in ("quant", "media", "total")))):
         # ---- consumo de insumos (vendas x ficha tecnica): total do periodo ou media por dia da semana ----
         achado_dia = _dia_semana_match(q_sem_acento)
-        pede_total = "total" in q_sem_acento or mes_citado is not None or (
-            not achado_dia and any(p in q_sem_acento for p in ("semana", "hoje", "ontem", "mes")))
+        # "domingo passado/retrasado" nomeia UM domingo especifico (total daquele
+        # dia); "domingo" sozinho pede a media historica dos domingos.
+        pede_total = ("total" in q_sem_acento or mes_citado is not None
+                      or (achado_dia is not None and (passada or retrasada))
+                      or (achado_dia is None and any(
+                          p in q_sem_acento for p in ("semana", "hoje", "ontem", "mes"))))
         JANELA_DIAS = 56
 
         if achado_dia and pede_total:
