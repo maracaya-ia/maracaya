@@ -2226,12 +2226,12 @@ def zap_pergunta(payload: dict = Body(...),
         """, params_extra)
         n_dias = len({r_["d"] for r_ in rows})
         if achado_dia:
-            o_, nb, _ = achado_dia
+            o_, nb, art_ = achado_dia
             plural = nb.replace("-feira", "s-feiras") if "-feira" in nb else nb + "s"
-            quando = f"{plural}"
-            periodo_txt = f"últimos {JANELA_DIAS // 7} {plural} ({n_dias} com vendas)"
+            quando = f"{art_} {nb}"
+            periodo_txt = f"últimas {JANELA_DIAS // 7} semanas: {n_dias} {plural} com vendas"
         else:
-            quando, periodo_txt = "dia (todos os dias)", f"últimos {JANELA_DIAS} dias ({n_dias} dias com vendas)"
+            quando, periodo_txt = "dia (média de todos os dias)", f"últimos {JANELA_DIAS} dias ({n_dias} dias com vendas)"
 
         agreg = {}
         for r_ in rows:
@@ -2272,15 +2272,15 @@ def zap_pergunta(payload: dict = Body(...),
             maximo = a_["max"]
             if a_["un"] == "kg":
                 gramas = a_["porcao"] * 1000
-                porcoes = f" (~{media / a_['porcao']:.0f} porções de {gramas:.0f}g)" if a_["porcao"] > 0 else ""
+                porcoes = f" (~{media / a_['porcao']:.0f} porções de {gramas:.0f}g)" if 0 < a_["porcao"] < 0.5 else ""
                 linhas_kg.append(f"• {nome_}: *{_fmt_num(media, 1)} kg*{porcoes} · máx {_fmt_num(maximo, 1)} kg")
             else:
-                linhas_un.append(f"• {nome_}: *{media:.0f} un* · máx {maximo:.0f}")
+                linhas_un.append(f"• {nome_}: *{_fmt_num(media, 0 if media >= 10 else 1)} un* · máx {maximo:.0f}")
 
         if not n_dias or not (linhas_kg or linhas_un):
             resposta = f"📦 Sem vendas suficientes pra calcular consumo médio de {quando}{filtro_txt}."
         else:
-            partes = [f"📦 *Consumo médio por {quando}*{filtro_txt}",
+            partes = [f"📦 *Consumo médio {quando if achado_dia else 'por ' + quando}*{filtro_txt}",
                       f"_base: {periodo_txt}_"]
             if not filtrados and tokens:
                 partes.append("_não achei esse insumo — mostrando todos_")
