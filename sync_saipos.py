@@ -205,9 +205,7 @@ def upsert_cliente(cur, loja_id, customer, criado_em, total):
            ON CONFLICT (loja_id, cliente_id_cw) DO UPDATE SET
                nome = COALESCE(EXCLUDED.nome, clientes.nome),
                telefone = COALESCE(EXCLUDED.telefone, clientes.telefone),
-               ultimo_pedido_em = GREATEST(clientes.ultimo_pedido_em, EXCLUDED.ultimo_pedido_em),
-               total_pedidos = clientes.total_pedidos + 1,
-               total_gasto = clientes.total_gasto + EXCLUDED.total_gasto
+               ultimo_pedido_em = GREATEST(clientes.ultimo_pedido_em, EXCLUDED.ultimo_pedido_em)
            RETURNING id""",
         (loja_id, cid, nome, fone, criado_em, criado_em, total),
     )

@@ -72,9 +72,7 @@ def upsert_cliente_novo(cur, loja_id, customer, criado_em, total):
             nome = COALESCE(EXCLUDED.nome, clientes.nome),
             telefone = COALESCE(EXCLUDED.telefone, clientes.telefone),
             primeiro_pedido_em = LEAST(clientes.primeiro_pedido_em, EXCLUDED.primeiro_pedido_em),
-            ultimo_pedido_em = GREATEST(clientes.ultimo_pedido_em, EXCLUDED.ultimo_pedido_em),
-            total_pedidos = clientes.total_pedidos + 1,
-            total_gasto = clientes.total_gasto + EXCLUDED.total_gasto
+            ultimo_pedido_em = GREATEST(clientes.ultimo_pedido_em, EXCLUDED.ultimo_pedido_em)
         RETURNING id
         """,
         (loja_id, str(customer["id"]), customer.get("name"), customer.get("phone"),
