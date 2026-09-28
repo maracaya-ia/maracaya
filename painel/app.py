@@ -2165,6 +2165,39 @@ def zap_pergunta(payload: dict = Body(...),
         s = zap_radar()
         resposta = s["texto"] if s["enviar"] else "✅ Nenhum cliente recorrente sumido há 30+ dias. Base quente!"
         resposta += aviso_filtro
+    elif "client" in q_sem_acento and any(
+            w in q_sem_acento for w in ("telefone", "celular", "whatsapp", "contato", "fone")):
+        filtro_cli = ("AND EXISTS (SELECT 1 FROM pedidos p WHERE p.cliente_id = c.id "
+                      f"{filtro_extra})") if filtro_extra else ""
+        tem_tel = "length(regexp_replace(coalesce(c.telefone, ''), '\\D', '', 'g')) >= 8"
+        tot = consultar(f"""
+            SELECT count(*) FILTER (WHERE {tem_tel}) AS com,
+                   count(*) FILTER (WHERE NOT ({tem_tel})) AS sem
+            FROM clientes c WHERE true {filtro_cli}
+        """, params_extra)[0]
+        com_n, sem_n = int(tot["com"]), int(tot["sem"])
+        base_n = com_n + sem_n
+
+        def _lista(condicao, mostra_fone):
+            linhas = consultar(f"""
+                SELECT c.nome, c.telefone, c.total_pedidos, c.total_gasto
+                FROM clientes c WHERE {condicao} {filtro_cli}
+                ORDER BY c.total_gasto DESC NULLS LAST LIMIT 10
+            """, params_extra)
+            return "\n".join(
+                f"• {(l['nome'] or 'sem nome').title()}"
+                + (f" — {l['telefone']}" if mostra_fone else "")
+                + f" · {int(l['total_pedidos'] or 0)} ped · {brl(float(l['total_gasto'] or 0))}"
+                for l in linhas) or "—"
+
+        pct = lambda n: (100 * n / base_n) if base_n else 0
+        resposta = (f"📇 *Clientes e telefone{filtro_txt}*\n"
+                    f"Base: {base_n} clientes\n\n"
+                    f"📞 *Com telefone: {com_n}* ({pct(com_n):.0f}%) — top 10 por gasto:\n"
+                    f"{_lista(tem_tel, True)}\n\n"
+                    f"🚫 *Sem telefone: {sem_n}* ({pct(sem_n):.0f}%) — top 10 por gasto:\n"
+                    f"{_lista('NOT (' + tem_tel + ')', False)}\n\n"
+                    "👉 Lista completa: painel → Clientes")
     elif "meta" in q:
         m = meta_do_mes(marca_d or "todas", unidade_d or "todas")
         if m.get("meta"):
@@ -2230,13 +2263,13 @@ def zap_pergunta(payload: dict = Body(...),
         resposta += aviso_filtro
     else:
         resposta = ("🤖 *Oi, aqui é a MIA!* Sei responder sobre: pedidos, faturamento, "
-                    "ticket, cancelamentos, meta, clientes sumidos, estoque e tempo de "
+                    "ticket, cancelamentos, meta, clientes sumidos, clientes com/sem telefone, estoque e tempo de "
                     "entrega — com períodos hoje / ontem / segunda a domingo (com ou sem "
                     "\"passada\") / semana / mês / mês passado, e você pode filtrar por "
                     "unidade (Colorado, Sobradinho) ou marca (Chomp, Maracayá). Também "
                     "comparo dois dias.\n"
                     "Ex: _quanto a Chomp vendeu hoje?_ · _tempo de entrega na segunda?_ · "
-                    "_compare domingo 23 com domingo 30_")
+                    "_compare domingo 23 com domingo 30_ · _clientes com e sem telefone_")
 
     return {"enviar": True, "texto": resposta}
 
