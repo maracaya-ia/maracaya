@@ -51,6 +51,13 @@
   .kpi-compare{margin-top:12px; padding-top:10px; border-top:1px solid var(--borda); font-size:12px}
   .kpi-compare div{display:flex; justify-content:space-between; padding:3px 0; color:var(--texto-suave)}
   .kpi-compare span:last-child{color:var(--texto); font-family:'IBM Plex Mono',monospace; font-weight:600}
+  .kpi-delta{font-size:11.5px; font-weight:700; margin-top:9px; padding-top:9px; border-top:1px dashed var(--borda)}
+  .kpi-delta span{font-weight:400; color:var(--texto-suave); margin-left:2px}
+  .kpi-delta.up{color:var(--ok)} .kpi-delta.down{color:var(--alerta)}
+
+  .chk-comparar{display:flex; align-items:center; gap:7px; font-size:13px; color:var(--texto-suave);
+    cursor:pointer; background:var(--painel); border:1px solid var(--borda); border-radius:8px; padding:8px 12px}
+  .chk-comparar input{accent-color:var(--brasa); cursor:pointer}
 
   /* ---- Resumo narrativo ---- */
   .resumo{margin-bottom:18px; display:grid; grid-template-columns:repeat(3,1fr); gap:20px}
@@ -146,6 +153,10 @@
       <button data-p="mes_passado">Mês passado</button>
       <button data-p="30">30 dias</button>
     </div>
+    <label class="chk-comparar">
+      <input type="checkbox" id="chkComparar">
+      Comparar com período anterior
+    </label>
   </div>
 </header>
 
@@ -204,14 +215,34 @@
 const R$ = v => (+(v ?? 0)).toLocaleString('pt-BR', {style:'currency', currency:'BRL'});
 const R$0 = v => (+(v ?? 0)).toLocaleString('pt-BR', {style:'currency', currency:'BRL', maximumFractionDigits:0});
 const NUM = v => (+(v ?? 0)).toLocaleString('pt-BR');
-let estado = {marca:'todas', unidade:'todas', periodo:'mes_atual', canal:'todos'};
+let estado = {marca:'todas', unidade:'todas', periodo:'mes_atual', canal:'todos', comparar:false};
 
 function linha(linhas, prefixo){
   return linhas.find(l => l.rotulo.startsWith(prefixo))?.valor ?? 0;
 }
 
+const fmtDataCurta = iso => new Date(iso + 'T00:00:00').toLocaleDateString('pt-BR', {day:'2-digit', month:'2-digit'});
+
+function deltaHtml(atual, anterior, emPontos){
+  if (!estado.comparar) return '';
+  if (anterior === 0 && atual === 0) return '';
+  let cls, txt;
+  if (emPontos){
+    const diff = atual - anterior;
+    cls = diff >= 0 ? 'up' : 'down';
+    txt = `${diff >= 0 ? '+' : ''}${diff.toFixed(1)} p.p.`;
+  } else if (anterior === 0){
+    cls = 'up'; txt = 'novo';
+  } else {
+    const pct = 100 * (atual - anterior) / anterior;
+    cls = pct >= 0 ? 'up' : 'down';
+    txt = `${pct >= 0 ? '+' : ''}${pct.toFixed(0)}%`;
+  }
+  return `<div class="kpi-delta ${cls}">${cls === 'up' ? '▲' : '▼'} ${txt}<span>vs período anterior</span></div>`;
+}
+
 async function carregar(){
-  const r = await fetch(`/api/dre?marca=${encodeURIComponent(estado.marca)}&unidade=${encodeURIComponent(estado.unidade)}&periodo=${estado.periodo}&canal=${estado.canal}`);
+  const r = await fetch(`/api/dre?marca=${encodeURIComponent(estado.marca)}&unidade=${encodeURIComponent(estado.unidade)}&periodo=${estado.periodo}&canal=${estado.canal}&comparar=${estado.comparar ? 1 : 0}`);
   const d = await r.json();
 
   const sel = document.getElementById('selMarca');
@@ -231,20 +262,24 @@ async function carregar(){
   const repasseReal = res.repasse_real;
   const T = 'font-size:12px;color:var(--texto-suave)';
 
+  const cmp = d.comparacao;
   document.getElementById('faixaEyebrow').textContent =
-    document.querySelector('#periodos .ativo')?.textContent + (estado.canal !== 'todos' ? ` · ${document.querySelector('#canais .ativo').textContent}` : '') + (estado.marca !== 'todas' ? ` · ${estado.marca}` : '');
+    document.querySelector('#periodos .ativo')?.textContent + (estado.canal !== 'todos' ? ` · ${document.querySelector('#canais .ativo').textContent}` : '') + (estado.marca !== 'todas' ? ` · ${estado.marca}` : '')
+    + (cmp ? ` · vs ${fmtDataCurta(cmp.inicio)}–${fmtDataCurta(cmp.fim)}` : '');
 
   document.getElementById('kpiCards').innerHTML = `
     <div class="kpi-card">
       <div class="kpi-card-icon tom-primaria"><span class="material-symbols-outlined">payments</span></div>
       <div class="kpi-label">Repasse real</div>
       <div class="kpi-num">${R$(repasseReal)}</div>
+      ${cmp ? deltaHtml(repasseReal, cmp.repasse_real) : ''}
       <div class="kpi-compare"><div><span>Repasse por pedido</span><span>${R$(pedidos ? repasseReal/pedidos : 0)}</span></div></div>
     </div>
     <div class="kpi-card">
       <div class="kpi-card-icon tom-primaria"><span class="material-symbols-outlined">account_balance_wallet</span></div>
       <div class="kpi-label">Lucro total</div>
       <div class="kpi-num">${R$(res.lucro)}</div>
+      ${cmp ? deltaHtml(res.lucro, cmp.lucro) : ''}
       <div class="kpi-compare">
         <div><span>Margem s/ subtotal</span><span>${res.margem.toFixed(1)}%</span></div>
         <div><span>Lucro médio/pedido</span><span>${R$(pedidos ? res.lucro/pedidos : 0)}</span></div>
@@ -254,6 +289,7 @@ async function carregar(){
       <div class="kpi-card-icon tom-alta"><span class="material-symbols-outlined">trending_up</span></div>
       <div class="kpi-label">Margem média</div>
       <div class="kpi-num">${res.margem.toFixed(1)}%</div>
+      ${cmp ? deltaHtml(res.margem, cmp.margem, true) : ''}
       <div class="kpi-compare">
         <div><span>Ticket médio</span><span>${R$(pedidos ? vendas/pedidos : 0)}</span></div>
         <div><span>Pedidos</span><span>${NUM(pedidos)}</span></div>
@@ -263,6 +299,7 @@ async function carregar(){
       <div class="kpi-card-icon tom-muted"><span class="material-symbols-outlined">receipt_long</span></div>
       <div class="kpi-label">Pedidos</div>
       <div class="kpi-num">${NUM(pedidos)}</div>
+      ${cmp ? deltaHtml(pedidos, cmp.pedidos) : ''}
       <div class="kpi-compare">
         <div><span>Valor bruto total</span><span>${R$(vendas)}</span></div>
         <div><span>CMV</span><span>${R$(cmv)}</span></div>
@@ -347,6 +384,10 @@ fetch('/api/unidades').then(r => r.json()).then(d => {
 });
 document.getElementById('selMarca').addEventListener('change', e => {
   estado.marca = e.target.value; carregar(); carregarPedidos();
+});
+document.getElementById('chkComparar').addEventListener('change', e => {
+  estado.comparar = e.target.checked;
+  carregar();
 });
 
 let pedidosCache = [];

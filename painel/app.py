@@ -1140,6 +1140,45 @@ def _filtro_periodo(marca, unidade, periodo, canal="todos"):
     return cond, filtro_marca, params
 
 
+def _menos_um_mes(d):
+    """Mesmo dia do mes anterior (ou o ultimo dia dele, se o mes anterior for mais curto)."""
+    import calendar
+    m = d.month - 1 or 12
+    y = d.year - 1 if d.month == 1 else d.year
+    ultimo_dia = calendar.monthrange(y, m)[1]
+    return d.replace(year=y, month=m, day=min(d.day, ultimo_dia))
+
+
+def _limites_periodo(periodo, hoje_d):
+    """Limites [inicio, fim) do periodo, espelhando os mesmos cond de _filtro_periodo -
+    usado so pra montar a janela de comparacao (periodo anterior)."""
+    if periodo == "hoje":
+        return hoje_d, hoje_d + timedelta(days=1)
+    if periodo == "ontem":
+        return hoje_d - timedelta(days=1), hoje_d
+    if periodo == "semana_atual":
+        return hoje_d - timedelta(days=hoje_d.isoweekday() - 1), hoje_d + timedelta(days=1)
+    if periodo == "mes_passado":
+        primeiro_atual = hoje_d.replace(day=1)
+        return _menos_um_mes(primeiro_atual), primeiro_atual
+    if periodo == "mes_atual":
+        return hoje_d.replace(day=1), hoje_d + timedelta(days=1)
+    dias = max(min(int(periodo), 365), 1)
+    return hoje_d - timedelta(days=dias - 1), hoje_d + timedelta(days=1)
+
+
+def _periodo_anterior(periodo, hoje_d):
+    """Janela [inicio, fim) do periodo anterior equivalente - semana/mes deslocam pelo
+    calendario (mesmo trecho da semana/mes passado), os demais pela propria duracao."""
+    ini, fim = _limites_periodo(periodo, hoje_d)
+    if periodo == "semana_atual":
+        return ini - timedelta(days=7), fim - timedelta(days=7)
+    if periodo in ("mes_atual", "mes_passado"):
+        return _menos_um_mes(ini), _menos_um_mes(fim)
+    dias = (fim - ini).days
+    return ini - timedelta(days=dias), fim - timedelta(days=dias)
+
+
 # ---------------------------------------------------------------------------
 # Motor de calculo por pedido - regras validadas pedido a pedido no "Sistema
 # Lucro" (Cardapio Web). DRE, analitico por pedido e Performance saem daqui,
@@ -1356,7 +1395,7 @@ def _agregar(linhas):
 
 @app.get("/api/dre")
 def dre(marca: str = Query("todas"), unidade: str = Query("todas"), periodo: str = Query("mes_atual"),
-        canal: str = Query("todos")):
+        canal: str = Query("todos"), comparar: bool = Query(False)):
     cond, filtro_marca, params = _filtro_periodo(marca, unidade, periodo, canal)
     linhas, cfg = _calcular_periodo(cond, filtro_marca, params)
     a = _agregar(linhas)
@@ -1369,6 +1408,22 @@ def dre(marca: str = Query("todas"), unidade: str = Query("todas"), periodo: str
     nota_frete = (f"{a['fr_tabela']} pela tabela real de repasse · {a['fr_gratis']} com frete grátis (custo integral)"
                   f" · {a['fr_site']} Site (R$ 8,00) · {a['fr_chomp']} Chomp (logística da plataforma)"
                   f" · {a['fr_estimado']} estimadas pela média R$ {cfg.get('custo_entrega', 0):.2f}")
+
+    comparacao = None
+    if comparar:
+        hoje_d = consultar(f"SELECT (now() AT TIME ZONE '{TZ}')::date AS d", {})[0]["d"]
+        ini2, fim2 = _periodo_anterior(periodo, hoje_d)
+        cond_ant = (f"(p.criado_em AT TIME ZONE '{TZ}')::date >= %(_ini_ant)s "
+                    f"AND (p.criado_em AT TIME ZONE '{TZ}')::date < %(_fim_ant)s")
+        params_ant = {**params, "_ini_ant": ini2, "_fim_ant": fim2}
+        linhas_ant, _ = _calcular_periodo(cond_ant, filtro_marca, params_ant)
+        a_ant = _agregar(linhas_ant)
+        comparacao = {
+            "receita": a_ant["receita"], "lucro": a_ant["lucro"], "margem": a_ant["margem"],
+            "pedidos": len(linhas_ant), "repasse_real": a_ant["repasse"],
+            "vendas_cheias": a_ant["bruto"], "cmv": a_ant["cmv"],
+            "inicio": ini2.isoformat(), "fim": (fim2 - timedelta(days=1)).isoformat(),
+        }
 
     return {
         "linhas": [
@@ -1393,6 +1448,7 @@ def dre(marca: str = Query("todas"), unidade: str = Query("todas"), periodo: str
                    "promo_ifood": a["promo_ifood"], "impostos": a["imposto"], "subtotal": a["subtotal"],
                    "vendas_cheias": a["bruto"]},
         "config": cfg,
+        "comparacao": comparacao,
         "marcas": consultar(
             "SELECT DISTINCT marca FROM pedidos WHERE marca IS NOT NULL ORDER BY 1", {}),
     }
