@@ -2117,28 +2117,64 @@ def zap_pergunta(payload: dict = Body(...),
     filtro_txt = f" _({' · '.join(partes_filtro)})_" if partes_filtro else ""
 
     # ----- periodo -----
+    # Reconhece qualquer mencao de data: hoje/ontem, semana (atual/passada/
+    # retrasada), mes (atual/passado/retrasado) e qualquer mes citado pelo nome
+    # (esse ano, ou o ano passado se o mes citado ainda nao chegou este ano).
+    _MESES_PT = [("janeiro", 1), ("fevereiro", 2), ("marco", 3), ("abril", 4),
+                 ("maio", 5), ("junho", 6), ("julho", 7), ("agosto", 8),
+                 ("setembro", 9), ("outubro", 10), ("novembro", 11), ("dezembro", 12)]
+
+    def _mes_citado(q_sa):
+        for nome, num in _MESES_PT:
+            if re.search(rf"\b{nome}\b", q_sa):
+                return nome, num
+        return None
+
     agora = f"(now() AT TIME ZONE '{TZ}')"
     dia = f"(p.criado_em AT TIME ZONE '{TZ}')::date"
-    if "hoje" in q:
+    mes_citado = _mes_citado(q_sem_acento)
+    retrasada = "retrasad" in q_sem_acento
+    passada = "passad" in q_sem_acento
+
+    if "hoje" in q_sem_acento:
         cond, rotulo = f"{dia} = {agora}::date", "hoje"
-    elif "ontem" in q:
+    elif "ontem" in q_sem_acento:
         cond, rotulo = f"{dia} = {agora}::date - 1", "ontem"
-    elif "semana passada" in q:
+    elif "semana" in q_sem_acento and retrasada:
+        cond = (f"{dia} >= date_trunc('week', {agora})::date - 14 "
+                f"AND {dia} < date_trunc('week', {agora})::date - 7")
+        rotulo = "na semana retrasada"
+    elif "semana" in q_sem_acento and passada:
         cond = (f"{dia} >= date_trunc('week', {agora})::date - 7 "
                 f"AND {dia} < date_trunc('week', {agora})::date")
         rotulo = "na semana passada"
-    elif "semana" in q:
+    elif "semana" in q_sem_acento:
         cond, rotulo = f"{dia} >= date_trunc('week', {agora})::date", "nesta semana"
-    elif "mês passado" in q or "mes passado" in q:
+    elif mes_citado and _dia_semana_match(q_sem_acento) is None:
+        nome_mes, num_mes = mes_citado
+        hoje_d = consultar(f"SELECT {agora}::date AS d", {})[0]["d"]
+        ano = hoje_d.year if num_mes <= hoje_d.month else hoje_d.year - 1
+        cond = (f"{dia} >= date '{ano}-{num_mes:02d}-01' "
+                f"AND {dia} < (date '{ano}-{num_mes:02d}-01' + interval '1 month')::date")
+        rotulo = f"em {nome_mes.capitalize()}/{ano}"
+    elif "mes" in q_sem_acento and retrasada:
+        cond = (f"{dia} >= (date_trunc('month', {agora}) - interval '2 month')::date "
+                f"AND {dia} < (date_trunc('month', {agora}) - interval '1 month')::date")
+        rotulo = "no mês retrasado"
+    elif "mes" in q_sem_acento and passada:
         cond = (f"{dia} >= (date_trunc('month', {agora}) - interval '1 month')::date "
                 f"AND {dia} < date_trunc('month', {agora})::date")
         rotulo = "no mês passado"
     elif _dia_semana_match(q_sem_acento) is not None:
         offset, nome_bonito, artigo = _dia_semana_match(q_sem_acento)
-        passada = "passad" in q_sem_acento
-        recuo = 7 if passada else 0
+        recuo = 14 if retrasada else (7 if passada else 0)
+        if retrasada:
+            sufixo = " retrasada" if artigo == "na" else " retrasado"
+        elif passada:
+            sufixo = " passada" if artigo == "na" else " passado"
+        else:
+            sufixo = ""
         cond = f"{dia} = date_trunc('week', {agora})::date + {offset} - {recuo}"
-        sufixo = (" passada" if artigo == "na" else " passado") if passada else ""
         rotulo = f"{artigo} {nome_bonito}{sufixo}"
     else:
         cond, rotulo = f"{dia} >= date_trunc('month', {agora})::date", "no mês (até agora)"
@@ -2231,11 +2267,13 @@ def zap_pergunta(payload: dict = Body(...),
                and any(p in q_sem_acento for p in ("quant", "media", "total")))):
         # ---- consumo de insumos (vendas x ficha tecnica): total do periodo ou media por dia da semana ----
         achado_dia = _dia_semana_match(q_sem_acento)
-        pede_total = "total" in q_sem_acento or (
+        pede_total = "total" in q_sem_acento or mes_citado is not None or (
             not achado_dia and any(p in q_sem_acento for p in ("semana", "hoje", "ontem", "mes")))
         JANELA_DIAS = 56
 
-        if achado_dia:
+        if achado_dia and pede_total:
+            filtro_periodo = f"AND {cond}"
+        elif achado_dia:
             filtro_periodo = (f"AND extract(isodow FROM {dia}) = {achado_dia[0] + 1} "
                               f"AND p.criado_em >= now() - interval '{JANELA_DIAS} days' AND {dia} < {agora}::date")
         elif pede_total:
@@ -2281,8 +2319,7 @@ def zap_pergunta(payload: dict = Body(...),
             titulo = f"📦 *Consumo médio {art_} {nb}*{filtro_txt}"
             periodo_txt = f"últimas {JANELA_DIAS // 7} semanas: {n_dias} {plural} com vendas"
         elif achado_dia and pede_total:
-            o_, nb, art_ = achado_dia
-            titulo = f"📦 *Total consumido {art_} {nb}{' passad' + ('a' if art_ == 'na' else 'o') if 'passad' in q_sem_acento else ''}*{filtro_txt}"
+            titulo = f"📦 *Total consumido {rotulo}*{filtro_txt}"
             periodo_txt = f"{n_dias} dia(s) com vendas nessa data"
         elif pede_total:
             titulo = f"📦 *Total consumido {rotulo}*{filtro_txt}"
@@ -2417,12 +2454,15 @@ def zap_pergunta(payload: dict = Body(...),
     else:
         resposta = ("🤖 *Oi, aqui é a MIA!* Sei responder sobre: pedidos, faturamento, "
                     "ticket, cancelamentos, meta, clientes sumidos, clientes com/sem telefone, consumo médio de insumos por dia da semana, estoque e tempo de "
-                    "entrega — com períodos hoje / ontem / segunda a domingo (com ou sem "
-                    "\"passada\") / semana / mês / mês passado, e você pode filtrar por "
-                    "unidade (Colorado, Sobradinho) ou marca (Chomp, Maracayá). Também "
-                    "comparo dois dias.\n"
+                    "entrega — com períodos hoje / ontem / segunda a domingo (com \"passada\" "
+                    "ou \"retrasada\") / semana (atual, passada, retrasada) / mês (atual, "
+                    "passado, retrasado) / ou qualquer mês pelo nome (ex: agosto, julho), e "
+                    "você pode filtrar por unidade (Colorado, Sobradinho) ou marca (Chomp, "
+                    "Maracayá). Também comparo dois dias.\n"
                     "Ex: _quanto a Chomp vendeu hoje?_ · _tempo de entrega na segunda?_ · "
-                    "_compare domingo 23 com domingo 30_ · _clientes com e sem telefone_ · _quantas carnes uso no domingo?_ · _quantas cocas zero foram consumidas na semana?_")
+                    "_compare domingo 23 com domingo 30_ · _clientes com e sem telefone_ · "
+                    "_quantas carnes uso no domingo?_ · _quantas cocas zero foram consumidas na "
+                    "semana retrasada?_ · _faturamento de agosto_")
 
     return {"enviar": True, "texto": resposta}
 
