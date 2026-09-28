@@ -561,6 +561,34 @@ def analise_clientes(marca: str = Query("todas"),
           AND ultimo < now() - (%(sumido)s || ' days')::interval
     """, params)[0]
 
+    # Clientes de pedido unico: nunca voltaram pra uma 2a compra. E o unico
+    # segmento que a "Escada da fidelizacao" ja contava, mas sem lista
+    # acionavel - diferente do resgate (2+ pedidos), aqui o pix e a PRIMEIRA
+    # impressao: ainda dentro do prazo tipico de retorno (cupom de boas-vindas
+    # pra 2a compra) ou ja esfriou (mesmo tratamento do resgate).
+    unica_compra_resumo = consultar(agg + """
+        SELECT count(*) AS clientes, coalesce(round(sum(gasto), 2), 0) AS gasto
+        FROM agg WHERE pedidos = 1
+    """, params)[0]
+
+    unica_compra_recente = consultar(agg + f"""
+        SELECT c.nome, c.telefone, round(a.gasto, 2) AS gasto,
+               extract(day FROM now() - a.primeiro)::int AS dias_desde_pedido
+        FROM agg a JOIN clientes c ON c.id = a.cliente_id
+        WHERE a.pedidos = 1 AND a.primeiro >= now() - (%(sumido)s || ' days')::interval
+          {filtro_tel}
+        ORDER BY a.gasto DESC LIMIT 30
+    """, params)
+
+    unica_compra_fria = consultar(agg + f"""
+        SELECT c.nome, c.telefone, round(a.gasto, 2) AS gasto,
+               extract(day FROM now() - a.primeiro)::int AS dias_desde_pedido
+        FROM agg a JOIN clientes c ON c.id = a.cliente_id
+        WHERE a.pedidos = 1 AND a.primeiro < now() - (%(sumido)s || ' days')::interval
+          {filtro_tel}
+        ORDER BY a.gasto DESC LIMIT 30
+    """, params)
+
     canais = consultar(
         "SELECT DISTINCT origem FROM pedidos WHERE origem IS NOT NULL ORDER BY 1", {})
     marcas = consultar(
@@ -571,6 +599,9 @@ def analise_clientes(marca: str = Query("todas"),
             "media_entre_pedidos": media_geral["media"],
             "top": top, "sumidos": sumidos, "em_risco": em_risco,
             "resgate": resgate, "sumidos_resumo": sumidos_resumo,
+            "unica_compra_resumo": unica_compra_resumo,
+            "unica_compra_recente": unica_compra_recente,
+            "unica_compra_fria": unica_compra_fria,
             "canais": canais, "marcas": marcas}
 
 

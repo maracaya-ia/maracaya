@@ -77,6 +77,9 @@
     width:min(300px, 72vw); background:#0E1013; border:1px solid var(--borda);
     padding:10px 12px; border-radius:10px; font-size:12px; font-weight:400;
     line-height:1.55; color:#EDEAE2; z-index:9; white-space:normal; text-align:left}
+  .subgrid{display:grid; grid-template-columns:1fr 1fr; gap:16px}
+  @media(max-width:900px){.subgrid{grid-template-columns:1fr}}
+  .subtitulo{font-size:12px; text-transform:uppercase; letter-spacing:.05em; color:var(--texto-suave); margin-bottom:8px}
 </style>
 <link rel="stylesheet" href="/static/_tema.css">
 </head>
@@ -114,6 +117,7 @@
   <div class="kpi"><div class="rotulo">Recorrentes</div><div class="valor" id="kRec">—</div><div class="sub" id="kRecSub"></div></div>
   <div class="kpi"><div class="rotulo">Novos (30 dias)</div><div class="valor" id="kNovos">—</div></div>
   <div class="kpi"><div class="rotulo">Gasto médio por cliente</div><div class="valor" id="kGasto">—</div></div>
+  <div class="kpi"><div class="rotulo">Só compraram 1x</div><div class="valor" id="kUnica">—</div><div class="sub" id="kUnicaSub"></div></div>
 </section>
 
 <section class="grade">
@@ -161,6 +165,27 @@
       <tbody></tbody>
     </table></div>
   </div>
+  <div class="card c-12">
+    <h2>Primeira compra sem segunda 🎯<span class="info" tabindex="0" data-tip="Clientes que fizeram só 1 pedido — nunca voltaram pra uma 2ª compra. Diferente da Lista de resgate (que já são clientes recorrentes, com 2+ pedidos). 'Ainda dá tempo' comprou dentro do prazo selecionado ao lado (bom momento pra um cupom de boas-vindas pra 2ª compra); 'Esfriando' já passou desse prazo sem voltar.">?</span></h2>
+    <div class="desc" id="descUnica">Quem experimentou uma vez e nunca mais voltou — geralmente a maior fatia da perda está aqui</div>
+    <div class="subgrid">
+      <div>
+        <h3 class="subtitulo">🔥 Ainda dá tempo</h3>
+        <div style="overflow-x:auto"><table id="tUnicaRecente">
+          <thead><tr><th>Cliente</th><th>Comprou há</th><th>Gastou</th></tr></thead>
+          <tbody></tbody>
+        </table></div>
+      </div>
+      <div>
+        <h3 class="subtitulo">🥶 Esfriando</h3>
+        <div style="overflow-x:auto"><table id="tUnicaFria">
+          <thead><tr><th>Cliente</th><th>Comprou há</th><th>Gastou</th></tr></thead>
+          <tbody></tbody>
+        </table></div>
+      </div>
+    </div>
+  </div>
+
   <div class="card c-12">
     <h2>Curva de retenção — cohorts 📈<span class="info" tabindex="0" data-tip="Cada linha é a 'turma' de clientes que fez a PRIMEIRA compra naquele mês. As colunas mostram quantos % da turma voltaram a comprar 1, 2, 3... meses depois (Mês 0 é sempre 100%). Célula mais laranja = mais gente voltou. Se as turmas novas retêm mais que as antigas na mesma coluna, o negócio está melhorando de verdade — faturamento sobe até com negócio doente, retenção não mente. O mês atual (*) ainda está em andamento, então a última coluna sempre parece pior do que vai terminar.">?</span></h2>
     <div class="desc" id="descCohort">Quantos % de cada turma de clientes continua comprando, mês a mês</div>
@@ -289,6 +314,26 @@ async function carregar(){
     <td class="dias">${c.dias_sem_pedido} dias</td>
     <td class="num">${R$(c.gasto)}</td>
   </tr>`).join('') || '<tr><td colspan="4" class="vazio">Ninguém em risco agora 👍</td></tr>';
+
+  const pctUnica = k.total > 0 ? (100 * d.unica_compra_resumo.clientes / k.total).toFixed(0) : 0;
+  document.getElementById('kUnica').textContent = NUM(d.unica_compra_resumo.clientes);
+  document.getElementById('kUnicaSub').textContent = `${pctUnica}% da base · ${R$(d.unica_compra_resumo.gasto)} em jogo`;
+  document.getElementById('descUnica').innerHTML =
+    `<strong>${NUM(d.unica_compra_resumo.clientes)} clientes</strong> (${pctUnica}% da base) só pediram uma vez e nunca voltaram — juntos já deixaram <strong>${R$(d.unica_compra_resumo.gasto)}</strong> na chapa.`;
+
+  const tbUnicaRecente = document.querySelector('#tUnicaRecente tbody');
+  tbUnicaRecente.innerHTML = d.unica_compra_recente.map(c => `<tr>
+    <td>${c.nome ?? 'Sem nome'}<br><span class="fone">${fone(c.telefone)}</span></td>
+    <td class="num">${c.dias_desde_pedido} dias</td>
+    <td class="num">${R$(c.gasto)}</td>
+  </tr>`).join('') || '<tr><td colspan="3" class="vazio">Ninguém nessa faixa</td></tr>';
+
+  const tbUnicaFria = document.querySelector('#tUnicaFria tbody');
+  tbUnicaFria.innerHTML = d.unica_compra_fria.map(c => `<tr>
+    <td>${c.nome ?? 'Sem nome'}<br><span class="fone">${fone(c.telefone)}</span></td>
+    <td class="dias">${c.dias_desde_pedido} dias</td>
+    <td class="num">${R$(c.gasto)}</td>
+  </tr>`).join('') || '<tr><td colspan="3" class="vazio">Ninguém esfriando</td></tr>';
 
   // ---- cohorts de retencao ----
   try{
