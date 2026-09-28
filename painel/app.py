@@ -2161,7 +2161,7 @@ def zap_pergunta(payload: dict = Body(...),
                         f"{data_b.strftime('%d/%m')}: {brl(fat_b)} · {int(mb['pedidos'])} pedidos\n\n"
                         f"{seta} {abs(delta):.0f}% "
                         f"{'a mais' if fat_b >= fat_a else 'a menos'} em {data_b.strftime('%d/%m')}")
-    elif "sumido" in q or "resgate" in q:
+    elif re.search(r"\bsumid\w*\b", q_sem_acento) or "resgate" in q_sem_acento:
         s = zap_radar()
         resposta = s["texto"] if s["enviar"] else "✅ Nenhum cliente recorrente sumido há 30+ dias. Base quente!"
         resposta += aviso_filtro
@@ -2198,10 +2198,9 @@ def zap_pergunta(payload: dict = Body(...),
                     f"🚫 *Sem telefone: {sem_n}* ({pct(sem_n):.0f}%) — top 10 por gasto:\n"
                     f"{_lista('NOT (' + tem_tel + ')', False)}\n\n"
                     "👉 Lista completa: painel → Clientes")
-    elif (("consumo" in q_sem_acento
-           or re.search(r"\b(uso|usa|usamos|gasto|gasta|gastamos|consumimos|consome|preciso|precisa)\b", q_sem_acento))
-          and ("quant" in q_sem_acento or "media" in q_sem_acento or "consumo" in q_sem_acento
-               or "total" in q_sem_acento)):
+    elif (re.search(r"\bconsum\w*\b", q_sem_acento)
+           or (re.search(r"\b(uso|usa|usamos|gasto|gasta|gastamos|preciso|precisa)\b", q_sem_acento)
+               and any(p in q_sem_acento for p in ("quant", "media", "total")))):
         # ---- consumo de insumos (vendas x ficha tecnica): total do periodo ou media por dia da semana ----
         achado_dia = _dia_semana_match(q_sem_acento)
         pede_total = "total" in q_sem_acento or (
