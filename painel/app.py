@@ -2095,6 +2095,16 @@ def zap_pergunta(payload: dict = Body(...),
             return hoje_d - timedelta(days=1)
         return None
 
+    _MESES_PT = [("janeiro", 1), ("fevereiro", 2), ("marco", 3), ("abril", 4),
+                 ("maio", 5), ("junho", 6), ("julho", 7), ("agosto", 8),
+                 ("setembro", 9), ("outubro", 10), ("novembro", 11), ("dezembro", 12)]
+
+    def _mes_citado(q_sa):
+        for nome, num in _MESES_PT:
+            if re.search(rf"\b{nome}\b", q_sa):
+                return nome, num
+        return None
+
     unidades_disp = [row["unidade"] for row in consultar(
         "SELECT DISTINCT unidade FROM pedidos WHERE unidade IS NOT NULL "
         "AND unidade <> 'Chomp' ORDER BY 1", {})]
@@ -2102,6 +2112,58 @@ def zap_pergunta(payload: dict = Body(...),
         "SELECT DISTINCT marca FROM pedidos WHERE marca IS NOT NULL ORDER BY 1", {})]
 
     q_sem_acento = _sem_acento(q)
+
+    # ----- memoria curta (continuacao de pergunta, ate 20min, por grupo) -----
+    # Se a mensagem nova nao traz marca/unidade, periodo ou intencao reconheciveis,
+    # reaproveita o que foi resolvido na ultima pergunta desse grupo, "colando" as
+    # palavras-chave que faltam no texto antes de rodar o resto da analise - assim
+    # todo o parser de periodo/filtro/intencao roda igual, sem duplicar logica.
+    ctx_rows = consultar(
+        "SELECT marca, unidade, periodo_frase, intent_keyword FROM mia_contexto "
+        "WHERE grupo = %(g)s AND atualizado_em > now() - interval '20 minutes'",
+        {"g": grupo})
+    ctx = ctx_rows[0] if ctx_rows else None
+    memoria_usada = []
+
+    if ctx:
+        tem_marca_unidade = (
+            any(_sem_acento(u) in q_sem_acento for u in unidades_disp)
+            or any(_sem_acento(m.split()[0]) in q_sem_acento for m in marcas_disp))
+        tem_periodo = bool(
+            "hoje" in q_sem_acento or "ontem" in q_sem_acento or "semana" in q_sem_acento
+            or "mes" in q_sem_acento or _mes_citado(q_sem_acento)
+            or _dia_semana_match(q_sem_acento))
+        tem_intent = bool(
+            "compar" in q_sem_acento
+            or re.search(r"\bsumid\w*\b", q_sem_acento) or "resgate" in q_sem_acento
+            or ("client" in q_sem_acento and any(
+                w in q_sem_acento for w in ("telefone", "celular", "whatsapp", "contato", "fone")))
+            or re.search(r"\bconsum\w*\b", q_sem_acento)
+            or (re.search(r"\b(uso|usa|usamos|gasto|gasta|gastamos|preciso|precisa)\b", q_sem_acento)
+                and any(p in q_sem_acento for p in ("quant", "media", "total")))
+            or "meta" in q_sem_acento or "ticket" in q_sem_acento or "cancel" in q_sem_acento
+            or any(p in q_sem_acento for p in ("fatur", "vendeu", "venda", "quanto fez", "receita"))
+            or "pedido" in q_sem_acento
+            or any(p in q_sem_acento for p in ("tempo de entrega", "tempo medio", "demora", "quanto tempo"))
+            or any(p in q_sem_acento for p in ("estoque", "insumo", "posicao")))
+
+        reforco = []
+        if not tem_marca_unidade and (ctx["marca"] or ctx["unidade"]):
+            if ctx["marca"]:
+                reforco.append(_sem_acento(ctx["marca"].split()[0]))
+            if ctx["unidade"]:
+                reforco.append(_sem_acento(ctx["unidade"]))
+            memoria_usada.append(" · ".join(x for x in (ctx["marca"], ctx["unidade"]) if x))
+        if not tem_periodo and ctx["periodo_frase"]:
+            reforco.append(ctx["periodo_frase"])
+            memoria_usada.append(ctx["periodo_frase"])
+        if not tem_intent and ctx["intent_keyword"]:
+            reforco.append(ctx["intent_keyword"])
+
+        if reforco:
+            q = q + " " + " ".join(reforco)
+            q_sem_acento = q_sem_acento + " " + " ".join(reforco)
+
     unidade_d = next((u for u in unidades_disp if _sem_acento(u) in q_sem_acento), None)
     marca_d = next((m for m in marcas_disp if _sem_acento(m.split()[0]) in q_sem_acento), None)
 
@@ -2120,15 +2182,6 @@ def zap_pergunta(payload: dict = Body(...),
     # Reconhece qualquer mencao de data: hoje/ontem, semana (atual/passada/
     # retrasada), mes (atual/passado/retrasado) e qualquer mes citado pelo nome
     # (esse ano, ou o ano passado se o mes citado ainda nao chegou este ano).
-    _MESES_PT = [("janeiro", 1), ("fevereiro", 2), ("marco", 3), ("abril", 4),
-                 ("maio", 5), ("junho", 6), ("julho", 7), ("agosto", 8),
-                 ("setembro", 9), ("outubro", 10), ("novembro", 11), ("dezembro", 12)]
-
-    def _mes_citado(q_sa):
-        for nome, num in _MESES_PT:
-            if re.search(rf"\b{nome}\b", q_sa):
-                return nome, num
-        return None
 
     agora = f"(now() AT TIME ZONE '{TZ}')"
     dia = f"(p.criado_em AT TIME ZONE '{TZ}')::date"
@@ -2136,35 +2189,36 @@ def zap_pergunta(payload: dict = Body(...),
     retrasada = "retrasad" in q_sem_acento
     passada = "passad" in q_sem_acento
 
+    periodo_frase = None  # frase canonica pra memoria curta; None = nao vale a pena guardar
     if "hoje" in q_sem_acento:
-        cond, rotulo = f"{dia} = {agora}::date", "hoje"
+        cond, rotulo, periodo_frase = f"{dia} = {agora}::date", "hoje", "hoje"
     elif "ontem" in q_sem_acento:
-        cond, rotulo = f"{dia} = {agora}::date - 1", "ontem"
+        cond, rotulo, periodo_frase = f"{dia} = {agora}::date - 1", "ontem", "ontem"
     elif "semana" in q_sem_acento and retrasada:
         cond = (f"{dia} >= date_trunc('week', {agora})::date - 14 "
                 f"AND {dia} < date_trunc('week', {agora})::date - 7")
-        rotulo = "na semana retrasada"
+        rotulo, periodo_frase = "na semana retrasada", "semana retrasada"
     elif "semana" in q_sem_acento and passada:
         cond = (f"{dia} >= date_trunc('week', {agora})::date - 7 "
                 f"AND {dia} < date_trunc('week', {agora})::date")
-        rotulo = "na semana passada"
+        rotulo, periodo_frase = "na semana passada", "semana passada"
     elif "semana" in q_sem_acento:
-        cond, rotulo = f"{dia} >= date_trunc('week', {agora})::date", "nesta semana"
+        cond, rotulo, periodo_frase = f"{dia} >= date_trunc('week', {agora})::date", "nesta semana", "semana"
     elif mes_citado and _dia_semana_match(q_sem_acento) is None:
         nome_mes, num_mes = mes_citado
         hoje_d = consultar(f"SELECT {agora}::date AS d", {})[0]["d"]
         ano = hoje_d.year if num_mes <= hoje_d.month else hoje_d.year - 1
         cond = (f"{dia} >= date '{ano}-{num_mes:02d}-01' "
                 f"AND {dia} < (date '{ano}-{num_mes:02d}-01' + interval '1 month')::date")
-        rotulo = f"em {nome_mes.capitalize()}/{ano}"
+        rotulo, periodo_frase = f"em {nome_mes.capitalize()}/{ano}", nome_mes
     elif "mes" in q_sem_acento and retrasada:
         cond = (f"{dia} >= (date_trunc('month', {agora}) - interval '2 month')::date "
                 f"AND {dia} < (date_trunc('month', {agora}) - interval '1 month')::date")
-        rotulo = "no mês retrasado"
+        rotulo, periodo_frase = "no mês retrasado", "mes retrasado"
     elif "mes" in q_sem_acento and passada:
         cond = (f"{dia} >= (date_trunc('month', {agora}) - interval '1 month')::date "
                 f"AND {dia} < date_trunc('month', {agora})::date")
-        rotulo = "no mês passado"
+        rotulo, periodo_frase = "no mês passado", "mes passado"
     elif _dia_semana_match(q_sem_acento) is not None:
         offset, nome_bonito, artigo = _dia_semana_match(q_sem_acento)
         recuo = 14 if retrasada else (7 if passada else 0)
@@ -2176,6 +2230,7 @@ def zap_pergunta(payload: dict = Body(...),
             sufixo = ""
         cond = f"{dia} = date_trunc('week', {agora})::date + {offset} - {recuo}"
         rotulo = f"{artigo} {nome_bonito}{sufixo}"
+        periodo_frase = _sem_acento(nome_bonito) + sufixo
     else:
         cond, rotulo = f"{dia} >= date_trunc('month', {agora})::date", "no mês (até agora)"
 
@@ -2194,6 +2249,7 @@ def zap_pergunta(payload: dict = Body(...),
                     if partes_filtro else "")
 
     # ----- intencao -----
+    intent_keyword = None
     if "compar" in q_sem_acento:
         hoje_d = consultar(f"SELECT {agora}::date AS d", {})[0]["d"]
         trecho = re.sub(r"@\S+", "", q_sem_acento)
@@ -2226,11 +2282,13 @@ def zap_pergunta(payload: dict = Body(...),
                         f"{seta} {abs(delta):.0f}% "
                         f"{'a mais' if fat_b >= fat_a else 'a menos'} em {data_b.strftime('%d/%m')}")
     elif re.search(r"\bsumid\w*\b", q_sem_acento) or "resgate" in q_sem_acento:
+        intent_keyword = "sumido"
         s = zap_radar()
         resposta = s["texto"] if s["enviar"] else "✅ Nenhum cliente recorrente sumido há 30+ dias. Base quente!"
         resposta += aviso_filtro
     elif "client" in q_sem_acento and any(
             w in q_sem_acento for w in ("telefone", "celular", "whatsapp", "contato", "fone")):
+        intent_keyword = "clientes telefone"
         filtro_cli = ("AND EXISTS (SELECT 1 FROM pedidos p WHERE p.cliente_id = c.id "
                       f"{filtro_extra})") if filtro_extra else ""
         tem_tel = "length(regexp_replace(coalesce(c.telefone, ''), '\\D', '', 'g')) >= 8"
@@ -2265,6 +2323,7 @@ def zap_pergunta(payload: dict = Body(...),
     elif (re.search(r"\bconsum\w*\b", q_sem_acento)
            or (re.search(r"\b(uso|usa|usamos|gasto|gasta|gastamos|preciso|precisa)\b", q_sem_acento)
                and any(p in q_sem_acento for p in ("quant", "media", "total")))):
+        intent_keyword = "consumo"
         # ---- consumo de insumos (vendas x ficha tecnica): total do periodo ou media por dia da semana ----
         achado_dia = _dia_semana_match(q_sem_acento)
         # "domingo passado/retrasado" nomeia UM domingo especifico (total daquele
@@ -2393,6 +2452,7 @@ def zap_pergunta(payload: dict = Body(...),
             partes.append("_calculado pelas vendas × ficha técnica; não inclui adicionais/complementos_")
             resposta = "\n\n".join(partes)
     elif "meta" in q:
+        intent_keyword = "meta"
         m = meta_do_mes(marca_d or "todas", unidade_d or "todas")
         if m.get("meta"):
             resposta = (f"🎯 *Meta do mês{filtro_txt}:* {brl(m['realizado'])} de {brl(m['meta'])} "
@@ -2404,17 +2464,22 @@ def zap_pergunta(payload: dict = Body(...),
         else:
             resposta = "🎯 Nenhuma meta definida pro mês — define lá no painel!"
     elif "ticket" in q:
+        intent_keyword = "ticket"
         resposta = f"🎯 Ticket médio {rotulo}{filtro_txt}: *{brl(float(r['ticket']))}* ({int(r['pedidos'])} pedidos)"
     elif "cancel" in q:
+        intent_keyword = "cancelamento"
         resposta = f"🚫 Cancelamentos {rotulo}{filtro_txt}: *{int(r['canc'])}*"
     elif any(p in q for p in ("fatur", "vendeu", "venda", "quanto fez", "receita")):
+        intent_keyword = "faturamento"
         resposta = (f"💰 Faturamento {rotulo}{filtro_txt}: *{brl(float(r['fat']))}*\n"
                     f"🧾 {int(r['pedidos'])} pedidos · ticket {brl(float(r['ticket']))}")
     elif "pedido" in q:
+        intent_keyword = "pedidos"
         resposta = (f"🧾 Pedidos {rotulo}{filtro_txt}: *{int(r['pedidos'])}*\n"
                     f"💰 Faturamento: {brl(float(r['fat']))}")
     elif any(p in q for p in ("tempo de entrega", "tempo médio", "tempo medio",
                               "demora", "quanto tempo")):
+        intent_keyword = "tempo de entrega"
         te = consultar(f"""
             SELECT percentile_cont(0.5) WITHIN GROUP (
                        ORDER BY extract(epoch FROM (p.concluido_em - p.criado_em)) / 60) AS mediana,
@@ -2432,6 +2497,7 @@ def zap_pergunta(payload: dict = Body(...),
             resposta = (f"⏱️ Tempo médio de entrega/preparo {rotulo}{filtro_txt}: "
                         f"*{float(te['mediana']):.0f} min* ({n_te} pedidos medidos)")
     elif any(p in q for p in ("estoque", "insumo", "posição")):
+        intent_keyword = "estoque"
         ep = estoque_plano(cobertura_dias=30, seguranca_pct=20)
         criticos, sem_registro = [], []
         for i in ep["itens"]:
@@ -2467,6 +2533,20 @@ def zap_pergunta(payload: dict = Body(...),
                     "_compare domingo 23 com domingo 30_ · _clientes com e sem telefone_ · "
                     "_quantas carnes uso no domingo?_ · _quantas cocas zero foram consumidas na "
                     "semana retrasada?_ · _faturamento de agosto_")
+
+    # ----- memoria curta: grava o que foi resolvido, avisa quando reaproveitou -----
+    if intent_keyword:
+        executar("""
+            INSERT INTO mia_contexto (grupo, marca, unidade, periodo_frase, intent_keyword, atualizado_em)
+            VALUES (%(g)s, %(marca)s, %(unidade)s, %(periodo)s, %(intent)s, now())
+            ON CONFLICT (grupo) DO UPDATE SET
+                marca = EXCLUDED.marca, unidade = EXCLUDED.unidade,
+                periodo_frase = EXCLUDED.periodo_frase, intent_keyword = EXCLUDED.intent_keyword,
+                atualizado_em = now()
+        """, {"g": grupo, "marca": marca_d, "unidade": unidade_d,
+              "periodo": periodo_frase, "intent": intent_keyword})
+        if memoria_usada:
+            resposta = f"🧠 _(continuando: {' · '.join(memoria_usada)})_\n\n{resposta}"
 
     return {"enviar": True, "texto": resposta}
 
