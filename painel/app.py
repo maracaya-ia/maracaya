@@ -2200,11 +2200,22 @@ def zap_pergunta(payload: dict = Body(...),
                     "👉 Lista completa: painel → Clientes")
     elif (("consumo" in q_sem_acento
            or re.search(r"\b(uso|usa|usamos|gasto|gasta|gastamos|consumimos|consome|preciso|precisa)\b", q_sem_acento))
-          and ("quant" in q_sem_acento or "media" in q_sem_acento or "consumo" in q_sem_acento)):
-        # ---- consumo medio de insumos (vendas x ficha tecnica) por dia da semana ----
+          and ("quant" in q_sem_acento or "media" in q_sem_acento or "consumo" in q_sem_acento
+               or "total" in q_sem_acento)):
+        # ---- consumo de insumos (vendas x ficha tecnica): total do periodo ou media por dia da semana ----
         achado_dia = _dia_semana_match(q_sem_acento)
+        pede_total = "total" in q_sem_acento or (
+            not achado_dia and any(p in q_sem_acento for p in ("semana", "hoje", "ontem", "mes")))
         JANELA_DIAS = 56
-        filtro_dow = f"AND extract(isodow FROM {dia}) = {achado_dia[0] + 1}" if achado_dia else ""
+
+        if achado_dia:
+            filtro_periodo = (f"AND extract(isodow FROM {dia}) = {achado_dia[0] + 1} "
+                              f"AND p.criado_em >= now() - interval '{JANELA_DIAS} days' AND {dia} < {agora}::date")
+        elif pede_total:
+            filtro_periodo = f"AND {cond}"
+        else:
+            filtro_periodo = f"AND p.criado_em >= now() - interval '{JANELA_DIAS} days' AND {dia} < {agora}::date"
+
         rows = consultar(f"""
             WITH dia_itens AS (
                 SELECT {dia} AS d,
@@ -2213,10 +2224,7 @@ def zap_pergunta(payload: dict = Body(...),
                 FROM pedido_itens i
                 JOIN pedidos p ON p.id = i.pedido_id
                 LEFT JOIN produto_alias a ON a.alias = lower(trim(i.nome))
-                WHERE p.status <> 'canceled'
-                  AND p.criado_em >= now() - interval '{JANELA_DIAS} days'
-                  AND {dia} < {agora}::date
-                  {filtro_dow} {filtro_extra}
+                WHERE p.status <> 'canceled' {filtro_periodo} {filtro_extra}
                 GROUP BY 1, 2
             )
             SELECT dv.d, f.insumo, f.unidade, sum(dv.qtd * f.qtd) AS consumo,
@@ -2225,13 +2233,22 @@ def zap_pergunta(payload: dict = Body(...),
             GROUP BY 1, 2, 3
         """, params_extra)
         n_dias = len({r_["d"] for r_ in rows})
-        if achado_dia:
+
+        if achado_dia and not pede_total:
             o_, nb, art_ = achado_dia
             plural = nb.replace("-feira", "s-feiras") if "-feira" in nb else nb + "s"
-            quando = f"{art_} {nb}"
+            titulo = f"📦 *Consumo médio {art_} {nb}*{filtro_txt}"
             periodo_txt = f"últimas {JANELA_DIAS // 7} semanas: {n_dias} {plural} com vendas"
+        elif achado_dia and pede_total:
+            o_, nb, art_ = achado_dia
+            titulo = f"📦 *Total consumido {art_} {nb}{' passad' + ('a' if art_ == 'na' else 'o') if 'passad' in q_sem_acento else ''}*{filtro_txt}"
+            periodo_txt = f"{n_dias} dia(s) com vendas nessa data"
+        elif pede_total:
+            titulo = f"📦 *Total consumido {rotulo}*{filtro_txt}"
+            periodo_txt = f"{n_dias} dia(s) com vendas {rotulo}"
         else:
-            quando, periodo_txt = "dia (média de todos os dias)", f"últimos {JANELA_DIAS} dias ({n_dias} dias com vendas)"
+            titulo = f"📦 *Consumo médio por dia*{filtro_txt}"
+            periodo_txt = f"últimos {JANELA_DIAS} dias ({n_dias} dias com vendas)"
 
         agreg = {}
         for r_ in rows:
@@ -2245,7 +2262,8 @@ def zap_pergunta(payload: dict = Body(...),
         _stop = {"mia", "uso", "usa", "por", "que", "dia", "com", "sem", "quantas", "quantos",
                  "quanto", "quanta", "media", "consumo", "gasto", "gasta", "preciso", "precisa",
                  "usamos", "gastamos", "consumimos", "consome", "hoje", "ontem", "semana", "insumo",
-                 "insumos", "todos", "todas", "para", "vez", "tem", "fica", "quais", "qual"}
+                 "insumos", "todos", "todas", "para", "vez", "tem", "fica", "quais", "qual",
+                 "total", "totais", "mes", "passada", "passado", "essa", "esse", "nessa", "nesse"}
         tokens = [t for t in re.findall(r"[a-z]+", re.sub(r"@\S+", "", q_sem_acento))
                   if len(t) >= 3 and t not in _stop and _dia_semana_match(t) is None]
 
@@ -2268,20 +2286,22 @@ def zap_pergunta(payload: dict = Body(...),
         linhas_kg, linhas_un = [], []
         for nome_ in sorted(escolhidos, key=lambda n_: -agreg[n_]["tot"]):
             a_ = agreg[nome_]
-            media = a_["tot"] / n_dias if n_dias else 0
+            valor = agreg[nome_]["tot"] if pede_total else (a_["tot"] / n_dias if n_dias else 0)
             maximo = a_["max"]
+            sufixo_max = "" if pede_total or n_dias <= 1 else f" · máx {{max_fmt}} num dia"
             if a_["un"] == "kg":
                 gramas = a_["porcao"] * 1000
-                porcoes = f" (~{media / a_['porcao']:.0f} porções de {gramas:.0f}g)" if 0 < a_["porcao"] < 0.5 else ""
-                linhas_kg.append(f"• {nome_}: *{_fmt_num(media, 1)} kg*{porcoes} · máx {_fmt_num(maximo, 1)} kg")
+                porcoes = f" (~{valor / a_['porcao']:.0f} porções de {gramas:.0f}g)" if 0 < a_["porcao"] < 0.5 else ""
+                max_fmt = f"{_fmt_num(maximo, 1)} kg"
+                linhas_kg.append(f"• {nome_}: *{_fmt_num(valor, 1)} kg*{porcoes}{sufixo_max.format(max_fmt=max_fmt)}")
             else:
-                linhas_un.append(f"• {nome_}: *{_fmt_num(media, 0 if media >= 10 else 1)} un* · máx {maximo:.0f}")
+                max_fmt = f"{maximo:.0f}"
+                linhas_un.append(f"• {nome_}: *{_fmt_num(valor, 0 if valor >= 10 else 1)} un*{sufixo_max.format(max_fmt=max_fmt)}")
 
         if not n_dias or not (linhas_kg or linhas_un):
-            resposta = f"📦 Sem vendas suficientes pra calcular consumo médio de {quando}{filtro_txt}."
+            resposta = f"📦 Sem vendas suficientes {filtro_txt} pra calcular isso."
         else:
-            partes = [f"📦 *Consumo médio {quando if achado_dia else 'por ' + quando}*{filtro_txt}",
-                      f"_base: {periodo_txt}_"]
+            partes = [titulo, f"_base: {periodo_txt}_"]
             if not filtrados and tokens:
                 partes.append("_não achei esse insumo — mostrando todos_")
             if linhas_kg:
@@ -2361,7 +2381,7 @@ def zap_pergunta(payload: dict = Body(...),
                     "unidade (Colorado, Sobradinho) ou marca (Chomp, Maracayá). Também "
                     "comparo dois dias.\n"
                     "Ex: _quanto a Chomp vendeu hoje?_ · _tempo de entrega na segunda?_ · "
-                    "_compare domingo 23 com domingo 30_ · _clientes com e sem telefone_ · _quantas carnes uso no domingo?_")
+                    "_compare domingo 23 com domingo 30_ · _clientes com e sem telefone_ · _quantas carnes uso no domingo?_ · _quantas cocas zero foram consumidas na semana?_")
 
     return {"enviar": True, "texto": resposta}
 
