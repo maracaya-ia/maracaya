@@ -2159,6 +2159,7 @@ def zap_pergunta(payload: dict = Body(...),
             memoria_usada.append(ctx["periodo_frase"])
         if not tem_intent and ctx["intent_keyword"]:
             reforco.append(ctx["intent_keyword"])
+            memoria_usada.append(ctx["intent_keyword"])
 
         if reforco:
             q = q + " " + " ".join(reforco)
