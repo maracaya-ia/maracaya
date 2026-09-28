@@ -1060,6 +1060,34 @@ def salvar_taxa(dados: dict = Body(...)):
     return {"ok": True}
 
 
+# Combos tem um refrigerante FIXO cadastrado na ficha tecnica (ex: sempre
+# "Guaraná Normal"), mas o cliente escolhe o sabor de verdade no pedido - essa
+# escolha fica so no complemento ("Refrigerante Coca-Cola Zero Lata"), nunca
+# no nome do produto. Usado no consumo de insumos da MIA e da aba Compras pra
+# substituir o insumo fixo da ficha pelo sabor realmente pedido, quando da pra
+# reconhecer o complemento (sem complemento reconhecido, mantem o fixo).
+_CASE_REFRI = """CASE
+    WHEN co.nome ILIKE '%%coca%%' AND co.nome ILIKE '%%zero%%' THEN 'Coca Zero'
+    WHEN co.nome ILIKE '%%coca%%' THEN 'Coca Normal'
+    WHEN co.nome ILIKE '%%guaran%%' THEN 'Guaraná Normal'
+    WHEN co.nome ILIKE '%%fanta%%' THEN 'Fanta Laranja'
+    WHEN co.nome ILIKE '%%sprite%%' THEN 'Sprite'
+    WHEN co.nome ILIKE '%%heineken%%' THEN 'Heineken'
+    WHEN co.nome ILIKE '%%stella%%' THEN 'Stella Artois'
+    WHEN co.nome ILIKE '%%suco%%' AND co.nome ILIKE '%%uva%%' THEN 'Suco Del Valle Uva'
+    WHEN co.nome ILIKE '%%suco%%' AND co.nome ILIKE '%%maracuj%%' THEN 'Suco Del Valle Maracujá'
+    WHEN co.nome ILIKE '%%suco%%' THEN 'Suco (genérico)'
+    WHEN co.nome ILIKE '%%agua%%' AND co.nome ILIKE '%%gas%%' THEN 'Água com Gás'
+    WHEN co.nome ILIKE '%%agua%%' THEN 'Água Normal'
+    WHEN co.nome ILIKE '%%cerveja%%' THEN 'Cerveja (genérica)'
+    WHEN co.nome ILIKE '%%refriger%%' THEN 'Refrigerante (genérico)'
+END"""
+_SODAS = ("'Coca Zero','Coca Normal','Guaraná Normal','Fanta Laranja','Sprite',"
+          "'Heineken','Stella Artois','Suco Del Valle Uva','Suco Del Valle Maracujá',"
+          "'Suco (genérico)','Água com Gás','Água Normal','Cerveja (genérica)',"
+          "'Refrigerante (genérico)'")
+
+
 # Comissao por canal, 100% por regra (validada em extratos reais no "Sistema Lucro"):
 # iFood 12% + 3,2% s/ subtotal | 99Food: 3,2% s/ subtotal (+8,9% "Tarifa 99" so na Chomp)
 # | Balcao/Site/outros: adquirente ~3,99% s/ valor pago (subtotal + entrega - desconto).
@@ -2215,33 +2243,6 @@ def zap_pergunta(payload: dict = Body(...),
         else:
             filtro_periodo = f"AND p.criado_em >= now() - interval '{JANELA_DIAS} days' AND {dia} < {agora}::date"
 
-        # Combos tem um refrigerante FIXO cadastrado na ficha tecnica (ex: sempre
-        # "Guaraná Normal"), mas o cliente escolhe o sabor de verdade no pedido -
-        # essa escolha fica so no complemento ("Refrigerante Coca-Cola Zero Lata"),
-        # nunca no nome do produto. Sem esse ajuste o consumo de refrigerante saia
-        # quase todo pro sabor cadastrado por padrao na ficha, bem longe do real.
-        # Quando existe complemento reconhecido, ele substitui o insumo fixo da
-        # ficha; sem complemento (pedido antigo/sem essa info), mantem o fixo.
-        _CASE_REFRI = """CASE
-            WHEN co.nome ILIKE '%%coca%%' AND co.nome ILIKE '%%zero%%' THEN 'Coca Zero'
-            WHEN co.nome ILIKE '%%coca%%' THEN 'Coca Normal'
-            WHEN co.nome ILIKE '%%guaran%%' THEN 'Guaraná Normal'
-            WHEN co.nome ILIKE '%%fanta%%' THEN 'Fanta Laranja'
-            WHEN co.nome ILIKE '%%sprite%%' THEN 'Sprite'
-            WHEN co.nome ILIKE '%%heineken%%' THEN 'Heineken'
-            WHEN co.nome ILIKE '%%stella%%' THEN 'Stella Artois'
-            WHEN co.nome ILIKE '%%suco%%' AND co.nome ILIKE '%%uva%%' THEN 'Suco Del Valle Uva'
-            WHEN co.nome ILIKE '%%suco%%' AND co.nome ILIKE '%%maracuj%%' THEN 'Suco Del Valle Maracujá'
-            WHEN co.nome ILIKE '%%suco%%' THEN 'Suco (genérico)'
-            WHEN co.nome ILIKE '%%agua%%' AND co.nome ILIKE '%%gas%%' THEN 'Água com Gás'
-            WHEN co.nome ILIKE '%%agua%%' THEN 'Água Normal'
-            WHEN co.nome ILIKE '%%cerveja%%' THEN 'Cerveja (genérica)'
-            WHEN co.nome ILIKE '%%refriger%%' THEN 'Refrigerante (genérico)'
-        END"""
-        _SODAS = ("'Coca Zero','Coca Normal','Guaraná Normal','Fanta Laranja','Sprite',"
-                  "'Heineken','Stella Artois','Suco Del Valle Uva','Suco Del Valle Maracujá',"
-                  "'Suco (genérico)','Água com Gás','Água Normal','Cerveja (genérica)',"
-                  "'Refrigerante (genérico)'")
         rows = consultar(f"""
             WITH base AS (
                 SELECT {dia} AS d, i.id AS item_id, i.quantidade,
@@ -2628,29 +2629,44 @@ def estoque_plano(cobertura_dias: int = Query(30, ge=7, le=60),
     rec, ant = float(ft["rec"]), float(ft["ant"])
     fator = max(0.6, min(1.5, rec / ant)) if ant >= 20 else 1.0
 
-    insumos = consultar("""
-        WITH vendas AS (
-            SELECT coalesce(a.canonico, lower(trim(i.nome))) AS produto,
-                   sum(i.quantidade) / 28.0 AS por_dia
+    insumos = consultar(f"""
+        WITH base AS (
+            SELECT i.id AS item_id, i.quantidade,
+                   coalesce(a.canonico, lower(trim(i.nome))) AS produto
             FROM pedido_itens i
             JOIN pedidos p ON p.id = i.pedido_id
             LEFT JOIN produto_alias a ON a.alias = lower(trim(i.nome))
             WHERE p.status <> 'canceled'
               AND p.criado_em >= now() - interval '28 days'
-            GROUP BY 1
+        ),
+        receita AS (
+            SELECT f.insumo, f.unidade, b.quantidade * f.qtd AS consumo
+            FROM base b JOIN ficha_tecnica f ON f.produto = b.produto
+            WHERE NOT (
+                b.produto ILIKE 'combo%%' AND f.insumo IN ({_SODAS})
+                AND EXISTS (SELECT 1 FROM pedido_complementos co
+                            WHERE co.pedido_item_id = b.item_id AND {_CASE_REFRI} IS NOT NULL)
+            )
+        ),
+        refri_real AS (
+            SELECT {_CASE_REFRI} AS insumo, 'un' AS unidade, coalesce(co.quantidade, 1) AS consumo
+            FROM base b JOIN pedido_complementos co ON co.pedido_item_id = b.item_id
+            WHERE b.produto ILIKE 'combo%%' AND {_CASE_REFRI} IS NOT NULL
+        ),
+        vendas AS (
+            SELECT insumo, unidade, sum(consumo) / 28.0 AS por_dia
+            FROM (SELECT * FROM receita UNION ALL SELECT * FROM refri_real) t
+            GROUP BY 1, 2
         )
-        SELECT f.insumo, f.unidade,
-               sum(v.por_dia * f.qtd) AS consumo_dia,
+        SELECT v.insumo, v.unidade, v.por_dia AS consumo_dia,
                coalesce(fi.fornecedor, '—') AS fornecedor,
                fe.estoque_atual,
                ic.custo_unitario
         FROM vendas v
-        JOIN ficha_tecnica f ON f.produto = v.produto
-        LEFT JOIN insumo_fornecedor fi ON fi.insumo = f.insumo
-        LEFT JOIN insumo_estoque fe ON fe.insumo = f.insumo
-        LEFT JOIN insumo_custo ic ON ic.insumo = f.insumo
-        GROUP BY f.insumo, f.unidade, fi.fornecedor, fe.estoque_atual, ic.custo_unitario
-        ORDER BY (f.unidade = 'kg') DESC, 3 DESC
+        LEFT JOIN insumo_fornecedor fi ON fi.insumo = v.insumo
+        LEFT JOIN insumo_estoque fe ON fe.insumo = v.insumo
+        LEFT JOIN insumo_custo ic ON ic.insumo = v.insumo
+        ORDER BY (v.unidade = 'kg') DESC, 3 DESC
     """, {})
 
     seg = 1 + seguranca_pct / 100.0
