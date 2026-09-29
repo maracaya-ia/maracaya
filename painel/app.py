@@ -1879,7 +1879,7 @@ def retencao_cohorts(marca: str = Query("todas"), unidade: str = Query("todas"))
 
 @app.get("/api/zap/radar")
 def zap_radar():
-    d = consultar(f"""
+    base_recorrentes = """
         WITH base AS (
             SELECT p.cliente_id,
                    count(*) FILTER (WHERE p.status <> 'canceled') AS pedidos,
@@ -1887,31 +1887,25 @@ def zap_radar():
                    max(p.criado_em) FILTER (WHERE p.status <> 'canceled') AS ultimo
             FROM pedidos p WHERE p.cliente_id IS NOT NULL
             GROUP BY 1 HAVING count(*) FILTER (WHERE p.status <> 'canceled') >= 2
-        ),
-        sumidos AS (
-            SELECT b.*, c.nome, row_number() OVER (ORDER BY b.gasto DESC) AS rn
-            FROM base b JOIN clientes c ON c.id = b.cliente_id
-            WHERE b.ultimo < now() - interval '30 days'
         )
-        SELECT (SELECT count(*) FROM sumidos) AS clientes,
-               (SELECT coalesce(sum(gasto), 0) FROM sumidos) AS gasto,
-               coalesce(string_agg('• ' || nome || ' — ' ||
-                   extract(day FROM now() - ultimo)::int || ' dias, R$ ' || round(gasto),
-                   E'\n' ORDER BY rn) FILTER (WHERE rn <= 5), '') AS top5
-        FROM sumidos
-    """, {})[0]
-    n = int(d["clientes"])
+    """
 
-    risco = consultar("""
-        WITH base AS (
-            SELECT p.cliente_id,
-                   count(*) FILTER (WHERE p.status <> 'canceled') AS pedidos,
-                   coalesce(sum(p.total) FILTER (WHERE p.status <> 'canceled'), 0) AS gasto,
-                   max(p.criado_em) FILTER (WHERE p.status <> 'canceled') AS ultimo
-            FROM pedidos p WHERE p.cliente_id IS NOT NULL
-            GROUP BY 1 HAVING count(*) FILTER (WHERE p.status <> 'canceled') >= 2
-        ),
-        intervalos AS (
+    sumidos_resumo = consultar(base_recorrentes + """
+        SELECT count(*) AS clientes, coalesce(sum(gasto), 0) AS gasto
+        FROM base WHERE ultimo < now() - interval '30 days'
+    """, {})[0]
+    n = int(sumidos_resumo["clientes"])
+
+    sumidos_top5 = consultar(base_recorrentes + """
+        SELECT b.cliente_id, c.nome, round(b.gasto, 2) AS gasto,
+               extract(day FROM now() - b.ultimo)::int AS dias
+        FROM base b JOIN clientes c ON c.id = b.cliente_id
+        WHERE b.ultimo < now() - interval '30 days'
+        ORDER BY b.gasto DESC LIMIT 5
+    """, {})
+
+    risco_base = base_recorrentes + """
+        , intervalos AS (
             SELECT p.cliente_id,
                    extract(epoch FROM p.criado_em
                        - lag(p.criado_em) OVER (PARTITION BY p.cliente_id
@@ -1925,23 +1919,22 @@ def zap_radar():
             GROUP BY cliente_id HAVING count(*) >= 2 AND avg(dias) >= 1
         ),
         em_risco AS (
-            SELECT b.*, c.nome, mc.intervalo_medio,
-                   row_number() OVER (ORDER BY
-                       (extract(day FROM now() - b.ultimo) / mc.intervalo_medio) DESC) AS rn
+            SELECT b.cliente_id, b.gasto, b.ultimo, c.nome, mc.intervalo_medio
             FROM base b
             JOIN clientes c ON c.id = b.cliente_id
             JOIN media_cliente mc ON mc.cliente_id = b.cliente_id
             WHERE extract(day FROM now() - b.ultimo) >= mc.intervalo_medio * 2
               AND b.ultimo >= now() - interval '30 days'
         )
-        SELECT (SELECT count(*) FROM em_risco) AS clientes,
-               coalesce(string_agg('• ' || nome || ' — costuma pedir a cada ' ||
-                   round(intervalo_medio) || 'd, já ' ||
-                   extract(day FROM now() - ultimo)::int || 'd sem pedir',
-                   E'\n' ORDER BY rn) FILTER (WHERE rn <= 5), '') AS top5
+    """
+    n_risco = int(consultar(risco_base + "SELECT count(*) AS n FROM em_risco", {})[0]["n"])
+    risco_top5 = consultar(risco_base + """
+        SELECT cliente_id, nome, round(intervalo_medio) AS intervalo_medio,
+               extract(day FROM now() - ultimo)::int AS dias
         FROM em_risco
-    """, {})[0]
-    n_risco = int(risco["clientes"])
+        ORDER BY (extract(day FROM now() - ultimo) / intervalo_medio) DESC
+        LIMIT 5
+    """, {})
 
     # Primeira compra sem segunda: só quem tem telefone (sem contato nao da pra
     # agir) e ainda comprou faz pouco tempo (30d - depois disso cai na mesma
@@ -1991,17 +1984,52 @@ def zap_radar():
     if n == 0 and n_risco == 0 and n_primeira == 0:
         return {"enviar": False, "texto": ""}
 
+    sumidos_top5_txt = "\n".join(
+        f"• {r['nome']} — {r['dias']} dias, R$ {float(r['gasto']):.2f}" for r in sumidos_top5)
+    risco_top5_txt = "\n".join(
+        f"• {r['nome']} — costuma pedir a cada {int(r['intervalo_medio'])}d, já {r['dias']}d sem pedir"
+        for r in risco_top5)
+
+    # Grava quem foi mostrado agora pra depois medir quantos voltaram a comprar
+    # (taxa de recuperacao abaixo) - sem precisar de nenhuma marcacao manual do time.
+    for cid in [r["cliente_id"] for r in sumidos_top5]:
+        executar("INSERT INTO radar_contatados (cliente_id, categoria) VALUES (%(c)s, 'sumido')", {"c": cid})
+    for cid in [r["cliente_id"] for r in risco_top5]:
+        executar("INSERT INTO radar_contatados (cliente_id, categoria) VALUES (%(c)s, 'risco')", {"c": cid})
+    for cid in [p["cliente_id"] for p in primeira]:
+        executar("INSERT INTO radar_contatados (cliente_id, categoria) "
+                 "VALUES (%(c)s, 'primeira_sem_segunda')", {"c": cid})
+
+    # Taxa de recuperacao: dos sinalizados ha 7+ dias (tempo minimo pra ter dado
+    # pra agir e a pessoa reagir), quantos % fizeram um pedido novo depois disso.
+    recuperacao = consultar("""
+        SELECT count(*) AS sinalizados,
+               count(*) FILTER (WHERE EXISTS (
+                   SELECT 1 FROM pedidos p
+                   WHERE p.cliente_id = rc.cliente_id AND p.status <> 'canceled'
+                     AND p.criado_em > rc.sinalizado_em
+               )) AS voltaram
+        FROM radar_contatados rc
+        WHERE rc.sinalizado_em <= now() - interval '7 days'
+          AND rc.sinalizado_em >= now() - interval '60 days'
+    """, {})[0]
+    n_sinalizados = int(recuperacao["sinalizados"])
+
     partes = ["🚨 *Radar de clientes — Grupo Maracayá*"]
     if n > 0:
         partes.append(f"{n} clientes recorrentes estão há 30+ dias sem pedir.\n"
-                       f"💰 Eles já deixaram *R$ {float(d['gasto']):,.2f}* na chapa.\n\n"
-                       f"*Top 5 pra resgatar:*\n{d['top5']}")
+                       f"💰 Eles já deixaram *R$ {float(sumidos_resumo['gasto']):,.2f}* na chapa.\n\n"
+                       f"*Top 5 pra resgatar:*\n{sumidos_top5_txt}")
     if n_risco > 0:
         partes.append(f"⚠️ *{n_risco} clientes em risco* — já passaram do próprio "
-                       f"padrão de compra, ainda não sumiram mas estão atrasados:\n{risco['top5']}")
+                       f"padrão de compra, ainda não sumiram mas estão atrasados:\n{risco_top5_txt}")
     if n_primeira > 0:
         partes.append(f"🎯 *{n_primeira} pediram só 1 vez* (ainda dá tempo, com telefone) "
                        f"— oferta sugerida pelo perfil de cada um:\n{linhas_primeira}")
+    if n_sinalizados >= 5:
+        pct = 100 * int(recuperacao["voltaram"]) / n_sinalizados
+        partes.append(f"📈 *Taxa de recuperação (últimos 60 dias):* {pct:.0f}% dos "
+                       f"{n_sinalizados} sinalizados em radares passados já voltaram a pedir")
     partes.append("👉 Lista completa com telefones: painel → Clientes")
     texto = "\n\n".join(partes).replace(",", "@").replace(".", ",").replace("@", ".")
     return {"enviar": True, "texto": texto}
