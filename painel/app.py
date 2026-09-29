@@ -442,12 +442,14 @@ def analise_clientes(marca: str = Query("todas"),
     # medio (cada um em quintil, combinados na media = eixo Y do grafico). Mapa
     # de 25 celulas -> 11 segmentos classicos de RFM, com os mesmos nomes em
     # PT-BR do material de referencia do usuario.
-    rfv_scores = consultar(agg + """
-        SELECT cliente_id,
-               ntile(5) OVER (ORDER BY ultimo ASC) AS r,
-               ntile(5) OVER (ORDER BY pedidos ASC) AS f,
-               ntile(5) OVER (ORDER BY (gasto / pedidos) ASC) AS m
-        FROM agg
+    rfv_scores = consultar(agg + f"""
+        SELECT a.cliente_id, c.nome, c.telefone, a.pedidos, round(a.gasto, 2) AS gasto,
+               extract(day FROM now() - a.ultimo)::int AS dias,
+               ntile(5) OVER (ORDER BY a.ultimo ASC) AS r,
+               ntile(5) OVER (ORDER BY a.pedidos ASC) AS f,
+               ntile(5) OVER (ORDER BY (a.gasto / a.pedidos) ASC) AS m
+        FROM agg a JOIN clientes c ON c.id = a.cliente_id
+        WHERE 1=1 {filtro_tel}
     """, params)
     _SEGMENTO_RF = {
         (1,5):'Não posso perder', (1,4):'Não posso perder',
@@ -463,16 +465,24 @@ def analise_clientes(marca: str = Query("todas"),
         (5,1):'Novos',
     }
     rfv_contagem = {}
+    rfv_por_segmento = {}
     for row in rfv_scores:
         fm = round((row["f"] + row["m"]) / 2) or 1
         seg = _SEGMENTO_RF.get((row["r"], fm), 'Perdidos')
         rfv_contagem[seg] = rfv_contagem.get(seg, 0) + 1
+        rfv_por_segmento.setdefault(seg, []).append(row)
     total_rfv = len(rfv_scores) or 1
     rfv = [{"segmento": nome, "clientes": rfv_contagem.get(nome, 0),
             "pct": round(100 * rfv_contagem.get(nome, 0) / total_rfv, 2)}
            for nome in ('Não posso perder', 'Em risco', 'Fieis', 'Campeões',
                         'Perdidos', 'Hibernando', 'Quase dormentes',
                         'Precisam de atenção', 'Em potenciais', 'Promissores', 'Novos')]
+    rfv_clientes = {
+        seg: [{"nome": r["nome"], "telefone": r["telefone"], "pedidos": r["pedidos"],
+               "gasto": float(r["gasto"]), "dias": r["dias"]}
+              for r in sorted(linhas, key=lambda x: -float(x["gasto"]))[:30]]
+        for seg, linhas in rfv_por_segmento.items()
+    }
 
     frequencia = consultar(agg + """
         SELECT CASE
@@ -638,7 +648,7 @@ def analise_clientes(marca: str = Query("todas"),
             "unica_compra_resumo": unica_compra_resumo,
             "unica_compra_recente": unica_compra_recente,
             "unica_compra_fria": unica_compra_fria,
-            "rfv": rfv,
+            "rfv": rfv, "rfv_clientes": rfv_clientes,
             "canais": canais, "marcas": marcas}
 
 
