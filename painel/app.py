@@ -1943,7 +1943,52 @@ def zap_radar():
     """, {})[0]
     n_risco = int(risco["clientes"])
 
-    if n == 0 and n_risco == 0:
+    # Primeira compra sem segunda: só quem tem telefone (sem contato nao da pra
+    # agir) e ainda comprou faz pouco tempo (30d - depois disso cai na mesma
+    # logica do resgate). Oferta sugerida pelo proprio ticket do pedido unico:
+    # ticket alto aguenta desconto %, ticket medio ganha mais com frete gratis
+    # (peso proporcional maior no pedido pequeno), ticket baixo so vale um mimo.
+    def _oferta(gasto):
+        if gasto >= 80:
+            return "cupom de 15% na próxima"
+        if gasto >= 40:
+            return "frete grátis na próxima"
+        return "brinde (refri ou batata) na próxima"
+
+    primeira = consultar("""
+        WITH agg AS (
+            SELECT p.cliente_id,
+                   count(*) FILTER (WHERE p.status <> 'canceled') AS pedidos,
+                   coalesce(sum(p.total) FILTER (WHERE p.status <> 'canceled'), 0) AS gasto,
+                   max(p.id) FILTER (WHERE p.status <> 'canceled') AS pedido_id,
+                   max(p.criado_em) FILTER (WHERE p.status <> 'canceled') AS quando
+            FROM pedidos p WHERE p.cliente_id IS NOT NULL
+            GROUP BY 1 HAVING count(*) FILTER (WHERE p.status <> 'canceled') = 1
+        )
+        SELECT a.cliente_id, a.pedido_id, a.gasto, c.nome, c.telefone,
+               extract(day FROM now() - a.quando)::int AS dias
+        FROM agg a JOIN clientes c ON c.id = a.cliente_id
+        WHERE a.quando >= now() - interval '30 days'
+          AND c.telefone IS NOT NULL AND length(c.telefone) > 4
+        ORDER BY a.gasto DESC LIMIT 5
+    """, {})
+    n_primeira = len(primeira)
+    if n_primeira:
+        pedido_ids = [p["pedido_id"] for p in primeira]
+        itens_por_pedido = {}
+        if pedido_ids:
+            itens = consultar(
+                "SELECT pedido_id, nome, total FROM pedido_itens "
+                "WHERE pedido_id = ANY(%(ids)s) ORDER BY total DESC",
+                {"ids": pedido_ids})
+            for i in itens:
+                itens_por_pedido.setdefault(i["pedido_id"], i["nome"])
+        linhas_primeira = "\n".join(
+            f"• {p['nome']} — pediu {itens_por_pedido.get(p['pedido_id'], 'algo')} há {p['dias']}d, "
+            f"R$ {float(p['gasto']):.2f} → sugestão: {_oferta(float(p['gasto']))}"
+            for p in primeira)
+
+    if n == 0 and n_risco == 0 and n_primeira == 0:
         return {"enviar": False, "texto": ""}
 
     partes = ["🚨 *Radar de clientes — Grupo Maracayá*"]
@@ -1954,6 +1999,9 @@ def zap_radar():
     if n_risco > 0:
         partes.append(f"⚠️ *{n_risco} clientes em risco* — já passaram do próprio "
                        f"padrão de compra, ainda não sumiram mas estão atrasados:\n{risco['top5']}")
+    if n_primeira > 0:
+        partes.append(f"🎯 *{n_primeira} pediram só 1 vez* (ainda dá tempo, com telefone) "
+                       f"— oferta sugerida pelo perfil de cada um:\n{linhas_primeira}")
     partes.append("👉 Lista completa com telefones: painel → Clientes")
     texto = "\n\n".join(partes).replace(",", "@").replace(".", ",").replace("@", ".")
     return {"enviar": True, "texto": texto}
