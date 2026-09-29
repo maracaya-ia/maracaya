@@ -438,6 +438,42 @@ def analise_clientes(marca: str = Query("todas"),
         FROM agg
     """, params)[0]
 
+    # Matriz RFV: Recencia (quinto mais recente = melhor), Frequencia e Ticket
+    # medio (cada um em quintil, combinados na media = eixo Y do grafico). Mapa
+    # de 25 celulas -> 11 segmentos classicos de RFM, com os mesmos nomes em
+    # PT-BR do material de referencia do usuario.
+    rfv_scores = consultar(agg + """
+        SELECT cliente_id,
+               ntile(5) OVER (ORDER BY ultimo ASC) AS r,
+               ntile(5) OVER (ORDER BY pedidos ASC) AS f,
+               ntile(5) OVER (ORDER BY (gasto / pedidos) ASC) AS m
+        FROM agg
+    """, params)
+    _SEGMENTO_RF = {
+        (1,5):'Não posso perder', (1,4):'Não posso perder',
+        (2,5):'Em risco', (3,5):'Em risco', (2,4):'Em risco', (3,4):'Em risco',
+        (4,5):'Fieis', (4,4):'Fieis',
+        (5,5):'Campeões', (5,4):'Campeões',
+        (1,3):'Perdidos', (1,2):'Perdidos', (1,1):'Perdidos',
+        (2,3):'Precisam de atenção', (3,3):'Precisam de atenção',
+        (2,2):'Hibernando', (2,1):'Hibernando',
+        (3,2):'Quase dormentes', (3,1):'Quase dormentes',
+        (4,3):'Em potenciais', (5,3):'Em potenciais', (4,2):'Em potenciais', (5,2):'Em potenciais',
+        (4,1):'Promissores',
+        (5,1):'Novos',
+    }
+    rfv_contagem = {}
+    for row in rfv_scores:
+        fm = round((row["f"] + row["m"]) / 2) or 1
+        seg = _SEGMENTO_RF.get((row["r"], fm), 'Perdidos')
+        rfv_contagem[seg] = rfv_contagem.get(seg, 0) + 1
+    total_rfv = len(rfv_scores) or 1
+    rfv = [{"segmento": nome, "clientes": rfv_contagem.get(nome, 0),
+            "pct": round(100 * rfv_contagem.get(nome, 0) / total_rfv, 2)}
+           for nome in ('Não posso perder', 'Em risco', 'Fieis', 'Campeões',
+                        'Perdidos', 'Hibernando', 'Quase dormentes',
+                        'Precisam de atenção', 'Em potenciais', 'Promissores', 'Novos')]
+
     frequencia = consultar(agg + """
         SELECT CASE
                  WHEN pedidos = 1 THEN '1 pedido'
@@ -602,6 +638,7 @@ def analise_clientes(marca: str = Query("todas"),
             "unica_compra_resumo": unica_compra_resumo,
             "unica_compra_recente": unica_compra_recente,
             "unica_compra_fria": unica_compra_fria,
+            "rfv": rfv,
             "canais": canais, "marcas": marcas}
 
 

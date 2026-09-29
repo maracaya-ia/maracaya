@@ -80,6 +80,25 @@
   .subgrid{display:grid; grid-template-columns:1fr 1fr; gap:16px}
   @media(max-width:900px){.subgrid{grid-template-columns:1fr}}
   .subtitulo{font-size:12px; text-transform:uppercase; letter-spacing:.05em; color:var(--texto-suave); margin-bottom:8px}
+
+  /* ---- Matriz RFV ---- */
+  .rfv-wrap{display:grid; grid-template-columns:22px 1fr; gap:10px}
+  .rfv-grid{display:grid; grid-template-columns:repeat(5,1fr); grid-template-rows:repeat(5,1fr);
+    grid-template-areas:
+      "npp er  er  fi  ca"
+      "npp er  er  fi  ca"
+      "pe  pa  pa  ep  ep"
+      "pe  hi  qd  ep  ep"
+      "pe  hi  qd  pr  no";
+    gap:4px; aspect-ratio:1.9; min-height:260px}
+  .rfv-cel{border-radius:8px; padding:10px 12px; display:flex; flex-direction:column;
+    justify-content:flex-start; overflow:hidden; color:#fff}
+  .rfv-cel .nome{font-family:'Sora',sans-serif; font-weight:700; font-size:12.5px; line-height:1.25}
+  .rfv-cel .num{font-family:'IBM Plex Mono',monospace; font-size:12px; margin-top:4px; opacity:.92}
+  .rfv-legenda-x{text-align:center; font-size:11px; color:var(--texto-suave); margin-top:8px}
+  .rfv-legenda-y{writing-mode:vertical-rl; transform:rotate(180deg); text-align:center;
+    font-size:11px; color:var(--texto-suave); white-space:nowrap}
+  @media(max-width:700px){.rfv-cel .nome{font-size:10.5px} .rfv-cel .num{font-size:10px}}
 </style>
 <link rel="stylesheet" href="/static/_tema.css">
 </head>
@@ -118,6 +137,18 @@
   <div class="kpi"><div class="rotulo">Novos (30 dias)</div><div class="valor" id="kNovos">—</div></div>
   <div class="kpi"><div class="rotulo">Gasto médio por cliente</div><div class="valor" id="kGasto">—</div></div>
   <div class="kpi"><div class="rotulo">Só compraram 1x</div><div class="valor" id="kUnica">—</div><div class="sub" id="kUnicaSub"></div></div>
+</section>
+
+<section class="card c-12" style="margin-bottom:12px">
+  <h2>Matriz RFV<span class="info" tabindex="0" data-tip="Recência, Frequência e Valor: separa a base em 11 perfis a partir de 3 quintis (Recência = há quanto tempo não pede; Frequência = quantos pedidos já fez; Ticket médio = quanto gasta por pedido — Frequência e Ticket médio entram juntos, na média, no eixo vertical). Quem está no canto superior direito é ouro; quem está no canto inferior esquerdo já era.">?</span></h2>
+  <div class="desc">Onde cada cliente está — de quem nunca mais volta a quem não pode perder</div>
+  <div class="rfv-wrap">
+    <div class="rfv-legenda-y">Frequência e Ticket médio (média)</div>
+    <div>
+      <div id="rfvGrid" class="rfv-grid"></div>
+      <div class="rfv-legenda-x">Recência (menos recente → mais recente)</div>
+    </div>
+  </div>
 </section>
 
 <section class="grade">
@@ -205,6 +236,31 @@ const NOME_CANAL = {ifood:'iFood', site:'Site', portal:'Portal (balcão)',
   rappi:'Rappi', aiqfome:'Aiqfome', keeta:'Keeta', import:'Importação'};
 let estado = {marca:'todas', unidade:'todas', sumido:30, canal:'todos', tel:0};
 let graficos = {};
+
+const RFV_MAPA = {
+  'Campeões':            {area:'ca',  cor:'#9A3412'},
+  'Fieis':               {area:'fi',  cor:'#FF7A2F'},
+  'Em potenciais':       {area:'ep',  cor:'#FF8A3F'},
+  'Novos':               {area:'no',  cor:'#E8A055'},
+  'Promissores':         {area:'pr',  cor:'#D98A3D'},
+  'Precisam de atenção': {area:'pa',  cor:'#B5762B'},
+  'Quase dormentes':     {area:'qd',  cor:'#6B4A2A'},
+  'Hibernando':          {area:'hi',  cor:'#4A3625'},
+  'Perdidos':            {area:'pe',  cor:'#2A211C'},
+  'Em risco':            {area:'er',  cor:'#C1462B'},
+  'Não posso perder':    {area:'npp', cor:'#8C1F1F'},
+};
+
+function renderRFV(rfv){
+  const porNome = Object.fromEntries((rfv || []).map(s => [s.segmento, s]));
+  document.getElementById('rfvGrid').innerHTML = Object.entries(RFV_MAPA).map(([nome, cfg]) => {
+    const s = porNome[nome] || {clientes:0, pct:0};
+    return `<div class="rfv-cel" style="grid-area:${cfg.area}; background:${cfg.cor}">
+      <span class="nome">${nome}</span>
+      <span class="num">${NUM(s.clientes)} (${s.pct.toFixed(1).replace('.', ',')}%)</span>
+    </div>`;
+  }).join('');
+}
 
 Chart.defaults.color = getComputedStyle(document.documentElement).getPropertyValue('--texto-suave').trim() || '#8B8F99';
 Chart.defaults.borderColor = getComputedStyle(document.documentElement).getPropertyValue('--borda').trim() || '#2A2E38';
@@ -318,6 +374,8 @@ async function carregar(){
   const pctUnica = k.total > 0 ? (100 * d.unica_compra_resumo.clientes / k.total).toFixed(0) : 0;
   document.getElementById('kUnica').textContent = NUM(d.unica_compra_resumo.clientes);
   document.getElementById('kUnicaSub').textContent = `${pctUnica}% da base · ${R$(d.unica_compra_resumo.gasto)} em jogo`;
+
+  renderRFV(d.rfv);
   document.getElementById('descUnica').innerHTML =
     `<strong>${NUM(d.unica_compra_resumo.clientes)} clientes</strong> (${pctUnica}% da base) só pediram uma vez e nunca voltaram — juntos já deixaram <strong>${R$(d.unica_compra_resumo.gasto)}</strong> na chapa.`;
 
