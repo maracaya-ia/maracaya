@@ -272,11 +272,16 @@ function renderRFV(rfv, rfvClientes){
   rfvClientesCache = rfvClientes || {};
   const porNome = Object.fromEntries((rfv || []).map(s => [s.segmento, s]));
   document.getElementById('rfvGrid').innerHTML = Object.entries(RFV_MAPA).map(([nome, cfg]) => {
-    const s = porNome[nome] || {clientes:0, pct:0};
+    const s = porNome[nome] || {clientes:0, pct:0, por_unidade:{}};
     const sel = nome === rfvSegmentoAberto ? ' selecionado' : '';
+    const porUnidade = estado.unidade === 'todas'
+      ? Object.entries(s.por_unidade || {}).sort((a,b) => b[1]-a[1])
+          .map(([u,n]) => `${NUM(n)} ${u}`).join(' · ')
+      : '';
     return `<div class="rfv-cel${sel}" data-segmento="${nome}" style="grid-area:${cfg.area}; background:${cfg.cor}">
       <span class="nome">${nome}</span>
       <span class="num">${NUM(s.clientes)} (${s.pct.toFixed(1).replace('.', ',')}%)</span>
+      ${porUnidade ? `<span class="num" style="opacity:.75; font-size:10.5px; margin-top:2px">${porUnidade}</span>` : ''}
     </div>`;
   }).join('');
 

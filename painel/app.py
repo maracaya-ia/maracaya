@@ -422,7 +422,9 @@ def analise_clientes(marca: str = Query("todas"),
                    count(*) FILTER (WHERE p.status <> 'canceled') AS pedidos,
                    coalesce(sum(p.total) FILTER (WHERE p.status <> 'canceled'), 0) AS gasto,
                    min(p.criado_em) AS primeiro,
-                   max(p.criado_em) FILTER (WHERE p.status <> 'canceled') AS ultimo
+                   max(p.criado_em) FILTER (WHERE p.status <> 'canceled') AS ultimo,
+                   (array_agg(p.unidade ORDER BY p.criado_em DESC)
+                       FILTER (WHERE p.status <> 'canceled'))[1] AS unidade
             FROM pedidos p
             WHERE p.cliente_id IS NOT NULL {filtros}
             GROUP BY p.cliente_id
@@ -444,7 +446,7 @@ def analise_clientes(marca: str = Query("todas"),
     # PT-BR do material de referencia do usuario.
     rfv_scores = consultar(agg + f"""
         SELECT a.cliente_id, c.nome, c.telefone, a.pedidos, round(a.gasto, 2) AS gasto,
-               extract(day FROM now() - a.ultimo)::int AS dias,
+               extract(day FROM now() - a.ultimo)::int AS dias, a.unidade,
                ntile(5) OVER (ORDER BY a.ultimo ASC) AS r,
                ntile(5) OVER (ORDER BY a.pedidos ASC) AS f,
                ntile(5) OVER (ORDER BY (a.gasto / a.pedidos) ASC) AS m
@@ -466,14 +468,19 @@ def analise_clientes(marca: str = Query("todas"),
     }
     rfv_contagem = {}
     rfv_por_segmento = {}
+    rfv_por_unidade = {}
     for row in rfv_scores:
         fm = round((row["f"] + row["m"]) / 2) or 1
         seg = _SEGMENTO_RF.get((row["r"], fm), 'Perdidos')
         rfv_contagem[seg] = rfv_contagem.get(seg, 0) + 1
         rfv_por_segmento.setdefault(seg, []).append(row)
+        un = row["unidade"] or "—"
+        rfv_por_unidade.setdefault(seg, {})
+        rfv_por_unidade[seg][un] = rfv_por_unidade[seg].get(un, 0) + 1
     total_rfv = len(rfv_scores) or 1
     rfv = [{"segmento": nome, "clientes": rfv_contagem.get(nome, 0),
-            "pct": round(100 * rfv_contagem.get(nome, 0) / total_rfv, 2)}
+            "pct": round(100 * rfv_contagem.get(nome, 0) / total_rfv, 2),
+            "por_unidade": rfv_por_unidade.get(nome, {})}
            for nome in ('Não posso perder', 'Em risco', 'Fieis', 'Campeões',
                         'Perdidos', 'Hibernando', 'Quase dormentes',
                         'Precisam de atenção', 'Em potenciais', 'Promissores', 'Novos')]
