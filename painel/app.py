@@ -602,14 +602,6 @@ def analise_clientes(marca: str = Query("todas"),
         LIMIT 30
     """, params)
 
-    sumidos_resumo = consultar(agg + """
-        SELECT count(*) AS clientes,
-               coalesce(round(sum(a.gasto), 2), 0) AS gasto_total
-        FROM agg a
-        WHERE a.pedidos >= 2
-          AND a.ultimo < now() - (%(sumido)s || ' days')::interval
-    """, params)[0]
-
     resgate = consultar(agg + """
         SELECT count(*) AS clientes,
                coalesce(round(sum(gasto), 2), 0) AS gasto
@@ -627,7 +619,7 @@ def analise_clientes(marca: str = Query("todas"),
             "novos_semana": novos_semana, "ciclos": ciclos,
             "media_entre_pedidos": media_geral["media"],
             "top": top, "sumidos": sumidos, "em_risco": em_risco,
-            "resgate": resgate, "sumidos_resumo": sumidos_resumo,
+            "resgate": resgate,
             "rfv": rfv, "rfv_clientes": rfv_clientes,
             "canais": canais, "marcas": marcas}
 
