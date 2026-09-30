@@ -102,6 +102,10 @@
   .rfv-legenda-y{writing-mode:vertical-rl; transform:rotate(180deg); text-align:center;
     font-size:11px; color:var(--texto-suave); white-space:nowrap}
   @media(max-width:700px){.rfv-cel .nome{font-size:10.5px} .rfv-cel .num{font-size:10px}}
+
+  .badge-rfv{display:inline-block; padding:3px 10px; border-radius:20px; font-size:11.5px;
+    font-weight:600; color:#fff; white-space:nowrap}
+  #tLista tbody tr:hover{background:rgba(255,122,47,.05)}
 </style>
 <link rel="stylesheet" href="/static/_tema.css">
 </head>
@@ -237,6 +241,45 @@
     <div style="overflow-x:auto"><table class="cohort" id="tCohort">
       <thead></thead><tbody></tbody>
     </table></div>
+  </div>
+</section>
+
+<section class="card c-12" style="margin-top:12px">
+  <h2>Lista completa de clientes</h2>
+  <div class="desc">Todo mundo que já pediu, com a classificação RFV de cada um — busque por nome ou telefone</div>
+  <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:12px">
+    <input type="search" id="listaBusca" placeholder="🔍 Buscar por nome ou telefone…"
+      style="flex:1; min-width:220px; background:var(--fundo); color:var(--texto); border:1px solid var(--borda);
+      border-radius:8px; padding:9px 12px; font-family:'Inter'; font-size:13px">
+    <select id="listaOrdenar">
+      <option value="pedidos">Mais pedidos</option>
+      <option value="gasto">Maior gasto total</option>
+      <option value="ticket_medio">Maior ticket médio</option>
+      <option value="ultimo">Pedido mais recente</option>
+      <option value="primeiro">Cliente mais antigo</option>
+    </select>
+  </div>
+  <div style="overflow-x:auto"><table id="tLista">
+    <thead><tr>
+      <th>Cliente</th><th>Total de pedidos</th><th>Ticket médio</th>
+      <th>Último pedido</th><th>Cliente desde</th><th>Classificação RFV</th>
+    </tr></thead>
+    <tbody></tbody>
+  </table></div>
+  <div style="display:flex; align-items:center; justify-content:space-between; margin-top:12px; flex-wrap:wrap; gap:8px">
+    <span id="listaContagem" style="color:var(--texto-suave); font-size:12px"></span>
+    <div style="display:flex; align-items:center; gap:8px">
+      <select id="listaPorPagina">
+        <option value="10">10 por página</option>
+        <option value="25">25 por página</option>
+        <option value="50">50 por página</option>
+      </select>
+      <button id="listaAnterior" style="background:var(--painel); border:1px solid var(--borda); color:var(--texto);
+        border-radius:6px; padding:6px 10px; cursor:pointer">‹</button>
+      <span id="listaPagina" style="font-family:'IBM Plex Mono',monospace; font-size:13px"></span>
+      <button id="listaProxima" style="background:var(--painel); border:1px solid var(--borda); color:var(--texto);
+        border-radius:6px; padding:6px 10px; cursor:pointer">›</button>
+    </div>
   </div>
 </section>
 
@@ -507,7 +550,7 @@ async function carregar(){
 
 document.getElementById('selUnidade').addEventListener('change', e => {
   estado.unidade = e.target.value;
-  carregar();
+  carregar(); carregarLista();
 });
 fetch('/api/unidades').then(r => r.json()).then(d => {
   const sel = document.getElementById('selUnidade');
@@ -517,19 +560,77 @@ fetch('/api/unidades').then(r => r.json()).then(d => {
   });
 });
 document.getElementById('selMarca').addEventListener('change', e => {
-  estado.marca = e.target.value; carregar();
+  estado.marca = e.target.value; carregar(); carregarLista();
 });
 document.getElementById('selSumido').addEventListener('change', e => {
   estado.sumido = +e.target.value; carregar();
 });
 document.getElementById('selCanal').addEventListener('change', e => {
-  estado.canal = e.target.value; carregar();
+  estado.canal = e.target.value; carregar(); carregarLista();
 });
 document.getElementById('selTel').addEventListener('change', e => {
-  estado.tel = +e.target.value; carregar();
+  estado.tel = +e.target.value; carregar(); carregarLista();
+});
+
+// ---- lista completa de clientes (paginada) ----
+const RFV_COR = Object.fromEntries(Object.entries(RFV_MAPA).map(([n, c]) => [n, c.cor]));
+let estadoLista = {busca:'', ordenar:'pedidos', pagina:1, porPagina:10};
+let buscaTimer = null;
+
+function fmtData(iso){
+  if (!iso) return '—';
+  return new Date(iso).toLocaleDateString('pt-BR', {day:'2-digit', month:'2-digit', year:'numeric'});
+}
+
+async function carregarLista(){
+  const q = new URLSearchParams({
+    marca: estado.marca, unidade: estado.unidade, canal: estado.canal,
+    so_com_telefone: estado.tel, busca: estadoLista.busca,
+    ordenar_por: estadoLista.ordenar, pagina: estadoLista.pagina,
+    por_pagina: estadoLista.porPagina,
+  });
+  const r = await fetch(`/api/clientes/lista?${q}`);
+  const d = await r.json();
+
+  document.querySelector('#tLista tbody').innerHTML = d.clientes.map(c => `<tr>
+    <td>${c.nome ?? 'Sem nome'}<br><span class="fone">${fone(c.telefone)}</span></td>
+    <td class="num">${c.pedidos}</td>
+    <td class="num">${R$(c.ticket_medio)}</td>
+    <td class="num">${fmtData(c.ultimo_pedido)}</td>
+    <td class="num">${fmtData(c.cliente_desde)}</td>
+    <td><span class="badge-rfv" style="background:${RFV_COR[c.segmento] || '#666'}">${c.segmento}</span></td>
+  </tr>`).join('') || '<tr><td colspan="6" class="vazio">Nenhum cliente encontrado</td></tr>';
+
+  const totalPaginas = Math.max(1, Math.ceil(d.total / d.por_pagina));
+  const inicio = d.total === 0 ? 0 : (d.pagina - 1) * d.por_pagina + 1;
+  const fim = Math.min(d.pagina * d.por_pagina, d.total);
+  document.getElementById('listaContagem').textContent = `${NUM(inicio)}–${NUM(fim)} de ${NUM(d.total)} clientes`;
+  document.getElementById('listaPagina').textContent = `${d.pagina} / ${totalPaginas}`;
+  document.getElementById('listaAnterior').disabled = d.pagina <= 1;
+  document.getElementById('listaProxima').disabled = d.pagina >= totalPaginas;
+}
+
+document.getElementById('listaBusca').addEventListener('input', e => {
+  clearTimeout(buscaTimer);
+  buscaTimer = setTimeout(() => {
+    estadoLista.busca = e.target.value; estadoLista.pagina = 1; carregarLista();
+  }, 350);
+});
+document.getElementById('listaOrdenar').addEventListener('change', e => {
+  estadoLista.ordenar = e.target.value; estadoLista.pagina = 1; carregarLista();
+});
+document.getElementById('listaPorPagina').addEventListener('change', e => {
+  estadoLista.porPagina = +e.target.value; estadoLista.pagina = 1; carregarLista();
+});
+document.getElementById('listaAnterior').addEventListener('click', () => {
+  if (estadoLista.pagina > 1){ estadoLista.pagina--; carregarLista(); }
+});
+document.getElementById('listaProxima').addEventListener('click', () => {
+  estadoLista.pagina++; carregarLista();
 });
 
 carregar();
+carregarLista();
 setInterval(carregar, 5 * 60 * 1000);
 </script>
 <script src="/static/_tema.js"></script>
