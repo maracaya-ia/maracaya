@@ -37,6 +37,10 @@
 
   #mapa{height:440px; border-radius:10px; background:#0E1013}
   .leaflet-container{font-family:'Inter'}
+  /* OSM so tem tile claro - escurece via filtro no tema escuro (CARTO passou
+     a exigir API key ate no "dark_all" gratuito que usavamos antes) */
+  :root[data-tema="escuro"] #mapa .leaflet-tile-pane{
+    filter:invert(1) hue-rotate(180deg) brightness(.85) contrast(.9) saturate(.6)}
 
   table{width:100%; border-collapse:collapse; font-size:13px}
   th{color:var(--texto-suave); text-align:left; font-weight:500; padding:8px 8px;
@@ -110,8 +114,10 @@ let mapa = null, camadaPontos = null;
 function garantirMapa(){
   if (mapa) return;
   mapa = L.map('mapa', {zoomControl:true}).setView([-15.65, -47.83], 12);
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-    attribution: '© OpenStreetMap · © CARTO', maxZoom: 18
+  // CARTO passou a exigir API key ate pros tiles "dark_all" gratuitos -
+  // troca pro tile padrao do OpenStreetMap (sem chave, sem watermark).
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap', maxZoom: 19
   }).addTo(mapa);
 }
 
