@@ -132,14 +132,16 @@
   .canc-grid{display:grid; grid-template-columns:220px 1fr; gap:28px; align-items:center; margin-top:10px}
   @media(max-width:800px){.canc-grid{grid-template-columns:1fr}}
   .canc-donut{position:relative; height:220px}
-  table.canc{width:100%; border-collapse:collapse; font-size:13px}
+  table.canc{width:100%; border-collapse:collapse; font-size:13px; table-layout:fixed}
   table.canc th{color:var(--texto-suave); text-align:left; font-weight:500; padding:8px;
     border-bottom:1px solid var(--borda); text-transform:uppercase; font-size:11px; letter-spacing:.04em}
-  table.canc th:not(:first-child), table.canc td:not(:first-child){text-align:right}
-  table.canc td{padding:9px 8px; border-bottom:1px solid var(--borda); vertical-align:top}
+  table.canc th:nth-child(2), table.canc th:nth-child(3), table.canc th:nth-child(4),
+  table.canc td:nth-child(2), table.canc td:nth-child(3), table.canc td:nth-child(4){text-align:right; width:110px}
+  table.canc td{padding:9px 8px; border-bottom:1px solid var(--borda); vertical-align:middle}
   table.canc tr:last-child td{border-bottom:none}
-  table.canc td:first-child{display:flex; gap:8px; align-items:flex-start}
-  table.canc .bolinha{width:10px; height:10px; border-radius:50%; margin-top:4px; flex:none}
+  table.canc td:first-child{display:flex; gap:8px; align-items:center; overflow:hidden}
+  table.canc .bolinha{width:10px; height:10px; border-radius:50%; flex:none}
+  table.canc .motivo-txt{overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:help; min-width:0; flex:1}
   table.canc td.num{font-family:'IBM Plex Mono',monospace; font-variant-numeric:tabular-nums; white-space:nowrap}
   .canc-resumo{color:var(--texto-suave); font-size:12px; margin-bottom:4px}
   .canc-resumo b{color:var(--texto)}
@@ -413,7 +415,7 @@ async function carregarCancelamentos(){
 
   document.getElementById('tCancelamentos').innerHTML = motivos.length ? motivos.map((m, i) => `
     <tr>
-      <td><span class="bolinha" style="background:${CORES_CANC[i % CORES_CANC.length]}"></span>${m.motivo}</td>
+      <td><span class="bolinha" style="background:${CORES_CANC[i % CORES_CANC.length]}"></span><span class="motivo-txt" title="${m.motivo.replace(/"/g, '&quot;')}">${m.motivo}</span></td>
       <td class="num">${R$(m.faturamento)}</td>
       <td class="num">${NUM(m.pedidos)}</td>
       <td class="num">${R$(m.ticket)}</td>
