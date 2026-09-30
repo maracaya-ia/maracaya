@@ -394,6 +394,23 @@ def resumo_geral(marca: str = Query("todas"), unidade: str = Query("todas")):
     }
 
 
+# Mapa classico de 25 celulas (Recencia, Frequencia+Ticket combinados) -> 11
+# segmentos RFM, usado tanto na Matriz RFV quanto na lista completa de clientes.
+_SEGMENTO_RF = {
+    (1,5):'Não posso perder', (1,4):'Não posso perder',
+    (2,5):'Em risco', (3,5):'Em risco', (2,4):'Em risco', (3,4):'Em risco',
+    (4,5):'Fieis', (4,4):'Fieis',
+    (5,5):'Campeões', (5,4):'Campeões',
+    (1,3):'Perdidos', (1,2):'Perdidos', (1,1):'Perdidos',
+    (2,3):'Precisam de atenção', (3,3):'Precisam de atenção',
+    (2,2):'Hibernando', (2,1):'Hibernando',
+    (3,2):'Quase dormentes', (3,1):'Quase dormentes',
+    (4,3):'Em potenciais', (5,3):'Em potenciais', (4,2):'Em potenciais', (5,2):'Em potenciais',
+    (4,1):'Promissores',
+    (5,1):'Novos',
+}
+
+
 @app.get("/api/clientes")
 def analise_clientes(marca: str = Query("todas"),
                      unidade: str = Query("todas"),
@@ -453,19 +470,6 @@ def analise_clientes(marca: str = Query("todas"),
         FROM agg a JOIN clientes c ON c.id = a.cliente_id
         WHERE 1=1 {filtro_tel}
     """, params)
-    _SEGMENTO_RF = {
-        (1,5):'Não posso perder', (1,4):'Não posso perder',
-        (2,5):'Em risco', (3,5):'Em risco', (2,4):'Em risco', (3,4):'Em risco',
-        (4,5):'Fieis', (4,4):'Fieis',
-        (5,5):'Campeões', (5,4):'Campeões',
-        (1,3):'Perdidos', (1,2):'Perdidos', (1,1):'Perdidos',
-        (2,3):'Precisam de atenção', (3,3):'Precisam de atenção',
-        (2,2):'Hibernando', (2,1):'Hibernando',
-        (3,2):'Quase dormentes', (3,1):'Quase dormentes',
-        (4,3):'Em potenciais', (5,3):'Em potenciais', (4,2):'Em potenciais', (5,2):'Em potenciais',
-        (4,1):'Promissores',
-        (5,1):'Novos',
-    }
     rfv_contagem = {}
     rfv_por_segmento = {}
     rfv_por_unidade = {}
@@ -657,6 +661,83 @@ def analise_clientes(marca: str = Query("todas"),
             "unica_compra_fria": unica_compra_fria,
             "rfv": rfv, "rfv_clientes": rfv_clientes,
             "canais": canais, "marcas": marcas}
+
+
+@app.get("/api/clientes/lista")
+def lista_clientes(marca: str = Query("todas"), unidade: str = Query("todas"),
+                   canal: str = Query("todos"), so_com_telefone: int = Query(0, ge=0, le=1),
+                   busca: str = Query(""), pagina: int = Query(1, ge=1),
+                   por_pagina: int = Query(10, ge=5, le=100),
+                   ordenar_por: str = Query("pedidos"), direcao: str = Query("desc")):
+    """Lista completa (paginada) de clientes com a classificacao RFV, pra
+    conferir/buscar qualquer cliente individualmente - complementa a Matriz RFV,
+    que so mostra os agregados por segmento."""
+    filtros = ""
+    params = {}
+    if marca != "todas":
+        filtros += " AND p.marca = %(marca)s"
+        params["marca"] = marca
+    if unidade != "todas":
+        filtros += " AND p.unidade = %(unidade)s"
+        params["unidade"] = unidade
+    if canal != "todos":
+        filtros += " AND p.origem = %(canal)s"
+        params["canal"] = canal
+    filtro_tel = " AND c.telefone IS NOT NULL AND length(c.telefone) > 4" if so_com_telefone else ""
+
+    linhas = consultar(f"""
+        WITH agg AS (
+            SELECT p.cliente_id,
+                   count(*) FILTER (WHERE p.status <> 'canceled') AS pedidos,
+                   coalesce(sum(p.total) FILTER (WHERE p.status <> 'canceled'), 0) AS gasto,
+                   min(p.criado_em) AS primeiro,
+                   max(p.criado_em) FILTER (WHERE p.status <> 'canceled') AS ultimo
+            FROM pedidos p
+            WHERE p.cliente_id IS NOT NULL {filtros}
+            GROUP BY p.cliente_id
+            HAVING count(*) FILTER (WHERE p.status <> 'canceled') > 0
+        )
+        SELECT a.cliente_id, c.nome, c.telefone, a.pedidos, round(a.gasto, 2) AS gasto,
+               round(a.gasto / a.pedidos, 2) AS ticket_medio,
+               a.primeiro, a.ultimo,
+               ntile(5) OVER (ORDER BY a.ultimo ASC) AS r,
+               ntile(5) OVER (ORDER BY a.pedidos ASC) AS f,
+               ntile(5) OVER (ORDER BY (a.gasto / a.pedidos) ASC) AS m
+        FROM agg a JOIN clientes c ON c.id = a.cliente_id
+        WHERE 1=1 {filtro_tel}
+    """, params)
+
+    for r in linhas:
+        fm = round((r["f"] + r["m"]) / 2) or 1
+        r["segmento"] = _SEGMENTO_RF.get((r["r"], fm), 'Perdidos')
+
+    busca_norm = busca.strip().lower()
+    if busca_norm:
+        linhas = [r for r in linhas
+                  if busca_norm in (r["nome"] or "").lower()
+                  or busca_norm in (r["telefone"] or "")]
+
+    chave_ordenacao = {
+        "pedidos": lambda r: r["pedidos"], "gasto": lambda r: float(r["gasto"]),
+        "ticket_medio": lambda r: float(r["ticket_medio"]),
+        "ultimo": lambda r: r["ultimo"], "primeiro": lambda r: r["primeiro"],
+    }.get(ordenar_por, lambda r: r["pedidos"])
+    linhas.sort(key=chave_ordenacao, reverse=(direcao != "asc"))
+
+    total = len(linhas)
+    inicio = (pagina - 1) * por_pagina
+    pagina_atual = linhas[inicio:inicio + por_pagina]
+
+    return {
+        "total": total, "pagina": pagina, "por_pagina": por_pagina,
+        "clientes": [{
+            "nome": r["nome"], "telefone": r["telefone"], "pedidos": r["pedidos"],
+            "ticket_medio": float(r["ticket_medio"]), "gasto": float(r["gasto"]),
+            "ultimo_pedido": r["ultimo"].isoformat() if r["ultimo"] else None,
+            "cliente_desde": r["primeiro"].isoformat() if r["primeiro"] else None,
+            "segmento": r["segmento"],
+        } for r in pagina_atual],
+    }
 
 
 @app.get("/api/operacao")
