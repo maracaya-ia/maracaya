@@ -33,7 +33,7 @@
   .kpi.destaque .valor{color:var(--brasa)}
   .kpi .sub{color:var(--texto-suave); font-size:12px; margin-top:6px}
 
-  .grade{display:grid; grid-template-columns:repeat(12,1fr); gap:12px}
+  .grade{display:grid; grid-template-columns:repeat(12,1fr); grid-auto-flow:dense; gap:12px}
   .card{background:var(--painel); border:1px solid var(--borda); border-radius:12px;
     padding:18px; display:flex; flex-direction:column}
   .card h2{font-family:'Sora'; font-size:14px; font-weight:600; margin-bottom:4px}
@@ -163,10 +163,16 @@
     <div class="desc">Quantos pedidos cada cliente já fez — o objetivo é empurrar todo mundo pra direita</div>
     <div class="area"><canvas id="gFreq"></canvas></div>
   </div>
-  <div class="card c-6">
-    <h2>Recência da base</h2>
+  <div class="card c-12">
+    <h2>Recência da base<span class="info" tabindex="0" data-tip="'Nunca compraram' aqui é diferente de um cadastro genérico: como só viram cliente por causa de um pedido, esse grupo é quem teve TODOS os pedidos cancelados — por isso costuma ser bem pequeno.">?</span></h2>
     <div class="desc">Quando cada cliente pediu pela última vez — quanto mais frio, mais urgente o resgate</div>
-    <div class="area"><canvas id="gRecencia"></canvas></div>
+    <div style="display:grid; grid-template-columns:minmax(180px,1fr) minmax(260px,1.6fr); gap:20px; align-items:center">
+      <div class="area" style="min-height:220px"><canvas id="gRecencia"></canvas></div>
+      <div style="overflow-x:auto"><table id="tRecencia">
+        <thead><tr><th>Grupo de clientes</th><th>Qtd de clientes</th></tr></thead>
+        <tbody></tbody>
+      </table></div>
+    </div>
   </div>
   <div class="card c-6">
     <h2>Tempo entre pedidos</h2>
@@ -385,13 +391,31 @@ async function carregar(){
     options:{maintainAspectRatio:false, plugins:{legend:{display:false}},
       scales:{y:{ticks:{precision:0}}}}});
 
+  const RECENCIA_COR = {
+    'Nunca compraram': '#5B8DEF',
+    'Últimos 30 dias': '#FF7A2F',
+    '30 a 60 dias': '#FFB25E',
+    '60 a 90 dias': '#D98A3D',
+    '90 a 180 dias': 'var(--texto-suave)',
+    'Mais de 180 dias': '#3A3E48',
+  };
+  const recenciaCompleta = [
+    {faixa: 'Nunca compraram', clientes: d.nunca_compraram},
+    ...d.recencia.map(x => ({faixa: x.faixa, clientes: +x.clientes})),
+  ];
   desenhar('gRecencia', {type:'doughnut', data:{
-    labels: d.recencia.map(x => x.faixa),
-    datasets:[{data: d.recencia.map(x => +x.clientes),
-      backgroundColor:['#FF7A2F','#FFB25E','var(--texto-suave)','#3A3E48'],
+    labels: recenciaCompleta.map(x => x.faixa),
+    datasets:[{data: recenciaCompleta.map(x => x.clientes),
+      backgroundColor: recenciaCompleta.map(x => RECENCIA_COR[x.faixa]),
       borderColor:'#1D2027', borderWidth:2}]},
-    options:{maintainAspectRatio:false,
-      plugins:{legend:{position:'right', labels:{boxWidth:12}}}}});
+    options:{maintainAspectRatio:false, plugins:{legend:{display:false}}}});
+
+  const totalRecencia = recenciaCompleta.reduce((s, x) => s + x.clientes, 0) || 1;
+  document.querySelector('#tRecencia tbody').innerHTML = recenciaCompleta.map(x => `<tr>
+    <td><span style="display:inline-block; width:10px; height:10px; border-radius:50%;
+      background:${RECENCIA_COR[x.faixa]}; margin-right:8px"></span>${x.faixa}</td>
+    <td class="num">${NUM(x.clientes)} <span style="color:var(--texto-suave)">(${(100 * x.clientes / totalRecencia).toFixed(0)}%)</span></td>
+  </tr>`).join('');
 
   document.getElementById('descCiclo').textContent =
     `Média geral: ${d.media_entre_pedidos} dias entre um pedido e o próximo`;

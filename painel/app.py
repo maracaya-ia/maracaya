@@ -512,12 +512,26 @@ def analise_clientes(marca: str = Query("todas"),
                  WHEN ultimo >= now() - interval '30 days' THEN 'Últimos 30 dias'
                  WHEN ultimo >= now() - interval '60 days' THEN '30 a 60 dias'
                  WHEN ultimo >= now() - interval '90 days' THEN '60 a 90 dias'
-                 ELSE 'Mais de 90 dias'
+                 WHEN ultimo >= now() - interval '180 days' THEN '90 a 180 dias'
+                 ELSE 'Mais de 180 dias'
                END AS faixa,
                min(now() - ultimo) AS ordem,
                count(*) AS clientes
         FROM agg GROUP BY 1 ORDER BY ordem
     """, params)
+
+    # "Nunca compraram": cadastro existe (pedido chegou a ser feito) mas todos
+    # os pedidos foram cancelados - nao entra no "agg" (que exige 1+ pedido
+    # valido), por isso e uma consulta a parte. Bem menor que num SaaS generico
+    # (aqui so existe cliente por ter feito um pedido, nao por cadastro solto).
+    nunca_compraram = consultar(f"""
+        SELECT count(*) AS clientes FROM (
+            SELECT p.cliente_id FROM pedidos p
+            WHERE p.cliente_id IS NOT NULL {filtros}
+            GROUP BY p.cliente_id
+            HAVING count(*) FILTER (WHERE p.status <> 'canceled') = 0
+        ) t
+    """, params)[0]
 
     novos_semana = consultar(agg + """
         SELECT to_char(date_trunc('week', primeiro AT TIME ZONE 'America/Sao_Paulo'),
@@ -616,6 +630,7 @@ def analise_clientes(marca: str = Query("todas"),
         "SELECT DISTINCT marca FROM pedidos WHERE marca IS NOT NULL ORDER BY 1", {})
 
     return {"kpis": kpis, "frequencia": frequencia, "recencia": recencia,
+            "nunca_compraram": nunca_compraram["clientes"],
             "novos_semana": novos_semana, "ciclos": ciclos,
             "media_entre_pedidos": media_geral["media"],
             "top": top, "sumidos": sumidos, "em_risco": em_risco,
