@@ -10,6 +10,7 @@
 <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700&family=Inter:wght@400;500&family=IBM+Plex+Mono:wght@500;600&family=Material+Symbols+Outlined&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
   *{box-sizing:border-box; margin:0; padding:0}
   body{background:var(--fundo); color:var(--texto);
@@ -126,6 +127,22 @@
   .sem-custo{color:var(--alerta); font-size:11px}
 
   .rodape{color:var(--texto-suave); font-size:12px; margin-top:20px}
+
+  /* ---- Cancelamentos ---- */
+  .canc-grid{display:grid; grid-template-columns:220px 1fr; gap:28px; align-items:center; margin-top:10px}
+  @media(max-width:800px){.canc-grid{grid-template-columns:1fr}}
+  .canc-donut{position:relative; height:220px}
+  table.canc{width:100%; border-collapse:collapse; font-size:13px}
+  table.canc th{color:var(--texto-suave); text-align:left; font-weight:500; padding:8px;
+    border-bottom:1px solid var(--borda); text-transform:uppercase; font-size:11px; letter-spacing:.04em}
+  table.canc th:not(:first-child), table.canc td:not(:first-child){text-align:right}
+  table.canc td{padding:9px 8px; border-bottom:1px solid var(--borda); vertical-align:top}
+  table.canc tr:last-child td{border-bottom:none}
+  table.canc td:first-child{display:flex; gap:8px; align-items:flex-start}
+  table.canc .bolinha{width:10px; height:10px; border-radius:50%; margin-top:4px; flex:none}
+  table.canc td.num{font-family:'IBM Plex Mono',monospace; font-variant-numeric:tabular-nums; white-space:nowrap}
+  .canc-resumo{color:var(--texto-suave); font-size:12px; margin-bottom:4px}
+  .canc-resumo b{color:var(--texto)}
 </style>
 <link rel="stylesheet" href="/static/_tema.css">
 </head>
@@ -182,6 +199,18 @@
 <section class="card dre-card">
   <h2 style="color:#fff">DRE do período</h2>
   <div class="dre" id="tbDre" style="margin-top:10px"></div>
+</section>
+
+<section class="card" style="margin-top:18px">
+  <h2>Análise dos cancelamentos por motivo</h2>
+  <div class="canc-resumo" id="cancResumo">Carregando…</div>
+  <div class="canc-grid">
+    <div class="canc-donut"><canvas id="gCancelamentos"></canvas></div>
+    <div style="overflow-x:auto"><table class="canc">
+      <thead><tr><th>Motivo</th><th>Faturamento</th><th>Pedidos</th><th>Ticket médio</th></tr></thead>
+      <tbody id="tCancelamentos"></tbody>
+    </table></div>
+  </div>
 </section>
 
 <section class="card" style="margin-top:18px">
@@ -355,12 +384,48 @@ async function carregar(){
     ' · DRE gerencial simplificado — não substitui a contabilidade oficial';
 }
 
+const CORES_CANC = ['#FF7A2F','#5B8DEF','#B45A28','#3FB08F','#9B6EF3','#E85D75','#FFB25E','#6E7280'];
+let gCanc = null;
+
+async function carregarCancelamentos(){
+  const r = await fetch(`/api/cancelamentos?marca=${encodeURIComponent(estado.marca)}&unidade=${encodeURIComponent(estado.unidade)}&periodo=${estado.periodo}&canal=${estado.canal}`);
+  const d = await r.json();
+  const motivos = d.motivos, res = d.resumo;
+
+  const taxa = res.total_pedidos ? (100 * res.cancelados / res.total_pedidos) : 0;
+  document.getElementById('cancResumo').innerHTML = motivos.length
+    ? `<b>${NUM(res.cancelados)}</b> pedidos cancelados no período (<b>${taxa.toFixed(1)}%</b> do total) ·
+       <b>${R$(res.perdido)}</b> em faturamento perdido`
+    : `Nenhum cancelamento no período 🎉`;
+
+  if (gCanc) gCanc.destroy();
+  gCanc = new Chart(document.getElementById('gCancelamentos'), {
+    type: 'doughnut',
+    data: {
+      labels: motivos.map(m => m.motivo),
+      datasets: [{ data: motivos.map(m => +m.faturamento),
+        backgroundColor: motivos.map((_, i) => CORES_CANC[i % CORES_CANC.length]),
+        borderColor: '#1D2027', borderWidth: 2 }]
+    },
+    options: { maintainAspectRatio: false, plugins: { legend: { display: false },
+      tooltip: { callbacks: { label: c => `${c.label}: ${R$(c.raw)}` } } } }
+  });
+
+  document.getElementById('tCancelamentos').innerHTML = motivos.length ? motivos.map((m, i) => `
+    <tr>
+      <td><span class="bolinha" style="background:${CORES_CANC[i % CORES_CANC.length]}"></span>${m.motivo}</td>
+      <td class="num">${R$(m.faturamento)}</td>
+      <td class="num">${NUM(m.pedidos)}</td>
+      <td class="num">${R$(m.ticket)}</td>
+    </tr>`).join('') : '<tr><td colspan="4" class="txt">Sem cancelamentos no período.</td></tr>';
+}
+
 document.querySelectorAll('#canais button').forEach(b =>
   b.addEventListener('click', () => {
     document.querySelector('#canais .ativo')?.classList.remove('ativo');
     b.classList.add('ativo');
     estado.canal = b.dataset.c;
-    carregar(); carregarPedidos();
+    carregar(); carregarPedidos(); carregarCancelamentos();
   }));
 
 document.querySelectorAll('#periodos button').forEach(b =>
@@ -368,12 +433,12 @@ document.querySelectorAll('#periodos button').forEach(b =>
     document.querySelector('#periodos .ativo')?.classList.remove('ativo');
     b.classList.add('ativo');
     estado.periodo = b.dataset.p;
-    carregar(); carregarPedidos();
+    carregar(); carregarPedidos(); carregarCancelamentos();
   }));
 
 document.getElementById('selUnidade').addEventListener('change', e => {
   estado.unidade = e.target.value;
-  carregar(); carregarPedidos();
+  carregar(); carregarPedidos(); carregarCancelamentos();
 });
 fetch('/api/unidades').then(r => r.json()).then(d => {
   const sel = document.getElementById('selUnidade');
@@ -383,7 +448,7 @@ fetch('/api/unidades').then(r => r.json()).then(d => {
   });
 });
 document.getElementById('selMarca').addEventListener('change', e => {
-  estado.marca = e.target.value; carregar(); carregarPedidos();
+  estado.marca = e.target.value; carregar(); carregarPedidos(); carregarCancelamentos();
 });
 document.getElementById('chkComparar').addEventListener('change', e => {
   estado.comparar = e.target.checked;
@@ -442,6 +507,7 @@ document.getElementById('tbPedidos').addEventListener('click', async e => {
 
 carregar();
 carregarPedidos();
+carregarCancelamentos();
 setInterval(carregar, 5 * 60 * 1000);
 </script>
 <script src="/static/_tema.js"></script>

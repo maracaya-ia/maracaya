@@ -1596,6 +1596,32 @@ def dre(marca: str = Query("todas"), unidade: str = Query("todas"), periodo: str
     }
 
 
+@app.get("/api/cancelamentos")
+def cancelamentos(marca: str = Query("todas"), unidade: str = Query("todas"),
+                   periodo: str = Query("mes_atual"), canal: str = Query("todos")):
+    """Motivo de cancelamento vem direto do canal (cancellation_reason no iFood/99Food,
+    discount_reason na Saipos/Balcao) - so agrupa o que ja esta salvo em pedidos.motivo_cancelamento."""
+    cond, filtro_marca, params = _filtro_periodo(marca, unidade, periodo, canal)
+    motivos = consultar(f"""
+        SELECT coalesce(nullif(trim(motivo_cancelamento), ''), 'Motivo não informado') AS motivo,
+               count(*) AS pedidos,
+               coalesce(sum(p.total), 0) AS faturamento,
+               coalesce(avg(p.total), 0) AS ticket
+        FROM pedidos p
+        WHERE {cond} AND p.status = 'canceled' {filtro_marca}
+        GROUP BY 1
+        ORDER BY faturamento DESC
+    """, params)
+    resumo = consultar(f"""
+        SELECT count(*) FILTER (WHERE p.status = 'canceled') AS cancelados,
+               count(*) AS total_pedidos,
+               coalesce(sum(p.total) FILTER (WHERE p.status = 'canceled'), 0) AS perdido
+        FROM pedidos p
+        WHERE {cond} {filtro_marca}
+    """, params)[0]
+    return {"motivos": motivos, "resumo": resumo}
+
+
 @app.get("/api/pedidos_lucro")
 def pedidos_lucro(marca: str = Query("todas"), unidade: str = Query("todas"),
                   periodo: str = Query("mes_atual"), limite: int = Query(300),
