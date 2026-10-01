@@ -2253,27 +2253,36 @@ def zap_fechamento():
     linhas_top = "\n".join(f"  {i+1}. {t['nome']} ({t['q']})" for i, t in enumerate(top))
     def brl(v):
         return f"R$ {v:,.2f}".replace(",", "@").replace(".", ",").replace("@", ".")
-    negativos, zerados, criticos, _ = _posicao_estoque()
-    if not negativos and not zerados and not criticos:
-        bloco_estoque = "\n\n📦 Estoque ok — nada urgente pra comprar."
-    else:
-        linhas_est = (
-            [f"🔴 {nome} ({_fmt_qtd_estoque(qtd, un)})" for nome, qtd, un in negativos]
-            + [f"🟠 {nome} (zerado)" for nome in zerados]
-            + [f"🟡 {nome} ({_fmt_qtd_estoque(qtd, un)}, ~{dias:.1f}d)" for nome, qtd, un, dias in criticos]
-        )
-        resto = len(linhas_est) - 8
-        linhas_est = linhas_est[:8] + ([f"… e mais {resto}"] if resto > 0 else [])
-        bloco_estoque = "\n\n📦 *Precisa comprar:*\n" + "\n".join(f"• {l}" for l in linhas_est)
-
     texto = (f"🌙 *Fechamento do dia — Grupo Maracayá*\n\n"
              f"🧾 Pedidos: *{ped:.0f}*{comp}\n"
              f"💰 Faturamento: *{brl(float(d['fat']))}*\n"
              f"🎯 Ticket médio: {brl(float(d['ticket']))}\n"
              + (f"🚫 Cancelamentos: {float(d['canc']):.0f}\n" if float(d['canc']) > 0 else "")
-             + (f"\n🏆 *Campeões do dia:*\n{linhas_top}" if top else "")
-             + bloco_estoque)
+             + (f"\n🏆 *Campeões do dia:*\n{linhas_top}" if top else ""))
     return {"enviar": True, "texto": texto}
+
+
+@app.get("/api/zap/estoque")
+def zap_estoque():
+    """Aviso diario de compras pendentes - automacao separada do fechamento do
+    dia, pra nao misturar o resumo de vendas com o alerta de reposicao."""
+    negativos, zerados, criticos, sem_registro = _posicao_estoque()
+    if not negativos and not zerados and not criticos:
+        return {"enviar": False, "texto": ""}
+
+    partes = ["📦 *Precisa repor — Grupo Maracayá*"]
+    if negativos:
+        linhas = "\n".join(f"• {nome}: {_fmt_qtd_estoque(qtd, un)}" for nome, qtd, un in negativos)
+        partes.append(f"🔴 *Negativo — já deveria ter sido reposto:*\n{linhas}")
+    if zerados:
+        partes.append("🟠 *Zerado:* " + ", ".join(zerados))
+    if criticos:
+        linhas = "\n".join(f"• {nome}: {_fmt_qtd_estoque(qtd, un)} (~{dias:.1f} dia(s) de cobertura)"
+                           for nome, qtd, un, dias in criticos)
+        partes.append(f"🟡 *Crítico (menos de 3 dias):*\n{linhas}")
+    if sem_registro:
+        partes.append("❓ *Sem estoque cadastrado:* " + ", ".join(sem_registro[:10]))
+    return {"enviar": True, "texto": "\n\n".join(partes)}
 
 
 @app.get("/api/zap/bomdia")
