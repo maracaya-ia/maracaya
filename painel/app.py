@@ -2172,6 +2172,35 @@ def zap_radar():
     return {"enviar": True, "texto": texto}
 
 
+_SEM_SKU_ESTOQUE = {"Refrigerante (genérico)", "Suco (genérico)", "Cerveja (genérica)"}
+
+
+def _fmt_qtd_estoque(valor, un):
+    return f"{valor:.1f} kg" if un == "kg" else f"{valor:.0f} un"
+
+
+def _posicao_estoque():
+    """Separa os insumos em negativo / zerado / critico (<3 dias de cobertura) /
+    sem registro - usado tanto pela MIA quanto pelo aviso de fechamento do dia."""
+    ep = estoque_plano(cobertura_dias=30, seguranca_pct=20)
+    negativos, zerados, criticos, sem_registro = [], [], [], []
+    for i in ep["itens"]:
+        if i["estoque"] is None:
+            if i["insumo"] not in _SEM_SKU_ESTOQUE:
+                sem_registro.append(i["insumo"])
+            continue
+        dias = i["estoque"] / i["consumo_dia"] if i["consumo_dia"] > 0 else 999
+        if i["estoque"] < 0:
+            negativos.append((i["insumo"], i["estoque"], i["unidade"]))
+        elif i["estoque"] == 0:
+            zerados.append(i["insumo"])
+        elif dias < 3:
+            criticos.append((i["insumo"], i["estoque"], i["unidade"], dias))
+    negativos.sort(key=lambda x: x[1])
+    criticos.sort(key=lambda x: x[3])
+    return negativos, zerados, criticos, sem_registro
+
+
 @app.get("/api/zap/sentinela")
 def zap_sentinela():
     s = sentinela()
@@ -2224,12 +2253,26 @@ def zap_fechamento():
     linhas_top = "\n".join(f"  {i+1}. {t['nome']} ({t['q']})" for i, t in enumerate(top))
     def brl(v):
         return f"R$ {v:,.2f}".replace(",", "@").replace(".", ",").replace("@", ".")
+    negativos, zerados, criticos, _ = _posicao_estoque()
+    if not negativos and not zerados and not criticos:
+        bloco_estoque = "\n\n📦 Estoque ok — nada urgente pra comprar."
+    else:
+        linhas_est = (
+            [f"🔴 {nome} ({_fmt_qtd_estoque(qtd, un)})" for nome, qtd, un in negativos]
+            + [f"🟠 {nome} (zerado)" for nome in zerados]
+            + [f"🟡 {nome} ({_fmt_qtd_estoque(qtd, un)}, ~{dias:.1f}d)" for nome, qtd, un, dias in criticos]
+        )
+        resto = len(linhas_est) - 8
+        linhas_est = linhas_est[:8] + ([f"… e mais {resto}"] if resto > 0 else [])
+        bloco_estoque = "\n\n📦 *Precisa comprar:*\n" + "\n".join(f"• {l}" for l in linhas_est)
+
     texto = (f"🌙 *Fechamento do dia — Grupo Maracayá*\n\n"
              f"🧾 Pedidos: *{ped:.0f}*{comp}\n"
              f"💰 Faturamento: *{brl(float(d['fat']))}*\n"
              f"🎯 Ticket médio: {brl(float(d['ticket']))}\n"
              + (f"🚫 Cancelamentos: {float(d['canc']):.0f}\n" if float(d['canc']) > 0 else "")
-             + (f"\n🏆 *Campeões do dia:*\n{linhas_top}" if top else ""))
+             + (f"\n🏆 *Campeões do dia:*\n{linhas_top}" if top else "")
+             + bloco_estoque)
     return {"enviar": True, "texto": texto}
 
 
@@ -2841,40 +2884,18 @@ def zap_pergunta(payload: dict = Body(...),
                 linhas.append(f"• {nome}: *{float(i['estoque_atual']):.1f} {un}* em estoque")
             resposta = "📦 *Estoque atual*\n" + "\n".join(linhas)
         else:
-            ep = estoque_plano(cobertura_dias=30, seguranca_pct=20)
-            # buckets genericos (sabor nao identificado no complemento) nunca tem SKU
-            # pra comprar - cadastrar estoque deles nao faz sentido, so vira ruido no alerta
-            _SEM_SKU = {"Refrigerante (genérico)", "Suco (genérico)", "Cerveja (genérica)"}
-            negativos, zerados, criticos, sem_registro = [], [], [], []
-            for i in ep["itens"]:
-                if i["estoque"] is None:
-                    if i["insumo"] not in _SEM_SKU:
-                        sem_registro.append(i["insumo"])
-                    continue
-                dias = i["estoque"] / i["consumo_dia"] if i["consumo_dia"] > 0 else 999
-                if i["estoque"] < 0:
-                    negativos.append((i["insumo"], i["estoque"], i["unidade"]))
-                elif i["estoque"] == 0:
-                    zerados.append(i["insumo"])
-                elif dias < 3:
-                    criticos.append((i["insumo"], i["estoque"], i["unidade"], dias))
-            negativos.sort(key=lambda x: x[1])
-            criticos.sort(key=lambda x: x[3])
-
-            def _qtd(valor, un):
-                return f"{valor:.1f} kg" if un == "kg" else f"{valor:.0f} un"
-
+            negativos, zerados, criticos, sem_registro = _posicao_estoque()
             if not negativos and not zerados and not criticos and not sem_registro:
                 resposta = "📦 Estoque ok — nenhum insumo zerado, negativo ou com cobertura crítica (menos de 3 dias)."
             else:
                 partes = ["📦 *Posição de estoque*"]
                 if negativos:
-                    linhas = "\n".join(f"• {nome}: {_qtd(qtd, un)}" for nome, qtd, un in negativos[:10])
+                    linhas = "\n".join(f"• {nome}: {_fmt_qtd_estoque(qtd, un)}" for nome, qtd, un in negativos[:10])
                     partes.append(f"🔴 *Negativo — já deveria ter sido reposto:*\n{linhas}")
                 if zerados:
                     partes.append("🟠 *Zerado:* " + ", ".join(zerados[:10]))
                 if criticos:
-                    linhas = "\n".join(f"• {nome}: {_qtd(qtd, un)} (~{dias:.1f} dia(s) de cobertura)"
+                    linhas = "\n".join(f"• {nome}: {_fmt_qtd_estoque(qtd, un)} (~{dias:.1f} dia(s) de cobertura)"
                                        for nome, qtd, un, dias in criticos[:10])
                     partes.append(f"🟡 *Crítico (menos de 3 dias):*\n{linhas}")
                 if sem_registro:
