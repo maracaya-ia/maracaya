@@ -2799,28 +2799,63 @@ def zap_pergunta(payload: dict = Body(...),
                         f"*{float(te['mediana']):.0f} min* ({n_te} pedidos medidos)")
     elif any(p in q for p in ("estoque", "insumo", "posição")):
         intent_keyword = "estoque"
-        ep = estoque_plano(cobertura_dias=30, seguranca_pct=20)
-        criticos, sem_registro = [], []
-        for i in ep["itens"]:
-            if i["estoque"] is None:
-                sem_registro.append(i["insumo"])
-                continue
-            dias = i["estoque"] / i["consumo_dia"] if i["consumo_dia"] > 0 else 999
-            if dias < 3:
-                criticos.append((i["insumo"], dias))
-        criticos.sort(key=lambda x: x[1])
-        if not criticos and not sem_registro:
-            resposta = "📦 Estoque ok — nenhum insumo com cobertura crítica (menos de 3 dias)."
+
+        # pergunta por um insumo especifico ("quantas unidades de X tem no estoque?")
+        _stop_est = {"mia", "quantas", "quantos", "quanto", "quanta", "tem", "temos", "tenho",
+                     "estoque", "insumo", "insumos", "posicao", "unidades", "unidade", "sobrou",
+                     "sobra", "ainda", "atual", "hoje", "para", "qual", "quais", "que", "com",
+                     "sem", "nosso", "nossa", "esta", "esta", "fica", "ficou"}
+        tokens_est = [t for t in re.findall(r"[a-z]+", q_sem_acento)
+                      if len(t) >= 3 and t not in _stop_est]
+
+        def _variantes_est(t):
+            v = {t}
+            if t.endswith("s"):
+                v.add(t[:-1])
+            if t.endswith(("aes", "oes")):
+                v.add(t[:-3] + "ao")
+            return v
+
+        todos_insumos = consultar("""
+            SELECT ie.insumo, ie.estoque_atual,
+                   (SELECT f.unidade FROM ficha_tecnica f WHERE f.insumo = ie.insumo LIMIT 1) AS unidade
+            FROM insumo_estoque ie
+        """, {})
+        nomes_ok_est = {i["insumo"]: _sem_acento(i["insumo"]) for i in todos_insumos}
+        achados_est = {nome for nome, ns in nomes_ok_est.items()
+                       if tokens_est and any(vv in ns for t in tokens_est for vv in _variantes_est(t))}
+
+        if achados_est:
+            por_insumo = {i["insumo"]: i for i in todos_insumos}
+            linhas = []
+            for nome in sorted(achados_est):
+                i = por_insumo[nome]
+                un = "kg" if i["unidade"] == "kg" else "un"
+                linhas.append(f"• {nome}: *{float(i['estoque_atual']):.1f} {un}* em estoque")
+            resposta = "📦 *Estoque atual*\n" + "\n".join(linhas)
         else:
-            partes = ["📦 *Posição de estoque*"]
-            if criticos:
-                linhas = "\n".join(f"• {nome}: {dias:.1f} dia(s) de cobertura"
-                                   for nome, dias in criticos[:10])
-                partes.append(f"⚠️ *Crítico (menos de 3 dias):*\n{linhas}")
-            if sem_registro:
-                partes.append("❓ *Sem estoque cadastrado:* "
-                              + ", ".join(sem_registro[:10]))
-            resposta = "\n\n".join(partes)
+            ep = estoque_plano(cobertura_dias=30, seguranca_pct=20)
+            criticos, sem_registro = [], []
+            for i in ep["itens"]:
+                if i["estoque"] is None:
+                    sem_registro.append(i["insumo"])
+                    continue
+                dias = i["estoque"] / i["consumo_dia"] if i["consumo_dia"] > 0 else 999
+                if dias < 3:
+                    criticos.append((i["insumo"], dias))
+            criticos.sort(key=lambda x: x[1])
+            if not criticos and not sem_registro:
+                resposta = "📦 Estoque ok — nenhum insumo com cobertura crítica (menos de 3 dias)."
+            else:
+                partes = ["📦 *Posição de estoque*"]
+                if criticos:
+                    linhas = "\n".join(f"• {nome}: {dias:.1f} dia(s) de cobertura"
+                                       for nome, dias in criticos[:10])
+                    partes.append(f"⚠️ *Crítico (menos de 3 dias):*\n{linhas}")
+                if sem_registro:
+                    partes.append("❓ *Sem estoque cadastrado:* "
+                                  + ", ".join(sem_registro[:10]))
+                resposta = "\n\n".join(partes)
         resposta += aviso_filtro
     else:
         resposta = ("🤖 *Oi, aqui é a MIA!* Sei responder sobre: pedidos, faturamento, "
