@@ -2842,23 +2842,41 @@ def zap_pergunta(payload: dict = Body(...),
             resposta = "📦 *Estoque atual*\n" + "\n".join(linhas)
         else:
             ep = estoque_plano(cobertura_dias=30, seguranca_pct=20)
-            criticos, sem_registro = [], []
+            # buckets genericos (sabor nao identificado no complemento) nunca tem SKU
+            # pra comprar - cadastrar estoque deles nao faz sentido, so vira ruido no alerta
+            _SEM_SKU = {"Refrigerante (genérico)", "Suco (genérico)", "Cerveja (genérica)"}
+            negativos, zerados, criticos, sem_registro = [], [], [], []
             for i in ep["itens"]:
                 if i["estoque"] is None:
-                    sem_registro.append(i["insumo"])
+                    if i["insumo"] not in _SEM_SKU:
+                        sem_registro.append(i["insumo"])
                     continue
                 dias = i["estoque"] / i["consumo_dia"] if i["consumo_dia"] > 0 else 999
-                if dias < 3:
-                    criticos.append((i["insumo"], dias))
-            criticos.sort(key=lambda x: x[1])
-            if not criticos and not sem_registro:
-                resposta = "📦 Estoque ok — nenhum insumo com cobertura crítica (menos de 3 dias)."
+                if i["estoque"] < 0:
+                    negativos.append((i["insumo"], i["estoque"], i["unidade"]))
+                elif i["estoque"] == 0:
+                    zerados.append(i["insumo"])
+                elif dias < 3:
+                    criticos.append((i["insumo"], i["estoque"], i["unidade"], dias))
+            negativos.sort(key=lambda x: x[1])
+            criticos.sort(key=lambda x: x[3])
+
+            def _qtd(valor, un):
+                return f"{valor:.1f} kg" if un == "kg" else f"{valor:.0f} un"
+
+            if not negativos and not zerados and not criticos and not sem_registro:
+                resposta = "📦 Estoque ok — nenhum insumo zerado, negativo ou com cobertura crítica (menos de 3 dias)."
             else:
                 partes = ["📦 *Posição de estoque*"]
+                if negativos:
+                    linhas = "\n".join(f"• {nome}: {_qtd(qtd, un)}" for nome, qtd, un in negativos[:10])
+                    partes.append(f"🔴 *Negativo — já deveria ter sido reposto:*\n{linhas}")
+                if zerados:
+                    partes.append("🟠 *Zerado:* " + ", ".join(zerados[:10]))
                 if criticos:
-                    linhas = "\n".join(f"• {nome}: {dias:.1f} dia(s) de cobertura"
-                                       for nome, dias in criticos[:10])
-                    partes.append(f"⚠️ *Crítico (menos de 3 dias):*\n{linhas}")
+                    linhas = "\n".join(f"• {nome}: {_qtd(qtd, un)} (~{dias:.1f} dia(s) de cobertura)"
+                                       for nome, qtd, un, dias in criticos[:10])
+                    partes.append(f"🟡 *Crítico (menos de 3 dias):*\n{linhas}")
                 if sem_registro:
                     partes.append("❓ *Sem estoque cadastrado:* "
                                   + ", ".join(sem_registro[:10]))
