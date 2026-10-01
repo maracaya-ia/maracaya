@@ -2822,8 +2822,15 @@ def zap_pergunta(payload: dict = Body(...),
             FROM insumo_estoque ie
         """, {})
         nomes_ok_est = {i["insumo"]: _sem_acento(i["insumo"]) for i in todos_insumos}
-        achados_est = {nome for nome, ns in nomes_ok_est.items()
-                       if tokens_est and any(vv in ns for t in tokens_est for vv in _variantes_est(t))}
+
+        def _bate(ns, modo_todos):
+            checagem = all if modo_todos else any
+            return checagem(any(vv in ns for vv in _variantes_est(t)) for t in tokens_est)
+
+        achados_est = ({nome for nome, ns in nomes_ok_est.items() if _bate(ns, True)}
+                       if tokens_est else set())
+        if not achados_est and tokens_est:
+            achados_est = {nome for nome, ns in nomes_ok_est.items() if _bate(ns, False)}
 
         if achados_est:
             por_insumo = {i["insumo"]: i for i in todos_insumos}
