@@ -72,6 +72,22 @@
     width:min(320px, 72vw); background:#0E1013; border:1px solid var(--borda);
     padding:10px 12px; border-radius:10px; font-size:12px; font-weight:400;
     line-height:1.55; color:#EDEAE2; z-index:9; white-space:normal; text-align:left}
+  .busca-estoque{background:var(--fundo); color:var(--texto); border:1px solid var(--borda);
+    border-radius:8px; padding:8px 12px; font-family:'Inter'; font-size:13px; min-width:240px}
+  .busca-estoque:focus{outline:none; border-color:var(--brasa)}
+  .btn-edit{background:transparent; color:var(--texto-suave); border:1px solid var(--borda);
+    border-radius:6px; padding:4px 9px; cursor:pointer; font-size:12px}
+  .btn-edit:hover{color:var(--brasa); border-color:var(--brasa)}
+  dialog.modal{background:var(--painel); color:var(--texto); border:1px solid var(--borda);
+    border-radius:12px; padding:22px; width:min(380px, 92vw)}
+  dialog.modal::backdrop{background:rgba(0,0,0,.55)}
+  dialog.modal h3{font-family:'Sora'; font-size:15px; margin-bottom:14px}
+  dialog.modal label{display:block; color:var(--texto-suave); font-size:12px; margin:10px 0 4px}
+  dialog.modal input, dialog.modal select{width:100%; background:var(--fundo); color:var(--texto);
+    border:1px solid var(--borda); border-radius:6px; padding:8px 10px; font-family:'IBM Plex Mono',monospace; font-size:13px}
+  dialog.modal .acoes{display:flex; justify-content:flex-end; gap:8px; margin-top:18px}
+  dialog.modal button{border-radius:8px; padding:8px 14px; font-size:13px; cursor:pointer; border:1px solid var(--borda); background:var(--fundo); color:var(--texto)}
+  dialog.modal button.primario{background:var(--brasa); border-color:var(--brasa); color:#fff}
 </style>
 <link rel="stylesheet" href="/static/_tema.css">
 </head>
@@ -133,9 +149,10 @@
           <option value="20" selected>+20%</option>
           <option value="30">+30%</option>
         </select></label>
+      <input id="buscaEstoque" class="busca-estoque" type="search" placeholder="🔍 Buscar insumo ou fornecedor…" autocomplete="off">
     </div>
     <div style="overflow-x:auto"><table id="tEstoque">
-      <thead><tr><th>Insumo</th><th>Fornecedor</th><th>Consumo/dia</th><th>Necessidade</th><th>Estoque atual</th><th>Comprar</th><th>Custo unit.</th><th>Custo/dia</th></tr></thead>
+      <thead><tr><th>Insumo</th><th>Fornecedor</th><th>Consumo/dia</th><th>Necessidade</th><th>Estoque atual</th><th>Comprar</th><th>Custo unit.</th><th>Custo/dia</th><th></th></tr></thead>
       <tbody></tbody>
     </table></div>
   </div>
@@ -150,15 +167,75 @@
   </div>
 </section>
 
+<dialog class="modal" id="dlgInsumo">
+  <form method="dialog" id="frmInsumo">
+    <h3 id="dlgTitulo">Editar insumo</h3>
+    <label>Fornecedor</label>
+    <select id="dlgForn"></select>
+    <label id="dlgEstLabel">Estoque atual</label>
+    <input id="dlgEstoque" type="number" step="0.1" min="0" placeholder="—">
+    <label>Custo unitário (R$)</label>
+    <input id="dlgCusto" type="number" step="0.01" min="0" placeholder="0,00">
+    <div class="acoes">
+      <button type="button" id="dlgCancelar">Cancelar</button>
+      <button type="submit" class="primario" id="dlgSalvar">Salvar</button>
+    </div>
+  </form>
+</dialog>
+
 <p class="rodape" id="atualizadoEm">Carregando…</p>
 
 <script>
 const R$ = v => (+(v ?? 0)).toLocaleString('pt-BR', {style:'currency', currency:'BRL'});
 let estado = {ancora:'seg', cobertura:30, seguranca:20};
+let itensEstoque = {}, fornecedoresLista = [];
+const semAcento = t => (t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/"/g, '');
+
+function filtrarEstoque(){
+  const termos = semAcento(document.getElementById('buscaEstoque').value).split(/\s+/).filter(Boolean);
+  document.querySelectorAll('#tEstoque tbody tr').forEach(tr => {
+    const alvo = tr.dataset.busca || '';
+    tr.style.display = termos.every(t => alvo.includes(t)) ? '' : 'none';
+  });
+}
+document.addEventListener('input', e => { if (e.target.id === 'buscaEstoque') filtrarEstoque(); });
+
+let insumoEmEdicao = null;
+function abrirEdicao(nome){
+  const x = itensEstoque[nome];
+  if (!x) return;
+  insumoEmEdicao = nome;
+  document.getElementById('dlgTitulo').textContent = x.insumo;
+  const nomes = [...new Set([...fornecedoresLista, x.fornecedor].filter(f => f && f !== '—'))];
+  document.getElementById('dlgForn').innerHTML =
+    (x.fornecedor === '—' ? '<option value="">— sem fornecedor —</option>' : '') +
+    nomes.map(f => `<option value="${f}" ${f === x.fornecedor ? 'selected' : ''}>${f}</option>`).join('');
+  document.getElementById('dlgEstLabel').textContent = `Estoque atual (${x.unidade === 'kg' ? 'kg' : 'un'})`;
+  document.getElementById('dlgEstoque').value = x.estoque != null ? x.estoque : '';
+  document.getElementById('dlgCusto').value = x.custo_unitario != null ? x.custo_unitario : '';
+  document.getElementById('dlgInsumo').showModal();
+}
+document.getElementById('dlgCancelar').addEventListener('click', () => document.getElementById('dlgInsumo').close());
+document.getElementById('frmInsumo').addEventListener('submit', async e => {
+  e.preventDefault();
+  const x = itensEstoque[insumoEmEdicao];
+  const post = (url, corpo) => fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(corpo)}).then(r => r.json());
+  const forn = document.getElementById('dlgForn').value;
+  const est = parseFloat(document.getElementById('dlgEstoque').value);
+  const custo = parseFloat(document.getElementById('dlgCusto').value);
+  const tarefas = [];
+  if (forn && forn !== x.fornecedor) tarefas.push(post('/api/insumo_fornecedor', {insumo: x.insumo, fornecedor: forn}));
+  if (!isNaN(est) && est >= 0 && est !== x.estoque) tarefas.push(post('/api/estoque', {insumo: x.insumo, estoque: est}));
+  if (!isNaN(custo) && custo >= 0 && custo !== x.custo_unitario) tarefas.push(post('/api/insumo_custo', {insumo: x.insumo, custo_unitario: custo}));
+  await Promise.all(tarefas);
+  document.getElementById('dlgInsumo').close();
+  carregar();
+});
 
 async function carregar(){
   const r = await fetch(`/api/compras_plano?ancora=${estado.ancora}`);
   const d = await r.json();
+  fornecedoresLista = d.itens.map(it => it.nome);
 
   document.getElementById('kTotal').textContent = R$(d.total_mes);
   document.getElementById('kForn').textContent = d.itens.length;
@@ -232,7 +309,8 @@ async function carregar(){
     const fmtQ = (v, u) => v == null ? '—' : (u === 'kg'
       ? (+v).toLocaleString('pt-BR', {maximumFractionDigits:1}) + ' kg'
       : Math.ceil(+v).toLocaleString('pt-BR') + ' un');
-    document.querySelector('#tEstoque tbody').innerHTML = es.itens.map(x => `<tr>
+    itensEstoque = Object.fromEntries(es.itens.map(x => [x.insumo, x]));
+    document.querySelector('#tEstoque tbody').innerHTML = es.itens.map(x => `<tr data-busca="${semAcento(x.insumo + ' ' + x.fornecedor)}">
       <td>${x.insumo}</td>
       <td style="color:var(--texto-suave)">${x.fornecedor}</td>
       <td class="num" style="color:var(--texto-suave)">${fmtQ(x.consumo_dia, x.unidade)}</td>
@@ -245,7 +323,11 @@ async function carregar(){
            value="${x.custo_unitario != null ? x.custo_unitario : ''}" placeholder="0,00"
            style="width:80px; background:var(--fundo); color:var(--texto); border:1px solid var(--borda); border-radius:6px; padding:6px 8px; font-family:'IBM Plex Mono',monospace; font-size:13px"></td>
       <td class="num" style="color:var(--texto-suave)">${x.custo_dia != null ? R$(x.custo_dia) : '—'}</td>
+      <td><button class="btn-edit" data-editar="${x.insumo.replace(/"/g,'&quot;')}" title="Editar fornecedor, estoque e custo">✏️ Editar</button></td>
     </tr>`).join('');
+    document.querySelectorAll('#tEstoque .btn-edit').forEach(b =>
+      b.addEventListener('click', () => abrirEdicao(b.dataset.editar)));
+    filtrarEstoque();
     document.querySelectorAll('#tEstoque input:not(.inp-custo)').forEach(inp => {
       inp.addEventListener('keydown', e => { if (e.key === 'Enter') inp.blur(); });
       inp.addEventListener('blur', async () => {

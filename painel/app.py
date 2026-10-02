@@ -1211,6 +1211,7 @@ def salvar_taxa(dados: dict = Body(...)):
 _CASE_REFRI = """CASE
     WHEN co.nome ILIKE '%%coca%%' AND co.nome ILIKE '%%zero%%' THEN 'Coca Zero'
     WHEN co.nome ILIKE '%%coca%%' THEN 'Coca Normal'
+    WHEN co.nome ILIKE '%%guaran%%' AND co.nome ILIKE '%%zero%%' THEN 'Guaraná Zero'
     WHEN co.nome ILIKE '%%guaran%%' THEN 'Guaraná Normal'
     WHEN co.nome ILIKE '%%fanta%%' THEN 'Fanta Laranja'
     WHEN co.nome ILIKE '%%sprite%%' THEN 'Sprite'
@@ -1224,7 +1225,7 @@ _CASE_REFRI = """CASE
     WHEN co.nome ILIKE '%%cerveja%%' THEN 'Cerveja (genérica)'
     WHEN co.nome ILIKE '%%refriger%%' THEN 'Refrigerante (genérico)'
 END"""
-_SODAS = ("'Coca Zero','Coca Normal','Guaraná Normal','Fanta Laranja','Sprite',"
+_SODAS = ("'Coca Zero','Coca Normal','Guaraná Normal','Guaraná Zero','Fanta Laranja','Sprite',"
           "'Heineken','Stella Artois','Suco Del Valle Uva','Suco Del Valle Maracujá',"
           "'Suco (genérico)','Água com Gás','Água Normal','Cerveja (genérica)',"
           "'Refrigerante (genérico)'")

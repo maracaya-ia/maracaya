@@ -37,7 +37,7 @@ BEGIN
         FROM base b JOIN ficha_tecnica f ON f.produto = b.produto
         WHERE NOT (
             b.produto ILIKE 'combo%'
-            AND f.insumo IN ('Coca Zero','Coca Normal','Guaraná Normal','Fanta Laranja','Sprite',
+            AND f.insumo IN ('Coca Zero','Coca Normal','Guaraná Normal','Guaraná Zero','Fanta Laranja','Sprite',
                               'Heineken','Stella Artois','Suco Del Valle Uva','Suco Del Valle Maracujá',
                               'Suco (genérico)','Água com Gás','Água Normal','Cerveja (genérica)',
                               'Refrigerante (genérico)')
@@ -46,6 +46,7 @@ BEGIN
                 WHERE co.pedido_item_id = b.item_id AND (CASE
                     WHEN co.nome ILIKE '%coca%' AND co.nome ILIKE '%zero%' THEN 'Coca Zero'
                     WHEN co.nome ILIKE '%coca%' THEN 'Coca Normal'
+                    WHEN co.nome ILIKE '%guaran%' AND co.nome ILIKE '%zero%' THEN 'Guaraná Zero'
                     WHEN co.nome ILIKE '%guaran%' THEN 'Guaraná Normal'
                     WHEN co.nome ILIKE '%fanta%' THEN 'Fanta Laranja'
                     WHEN co.nome ILIKE '%sprite%' THEN 'Sprite'
@@ -66,6 +67,7 @@ BEGIN
         SELECT (CASE
             WHEN co.nome ILIKE '%coca%' AND co.nome ILIKE '%zero%' THEN 'Coca Zero'
             WHEN co.nome ILIKE '%coca%' THEN 'Coca Normal'
+            WHEN co.nome ILIKE '%guaran%' AND co.nome ILIKE '%zero%' THEN 'Guaraná Zero'
             WHEN co.nome ILIKE '%guaran%' THEN 'Guaraná Normal'
             WHEN co.nome ILIKE '%fanta%' THEN 'Fanta Laranja'
             WHEN co.nome ILIKE '%sprite%' THEN 'Sprite'
@@ -84,6 +86,7 @@ BEGIN
         WHERE b.produto ILIKE 'combo%' AND (CASE
                     WHEN co.nome ILIKE '%coca%' AND co.nome ILIKE '%zero%' THEN 'Coca Zero'
                     WHEN co.nome ILIKE '%coca%' THEN 'Coca Normal'
+                    WHEN co.nome ILIKE '%guaran%' AND co.nome ILIKE '%zero%' THEN 'Guaraná Zero'
                     WHEN co.nome ILIKE '%guaran%' THEN 'Guaraná Normal'
                     WHEN co.nome ILIKE '%fanta%' THEN 'Fanta Laranja'
                     WHEN co.nome ILIKE '%sprite%' THEN 'Sprite'
