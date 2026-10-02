@@ -1225,6 +1225,16 @@ _CASE_REFRI = """CASE
     WHEN co.nome ILIKE '%%cerveja%%' THEN 'Cerveja (genérica)'
     WHEN co.nome ILIKE '%%refriger%%' THEN 'Refrigerante (genérico)'
 END"""
+# Molho escolhido no pedido (complemento) vai a parte num pote de 30 ml (~30 g) e
+# baixa a mais do molho escolhido; o molho padrao do lanche continua na ficha tecnica.
+_GRAMAS_POTE_MOLHO = 30
+_CASE_MOLHO = """CASE
+    WHEN co.nome ILIKE '%%maracay%%' AND co.nome ILIKE '%%molho%%' THEN 'Molho Maracayá'
+    WHEN co.nome ILIKE '%%baconese%%' THEN 'Molho Baconese'
+    WHEN co.nome ILIKE '%%ervas%%' THEN 'Molho Ervas Finas'
+    WHEN co.nome ILIKE '%%parmes%%' THEN 'Molho Parmesão'
+    WHEN co.nome ILIKE '%%barbecue%%' THEN 'Molho Barbecue'
+END"""
 _SODAS = ("'Coca Zero','Coca Normal','Guaraná Normal','Guaraná Zero','Fanta Laranja','Sprite',"
           "'Heineken','Stella Artois','Suco Del Valle Uva','Suco Del Valle Maracujá',"
           "'Suco (genérico)','Água com Gás','Água Normal','Cerveja (genérica)',"
@@ -2726,8 +2736,17 @@ def zap_pergunta(payload: dict = Body(...),
                 JOIN pedido_complementos co ON co.pedido_item_id = b.item_id
                 WHERE b.produto ILIKE 'combo%%' AND {_CASE_REFRI} IS NOT NULL
             )
+            , molho_extra AS (
+                SELECT b.d, {_CASE_MOLHO} AS insumo, 'g' AS unidade,
+                       coalesce(co.quantidade, 1) * {_GRAMAS_POTE_MOLHO} AS consumo,
+                       {_GRAMAS_POTE_MOLHO}::numeric AS porcao
+                FROM base b
+                JOIN pedido_complementos co ON co.pedido_item_id = b.item_id
+                WHERE {_CASE_MOLHO} IS NOT NULL
+            )
             SELECT d, insumo, unidade, sum(consumo) AS consumo, min(porcao) AS porcao
-            FROM (SELECT * FROM receita UNION ALL SELECT * FROM refri_real) t
+            FROM (SELECT * FROM receita UNION ALL SELECT * FROM refri_real
+                  UNION ALL SELECT * FROM molho_extra) t
             GROUP BY 1, 2, 3
         """, params_extra)
         n_dias = len({r_["d"] for r_ in rows})
@@ -2780,7 +2799,7 @@ def zap_pergunta(payload: dict = Body(...),
         def _fmt_num(x, casas):
             return f"{x:,.{casas}f}".replace(",", "@").replace(".", ",").replace("@", ".")
 
-        linhas_kg, linhas_un = [], []
+        linhas_kg, linhas_un, linhas_g = [], [], []
         for nome_ in sorted(escolhidos, key=lambda n_: -agreg[n_]["tot"]):
             a_ = agreg[nome_]
             valor = agreg[nome_]["tot"] if pede_total else (a_["tot"] / n_dias if n_dias else 0)
@@ -2791,11 +2810,15 @@ def zap_pergunta(payload: dict = Body(...),
                 porcoes = f" (~{valor / a_['porcao']:.0f} porções de {gramas:.0f}g)" if 0 < a_["porcao"] < 0.5 else ""
                 max_fmt = f"{_fmt_num(maximo, 1)} kg"
                 linhas_kg.append(f"• {nome_}: *{_fmt_num(valor, 1)} kg*{porcoes}{sufixo_max.format(max_fmt=max_fmt)}")
+            elif a_["un"] == "g":
+                max_fmt = f"{_fmt_num(maximo, 0)} g"
+                em_kg = f" (≈ {_fmt_num(valor / 1000, 1)} kg)" if valor >= 1000 else ""
+                linhas_g.append(f"• {nome_}: *{_fmt_num(valor, 0)} g*{em_kg}{sufixo_max.format(max_fmt=max_fmt)}")
             else:
                 max_fmt = f"{maximo:.0f}"
                 linhas_un.append(f"• {nome_}: *{_fmt_num(valor, 0 if valor >= 10 else 1)} un*{sufixo_max.format(max_fmt=max_fmt)}")
 
-        if not n_dias or not (linhas_kg or linhas_un):
+        if not n_dias or not (linhas_kg or linhas_un or linhas_g):
             resposta = f"📦 Sem vendas suficientes {filtro_txt} pra calcular isso."
         else:
             partes = [titulo, f"_base: {periodo_txt}_"]
@@ -2803,9 +2826,11 @@ def zap_pergunta(payload: dict = Body(...),
                 partes.append("_não achei esse insumo — mostrando todos_")
             if linhas_kg:
                 partes.append("*Por peso:*\n" + "\n".join(linhas_kg))
+            if linhas_g:
+                partes.append("*Por grama:*\n" + "\n".join(linhas_g))
             if linhas_un:
                 partes.append("*Por unidade:*\n" + "\n".join(linhas_un))
-            partes.append("_calculado pelas vendas × ficha técnica; não inclui adicionais/complementos_")
+            partes.append("_calculado pelas vendas × ficha técnica (+ potes de molho extra); não inclui outros adicionais_")
             resposta = "\n\n".join(partes)
     elif "meta" in q:
         intent_keyword = "meta"
@@ -3219,9 +3244,16 @@ def estoque_plano(cobertura_dias: int = Query(30, ge=7, le=60),
             FROM base b JOIN pedido_complementos co ON co.pedido_item_id = b.item_id
             WHERE b.produto ILIKE 'combo%%' AND {_CASE_REFRI} IS NOT NULL
         ),
+        molho_extra AS (
+            SELECT {_CASE_MOLHO} AS insumo, 'g' AS unidade,
+                   coalesce(co.quantidade, 1) * {_GRAMAS_POTE_MOLHO} AS consumo
+            FROM base b JOIN pedido_complementos co ON co.pedido_item_id = b.item_id
+            WHERE {_CASE_MOLHO} IS NOT NULL
+        ),
         vendas0 AS (
             SELECT insumo, unidade, sum(consumo) / 28.0 AS por_dia
-            FROM (SELECT * FROM receita UNION ALL SELECT * FROM refri_real) t
+            FROM (SELECT * FROM receita UNION ALL SELECT * FROM refri_real
+                  UNION ALL SELECT * FROM molho_extra) t
             GROUP BY 1, 2
         ),
         vendas AS (

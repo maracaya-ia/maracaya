@@ -3,6 +3,8 @@
 -- o consumo calculado pela ficha tecnica - a mesma regra usada no Plano de
 -- estoque e no consumo da MIA (inclusive o sabor real do refrigerante do combo).
 --
+-- Molho escolhido no pedido: pote de 30 ml (~30 g) a mais do molho escolhido (_CASE_MOLHO no app.py).
+--
 -- So mexe em pedidos "recentes" (criado_em nas ultimas 48h) - existe justamente
 -- pra NUNCA disparar durante um backfill historico (que insere pedidos com
 -- criado_em de meses atras). sync.py/sync_saipos.py nao precisam de nenhuma
@@ -101,7 +103,27 @@ BEGIN
                     WHEN co.nome ILIKE '%refriger%' THEN 'Refrigerante (genérico)'
         END) IS NOT NULL
     )
-    SELECT ins, sum(qtd) FROM (SELECT * FROM receita UNION ALL SELECT * FROM refri_real) t
+    ,
+    molho_extra AS (
+        SELECT (CASE
+            WHEN co.nome ILIKE '%maracay%' AND co.nome ILIKE '%molho%' THEN 'Molho Maracayá'
+            WHEN co.nome ILIKE '%baconese%' THEN 'Molho Baconese'
+            WHEN co.nome ILIKE '%ervas%' THEN 'Molho Ervas Finas'
+            WHEN co.nome ILIKE '%parmes%' THEN 'Molho Parmesão'
+            WHEN co.nome ILIKE '%barbecue%' THEN 'Molho Barbecue'
+        END) AS ins, (coalesce(co.quantidade, 1) * 30)::numeric AS qtd
+        FROM base b
+        JOIN pedido_complementos co ON co.pedido_item_id = b.item_id
+        WHERE (CASE
+            WHEN co.nome ILIKE '%maracay%' AND co.nome ILIKE '%molho%' THEN 'Molho Maracayá'
+            WHEN co.nome ILIKE '%baconese%' THEN 'Molho Baconese'
+            WHEN co.nome ILIKE '%ervas%' THEN 'Molho Ervas Finas'
+            WHEN co.nome ILIKE '%parmes%' THEN 'Molho Parmesão'
+            WHEN co.nome ILIKE '%barbecue%' THEN 'Molho Barbecue'
+        END) IS NOT NULL
+    )
+    SELECT ins, sum(qtd) FROM (SELECT * FROM receita UNION ALL SELECT * FROM refri_real
+                               UNION ALL SELECT * FROM molho_extra) t
     GROUP BY ins;
 END;
 $$ LANGUAGE plpgsql;
