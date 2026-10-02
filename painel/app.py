@@ -1231,6 +1231,7 @@ _GRAMAS_POTE_MOLHO = 30
 # Nuggets: baixa pelo tamanho escolhido (P = 9, G = 12). Agua mineral "com ou sem gas":
 # o insumo (com gas / normal) vem do complemento escolhido.
 _CASE_NUGGET = "CASE WHEN co.nome ILIKE '%%tamanho p%%' THEN 9 WHEN co.nome ILIKE '%%tamanho g%%' THEN 12 END"
+_GRAMAS_PORCAO_BATATA_CRUA = 146  # porcao pronta de 100 g
 _PRODUTO_AGUA_ESCOLHA = "água mineral - com ou sem gás"
 # produtos cuja bebida real vem do complemento: combos + itens de bebida genérica
 _BEBIDA_ESCOLHIDA = "(b.produto ILIKE 'combo%%' OR b.produto IN ('refrigerantes', 'sucos', 'cervejas'))"
@@ -2768,6 +2769,10 @@ def zap_pergunta(payload: dict = Body(...),
                 SELECT b.d, {_CASE_REFRI}, 'un', b.quantidade * coalesce(co.quantidade, 1), 1::numeric
                 FROM base b JOIN pedido_complementos co ON co.pedido_item_id = b.item_id
                 WHERE b.produto = '{_PRODUTO_AGUA_ESCOLHA}' AND {_CASE_REFRI} IS NOT NULL
+                UNION ALL
+                SELECT b.d, 'Batata Frita', 'g', coalesce(co.quantidade, 1) * {_GRAMAS_PORCAO_BATATA_CRUA}, {_GRAMAS_PORCAO_BATATA_CRUA}::numeric
+                FROM base b JOIN pedido_complementos co ON co.pedido_item_id = b.item_id
+                WHERE NOT (b.produto ILIKE 'combo%%') AND lower(trim(co.nome)) = 'batata frita'
             )
             SELECT d, insumo, unidade, sum(consumo) AS consumo, min(porcao) AS porcao
             FROM (SELECT * FROM receita UNION ALL SELECT * FROM refri_real
@@ -3332,6 +3337,10 @@ def estoque_plano(cobertura_dias: int = Query(30, ge=7, le=60),
             SELECT {_CASE_REFRI}, 'un', b.quantidade * coalesce(co.quantidade, 1)
             FROM base b JOIN pedido_complementos co ON co.pedido_item_id = b.item_id
             WHERE b.produto = '{_PRODUTO_AGUA_ESCOLHA}' AND {_CASE_REFRI} IS NOT NULL
+            UNION ALL
+            SELECT 'Batata Frita', 'g', coalesce(co.quantidade, 1) * {_GRAMAS_PORCAO_BATATA_CRUA}
+            FROM base b JOIN pedido_complementos co ON co.pedido_item_id = b.item_id
+            WHERE NOT (b.produto ILIKE 'combo%%') AND lower(trim(co.nome)) = 'batata frita'
         ),
         vendas0 AS (
             SELECT insumo, unidade, sum(consumo) / 28.0 AS por_dia

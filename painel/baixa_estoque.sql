@@ -139,7 +139,14 @@ BEGIN
         FROM base b JOIN pedido_complementos co ON co.pedido_item_id = b.item_id
         WHERE b.produto = 'água mineral - com ou sem gás' AND (co.nome ILIKE '%agua%' OR co.nome ILIKE '%água%')
     )
+    ,
+    batata_extra AS (
+        SELECT 'Batata Frita'::text AS ins, (coalesce(co.quantidade, 1) * 146)::numeric AS qtd
+        FROM base b JOIN pedido_complementos co ON co.pedido_item_id = b.item_id
+        WHERE NOT (b.produto ILIKE 'combo%') AND lower(trim(co.nome)) = 'batata frita'
+    )
     SELECT ins, sum(qtd) FROM (SELECT * FROM receita UNION ALL SELECT * FROM refri_real
+                               UNION ALL SELECT * FROM batata_extra
                                UNION ALL SELECT * FROM molho_extra
                                UNION ALL SELECT * FROM nuggets
                                UNION ALL SELECT * FROM agua_escolha) t

@@ -115,7 +115,7 @@ BEGIN
     SELECT nome_combo, insumo, qtd, unidade FROM ficha_tecnica WHERE produto = burger
     ON CONFLICT (produto, insumo) DO UPDATE SET qtd = EXCLUDED.qtd;
     INSERT INTO ficha_tecnica VALUES
-        (nome_combo, 'Batata Frita', 0.1, 'kg'),
+        (nome_combo, 'Batata Frita', 146, 'g'),
         (nome_combo, 'Papel de Batata', 1, 'un'),
         (nome_combo, refri, 1, 'un')
     ON CONFLICT (produto, insumo) DO UPDATE SET qtd = EXCLUDED.qtd;
