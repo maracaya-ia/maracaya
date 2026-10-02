@@ -3400,7 +3400,7 @@ def estoque_plano(cobertura_dias: int = Query(30, ge=7, le=60),
                coalesce(fi.fornecedor, '—') AS fornecedor,
                fe.estoque_atual,
                ic.custo_unitario,
-               fo.dias_entrega, fo.antecedencia_dias, im.minimo AS minimo_manual,
+               fo.dias_entrega, fo.antecedencia_dias, fo.categoria, im.minimo AS minimo_manual,
                em.nome AS emb_nome, em.qtd AS emb_qtd, (cc.insumo IS NOT NULL) AS ciclo
         FROM vendas v
         LEFT JOIN insumo_fornecedor fi ON fi.insumo = v.insumo
@@ -3443,6 +3443,8 @@ def estoque_plano(cobertura_dias: int = Query(30, ge=7, le=60),
             "embalagem_nome": i["emb_nome"], "embalagem_qtd": emb_qtd,
             "comprar_embalagens": (-(-comprar // emb_qtd) if emb_qtd else None),
             "dias_entrega": i["dias_entrega"] or "todos",
+            "antecedencia": int(i["antecedencia_dias"]) if i["antecedencia_dias"] is not None else 1,
+            "categoria": i["categoria"] or "seco",
             "insumo": i["insumo"], "unidade": i["unidade"],
             "fornecedor": i["fornecedor"],
             "consumo_dia": round(consumo_dia, 2),
@@ -3455,9 +3457,158 @@ def estoque_plano(cobertura_dias: int = Query(30, ge=7, le=60),
 
     sem_custo = sum(1 for i in itens if i["custo_unitario"] is None)
     return {"itens": itens, "fator_tendencia": round(fator, 3),
+            "pedidos_dia_base": rec / 28.0,
             "troca_dias": ",".join(d for d, k in _DIAS_IDX.items() if k in idx_troca),
             "cobertura_dias": cobertura_dias, "seguranca_pct": seguranca_pct,
             "custo_dia_total": round(custo_dia_total, 2), "sem_custo": sem_custo}
+
+
+
+def _previsao_pedidos(hoje, n=60):
+    """Pedidos esperados por dia (mediana por dia da semana nas ultimas 8 semanas x tendencia).
+    Hoje conta so o que ainda falta vender (o estoque ja descontou o que saiu)."""
+    from datetime import timedelta
+    import statistics
+    hist = consultar(f"""
+        SELECT (p.criado_em AT TIME ZONE '{TZ}')::date AS dia, count(*) AS n
+        FROM pedidos p
+        WHERE p.status <> 'canceled'
+          AND (p.criado_em AT TIME ZONE '{TZ}')::date >= %(h)s::date - 56
+        GROUP BY 1
+    """, {"h": hoje})
+    por_dow, rec, ant = {}, 0.0, 0.0
+    hoje_n = 0
+    for h in hist:
+        if h["dia"] == hoje:
+            hoje_n = int(h["n"])
+            continue
+        por_dow.setdefault(h["dia"].weekday(), []).append(float(h["n"]))
+        if (hoje - h["dia"]).days <= 28:
+            rec += float(h["n"])
+        else:
+            ant += float(h["n"])
+    fator = max(0.6, min(1.5, rec / ant)) if ant >= 20 else 1.0
+    base = {k: statistics.median(v) * fator for k, v in por_dow.items() if v}
+    media = (sum(base.values()) / len(base)) if base else 0.0
+    prev = []
+    for d in range(n):
+        dia = hoje + timedelta(days=d)
+        v = base.get(dia.weekday(), media)
+        prev.append(max(v - hoje_n, 0.0) if d == 0 else v)
+    return prev, media
+
+
+def sugestao_compra(cobertura_dias=30, seguranca_pct=20, janela_dias=7):
+    """Cruza previsao de pedidos x consumo por pedido x estoque x rota do fornecedor e
+    devolve o que pedir (e ate quando), agrupado por fornecedor/entrega."""
+    from datetime import timedelta
+    from collections import defaultdict
+    ep = estoque_plano(cobertura_dias=cobertura_dias, seguranca_pct=seguranca_pct)
+    hoje = consultar(f"SELECT (now() AT TIME ZONE '{TZ}')::date AS d", {})[0]["d"]
+    prev, media_prev = _previsao_pedidos(hoje)
+    seg = 1 + seguranca_pct / 100.0
+    pedidos_base = ep["pedidos_dia_base"] or 0.0
+    fator_ep = ep["fator_tendencia"] or 1.0
+
+    grupos = defaultdict(lambda: {"itens": []})
+    sem_estoque, hortifruti, em_dia = [], [], 0
+    for i in ep["itens"]:
+        if i["ciclo"]:
+            if i["consumo_dia"] > 0:
+                hortifruti.append({"insumo": i["insumo"], "unidade": i["unidade"],
+                                   "qtd": round(i["necessidade"], 1),
+                                   "proxima_troca": i["proxima_troca"], "dias_ciclo": i["dias_ciclo"]})
+            continue
+        if i["consumo_dia"] <= 0:
+            continue
+        if i["estoque"] is None:
+            if i["insumo"] not in _SEM_SKU_ESTOQUE:
+                sem_estoque.append(i["insumo"])
+            continue
+        # consumo por pedido (consumo_dia ja vem x tendencia, a previsao de pedidos tambem)
+        cpp = (i["consumo_dia"] / fator_ep) / pedidos_base if pedidos_base > 0 else 0.0
+        cons = [p * cpp * seg for p in prev]
+        cum = [0.0]
+        for c in cons:
+            cum.append(cum[-1] + c)
+
+        idx = sorted(_DIAS_IDX.values()) if i["dias_entrega"] == "todos" else sorted(
+            {_DIAS_IDX[d] for d in i["dias_entrega"].split(",") if d in _DIAS_IDX}) or list(range(7))
+        rotas = [hoje + timedelta(days=k) for k in range(0, 60) if (hoje + timedelta(days=k)).weekday() in idx]
+        ant = i["antecedencia"]
+        pegaveis = [r for r in rotas if r >= hoje + timedelta(days=ant)]
+        if not pegaveis:
+            continue
+
+        estoque = max(i["estoque"], 0.0)
+        out_day = next((d for d in range(len(cons)) if estoque - cum[d + 1] < 0), None)
+        if out_day is None:
+            em_dia += 1
+            continue
+        acaba_em = hoje + timedelta(days=out_day)
+        faltam = 0
+        if pegaveis[0] > acaba_em:
+            alvo = pegaveis[0]
+            faltam = (alvo - acaba_em).days
+        else:
+            alvo = max(r for r in pegaveis if r <= acaba_em)
+        pedir_ate = max(alvo - timedelta(days=ant), hoje)
+        if (pedir_ate - hoje).days > janela_dias:
+            em_dia += 1
+            continue
+
+        k = rotas.index(alvo)
+        if i["categoria"] == "perecivel":
+            fim = rotas[k + 2] if k + 2 < len(rotas) else alvo + timedelta(days=7)
+        else:
+            fim = alvo + timedelta(days=cobertura_dias)
+        d_alvo, d_fim = (alvo - hoje).days, min((fim - hoje).days, len(cons))
+        necessario = cum[d_fim] - cum[min(d_alvo, len(cons))]
+        projetado = max(estoque - cum[min(d_alvo, len(cons))], 0.0)
+        qtd = max(necessario - projetado, 0.0)
+        if qtd <= 0:
+            em_dia += 1
+            continue
+        emb_qtd = i["embalagem_qtd"]
+        embalagens = -(-qtd // emb_qtd) if emb_qtd else None
+        qtd_final = embalagens * emb_qtd if emb_qtd else qtd
+        custo = i["custo_unitario"]
+        grupos[(i["fornecedor"], alvo)]["itens"].append({
+            "insumo": i["insumo"], "unidade": i["unidade"],
+            "estoque": i["estoque"], "acaba_em": acaba_em.isoformat(),
+            "qtd": round(qtd_final, 1), "qtd_exata": round(qtd, 1),
+            "embalagens": int(embalagens) if embalagens else None,
+            "embalagem_nome": i["embalagem_nome"], "embalagem_qtd": emb_qtd,
+            "dias_sem_produto": faltam,
+            "custo_estimado": round(qtd_final * custo, 2) if custo is not None else None,
+        })
+
+    pedidos = []
+    for (forn, entrega), g in grupos.items():
+        info = next((x for x in ep["itens"] if x["fornecedor"] == forn), None)
+        ant = info["antecedencia"] if info else 1
+        pedir_ate = max(entrega - timedelta(days=ant), hoje)
+        g["itens"].sort(key=lambda x: x["insumo"])
+        pedidos.append({
+            "fornecedor": forn, "entrega": entrega.isoformat(),
+            "pedir_ate": pedir_ate.isoformat(), "pedir_hoje": pedir_ate <= hoje,
+            "itens": g["itens"],
+            "total_estimado": round(sum(x["custo_estimado"] or 0 for x in g["itens"]), 2),
+            "itens_sem_custo": sum(1 for x in g["itens"] if x["custo_estimado"] is None),
+            "dias_sem_produto": max((x["dias_sem_produto"] for x in g["itens"]), default=0),
+        })
+    pedidos.sort(key=lambda p: (p["pedir_ate"], p["fornecedor"]))
+    return {"hoje": hoje.isoformat(), "pedidos": pedidos, "hortifruti": hortifruti,
+            "sem_estoque": sem_estoque, "itens_em_dia": em_dia,
+            "pedidos_previstos": [round(x) for x in prev[:7]], "janela_dias": janela_dias,
+            "cobertura_dias": cobertura_dias, "seguranca_pct": seguranca_pct}
+
+
+@app.get("/api/sugestao_compra")
+def api_sugestao_compra(cobertura_dias: int = Query(30, ge=7, le=60),
+                        seguranca_pct: int = Query(20, ge=0, le=100),
+                        janela_dias: int = Query(7, ge=1, le=21)):
+    return sugestao_compra(cobertura_dias, seguranca_pct, janela_dias)
 
 
 @app.post("/api/estoque")
