@@ -2689,6 +2689,11 @@ def zap_pergunta(payload: dict = Body(...),
                         f"{data_b.strftime('%d/%m')}: {brl(fat_b)} · {int(mb['pedidos'])} pedidos\n\n"
                         f"{seta} {abs(delta):.0f}% "
                         f"{'a mais' if fat_b >= fat_a else 'a menos'} em {data_b.strftime('%d/%m')}")
+    elif any(p in q_sem_acento for p in ("preciso comprar", "o que comprar", "que comprar", "sugestao de compra",
+                                         "o que pedir", "lista de compra", "o que devo comprar",
+                                         "o que precisa comprar", "o que tenho que comprar")):
+        intent_keyword = "compras"
+        resposta = _texto_sugestao(sugestao_compra(30, 20, 7), completo=True)
     elif re.search(r"\bsumid\w*\b", q_sem_acento) or "resgate" in q_sem_acento:
         intent_keyword = "sumido"
         s = zap_radar()
@@ -3571,7 +3576,12 @@ def sugestao_compra(cobertura_dias=30, seguranca_pct=20, janela_dias=7):
             continue
         emb_qtd = i["embalagem_qtd"]
         embalagens = -(-qtd // emb_qtd) if emb_qtd else None
-        qtd_final = embalagens * emb_qtd if emb_qtd else qtd
+        if emb_qtd:
+            qtd_final = embalagens * emb_qtd
+        elif i["unidade"] == "kg":
+            qtd_final = -(-qtd * 10 // 1) / 10
+        else:
+            qtd_final = float(-(-qtd // 1))
         custo = i["custo_unitario"]
         grupos[(i["fornecedor"], alvo)]["itens"].append({
             "insumo": i["insumo"], "unidade": i["unidade"],
@@ -3609,6 +3619,64 @@ def api_sugestao_compra(cobertura_dias: int = Query(30, ge=7, le=60),
                         seguranca_pct: int = Query(20, ge=0, le=100),
                         janela_dias: int = Query(7, ge=1, le=21)):
     return sugestao_compra(cobertura_dias, seguranca_pct, janela_dias)
+
+
+
+def _fmt_milhar(x, casas=0):
+    return f"{x:,.{casas}f}".replace(",", "@").replace(".", ",").replace("@", ".")
+
+
+def _texto_sugestao(sug, completo=False):
+    """Mensagem de zap da sugestao de compra. Por padrao so o que precisa ser pedido hoje
+    (+ resumo dos proximos); completo=True tambem lista os proximos itens por fornecedor."""
+    from datetime import date as _d
+    hoje_pedidos = [p for p in sug["pedidos"] if p["pedir_hoje"]]
+    proximos = [p for p in sug["pedidos"] if not p["pedir_hoje"]]
+
+    def linha_item(i):
+        qtd = f"{_fmt_milhar(i['qtd'], 1 if i['unidade'] == 'kg' else 0)} {i['unidade']}"
+        if i["embalagens"]:
+            qtd = f"{i['embalagens']} {i['embalagem_nome']}(s) ({qtd})"
+        return f"• {i['insumo']}: *{qtd}*"
+
+    def cab(p, hoje):
+        entrega = _fmt_data_rota(_d.fromisoformat(p["entrega"]))
+        extra = f" ⚠️ fica {p['dias_sem_produto']} dia(s) sem produto" if p["dias_sem_produto"] else ""
+        if hoje:
+            return f"*{p['fornecedor']}* — entrega {entrega}{extra}"
+        return f"*{p['fornecedor']}* — pedir até {_fmt_data_rota(_d.fromisoformat(p['pedir_ate']))} (entrega {entrega})"
+
+    partes = []
+    if hoje_pedidos:
+        blocos = []
+        for p in hoje_pedidos:
+            total = f"\nTotal estimado: R$ {_fmt_milhar(p['total_estimado'], 2)}" + (
+                f" (+ {p['itens_sem_custo']} item(ns) sem custo)" if p["itens_sem_custo"] else "")
+            blocos.append(cab(p, True) + "\n" + "\n".join(linha_item(i) for i in p["itens"]) + total)
+        partes.append("🛒 *Sugestão de compra — pedir HOJE*\n\n" + "\n\n".join(blocos))
+    elif completo:
+        partes.append("🛒 *Sugestão de compra*\nNada pra pedir hoje. ✅")
+    if proximos and (completo or hoje_pedidos):
+        linhas = []
+        for p in proximos[:6]:
+            itens = ", ".join(i["insumo"] for i in p["itens"][:4]) + ("…" if len(p["itens"]) > 4 else "")
+            linhas.append(f"• {cab(p, False)}: {itens}")
+        partes.append("📅 *Próximos pedidos:*\n" + "\n".join(linhas))
+    if sug["sem_estoque"] and (completo or hoje_pedidos):
+        partes.append("❓ *Sem estoque cadastrado (não entram na sugestão):* "
+                      + ", ".join(sug["sem_estoque"][:8]))
+    if partes:
+        partes.append("_baseado na previsão de pedidos, consumo por lanche e estoque atual; "
+                      "confira o estoque antes de fechar o pedido_")
+    return "\n\n".join(partes)
+
+
+@app.get("/api/zap/sugestao")
+def zap_sugestao():
+    sug = sugestao_compra(30, 20, 7)
+    if not any(p["pedir_hoje"] for p in sug["pedidos"]):
+        return {"enviar": False, "texto": ""}
+    return {"enviar": True, "texto": _texto_sugestao(sug)}
 
 
 @app.post("/api/estoque")
