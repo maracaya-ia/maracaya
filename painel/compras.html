@@ -88,6 +88,14 @@
   dialog.modal .acoes{display:flex; justify-content:flex-end; gap:8px; margin-top:18px}
   dialog.modal button{border-radius:8px; padding:8px 14px; font-size:13px; cursor:pointer; border:1px solid var(--borda); background:var(--fundo); color:var(--texto)}
   dialog.modal button.primario{background:var(--brasa); border-color:var(--brasa); color:#fff}
+  .pedido-sug{border:1px solid var(--borda); border-radius:10px; padding:12px 14px; margin-bottom:10px; background:var(--fundo)}
+  .pedido-sug.hoje{border-color:var(--alerta)}
+  .pedido-sug .topo{display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:8px}
+  .pedido-sug .forn{font-family:'Sora'; font-weight:600}
+  .badge-sug{font-size:11px; padding:2px 8px; border-radius:20px; border:1px solid var(--borda); color:var(--texto-suave)}
+  .badge-sug.hoje{color:var(--alerta); border-color:var(--alerta); font-weight:600}
+  .pedido-sug table{font-size:12.5px}
+  .pedido-sug td, .pedido-sug th{padding:5px 6px}
 </style>
 <link rel="stylesheet" href="/static/_tema.css">
 </head>
@@ -131,6 +139,13 @@
       <thead><tr><th>Fornecedor</th><th>Entrega</th><th>Vence</th></tr></thead>
       <tbody></tbody>
     </table></div>
+  </div>
+
+  <div class="card c-12" id="cardSugestao">
+    <h2>Sugestão de compra 🛒<span class="info" tabindex="0" data-tip="Cruza a previsão de pedidos dos próximos dias (mediana por dia da semana × tendência), o consumo de cada insumo por pedido, o estoque atual e a rota de cada fornecedor. Mostra o que pedir, até quando e quanto — em embalagens quando cadastradas. Seco cobre os dias de cobertura escolhidos abaixo; perecível cobre até duas entregas à frente. Itens sem estoque preenchido não entram.">?</span></h2>
+    <div class="desc" id="descSugestao">Carregando…</div>
+    <div id="sugestaoPedidos"></div>
+    <div id="sugestaoHorti" style="margin-top:14px"></div>
   </div>
 
   <div class="card c-12">
@@ -517,6 +532,7 @@ async function carregar(){
       : 'todos os insumos com custo cadastrado';
   }catch(e){ /* estoque nunca derruba a pagina */ }
 
+  carregarSugestao();
   document.getElementById('atualizadoEm').textContent =
     'Atualizado às ' + new Date().toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'}) +
     ' · plano baseado no dia-âncora escolhido';
@@ -529,6 +545,51 @@ document.addEventListener('change', e => {
   if (e.target.id === 'selCobertura'){ estado.cobertura = +e.target.value; carregar(); }
   if (e.target.id === 'selSeguranca'){ estado.seguranca = +e.target.value; carregar(); }
 });
+
+// ---- sugestao de compra ----
+let sugestaoCache = null;
+async function carregarSugestao(){
+  try{
+    const r = await fetch(`/api/sugestao_compra?cobertura_dias=${estado.cobertura}&seguranca_pct=${estado.seguranca}`);
+    const d = await r.json();
+    sugestaoCache = d;
+    const nHoje = d.pedidos.filter(p => p.pedir_hoje).length;
+    document.getElementById('descSugestao').innerHTML =
+      (d.pedidos.length ? `<strong>${nHoje}</strong> pedido(s) pra fazer hoje · ${d.pedidos.length - nHoje} nos próximos ${d.janela_dias} dias` : 'Nada pra pedir nos próximos dias ✅') +
+      ` · previsão de pedidos (próx. 7 dias): ${d.pedidos_previstos.join(' · ')}` +
+      (d.sem_estoque.length ? `<br><span style="color:var(--alerta)">❓ Sem estoque preenchido (fora da sugestão): ${d.sem_estoque.join(', ')}</span>` : '');
+    const fmtN = (v, u) => (+v).toLocaleString('pt-BR', {maximumFractionDigits: u === 'kg' ? 1 : 0});
+    document.getElementById('sugestaoPedidos').innerHTML = d.pedidos.map((p, k) => `
+      <div class="pedido-sug ${p.pedir_hoje ? 'hoje' : ''}">
+        <div class="topo">
+          <span><span class="forn">${p.fornecedor}</span>
+            <span class="badge-sug ${p.pedir_hoje ? 'hoje' : ''}">${p.pedir_hoje ? '🔴 pedir HOJE' : 'pedir até ' + fmtDia(p.pedir_ate)}</span>
+            <span class="badge-sug">entrega ${fmtDia(p.entrega)}</span>
+            ${p.dias_sem_produto ? `<span class="badge-sug hoje">⚠️ ${p.dias_sem_produto} dia(s) sem produto</span>` : ''}</span>
+          <span><span style="color:var(--texto-suave); font-size:12px">estimado ${R$(p.total_estimado)}${p.itens_sem_custo ? ' + ' + p.itens_sem_custo + ' sem custo' : ''}</span>
+            <button class="btn-edit" data-copiar="${k}">📋 Copiar pedido</button></span>
+        </div>
+        <table><thead><tr><th>Insumo</th><th>Estoque</th><th>Acaba em</th><th>Pedir</th><th>Custo est.</th></tr></thead><tbody>
+          ${p.itens.map(i => `<tr>
+            <td>${i.insumo}</td>
+            <td class="num" style="color:var(--texto-suave)">${fmtN(i.estoque, i.unidade)} ${i.unidade}</td>
+            <td class="num" style="color:var(--texto-suave)">${fmtDia(i.acaba_em)}</td>
+            <td class="num" style="font-weight:600; color:var(--brasa-clara)">${i.embalagens ? `${i.embalagens} ${i.embalagem_nome}(s) <span style="font-weight:400; color:var(--texto-suave)">(${fmtN(i.qtd, i.unidade)} ${i.unidade})</span>` : `${fmtN(i.qtd, i.unidade)} ${i.unidade}`}</td>
+            <td class="num" style="color:var(--texto-suave)">${i.custo_estimado != null ? R$(i.custo_estimado) : '—'}</td>
+          </tr>`).join('')}
+        </tbody></table>
+      </div>`).join('');
+    document.querySelectorAll('#sugestaoPedidos [data-copiar]').forEach(b => b.addEventListener('click', async () => {
+      const p = sugestaoCache.pedidos[+b.dataset.copiar];
+      const linhas = p.itens.map(i => `• ${i.insumo}: ${i.embalagens ? `${i.embalagens} ${i.embalagem_nome}(s)` : `${fmtN(i.qtd, i.unidade)} ${i.unidade}`}`);
+      const texto = `Pedido ${p.fornecedor} — entrega ${fmtDia(p.entrega)}\n` + linhas.join('\n');
+      try{ await navigator.clipboard.writeText(texto); b.textContent = '✅ Copiado'; }catch(e){ prompt('Copie o pedido:', texto); }
+      setTimeout(() => b.textContent = '📋 Copiar pedido', 2000);
+    }));
+    document.getElementById('sugestaoHorti').innerHTML = d.hortifruti.length ? `
+      <div style="font-size:13px; color:var(--texto-suave)">🥬 <strong style="color:var(--texto)">Hortifruti</strong> — próxima troca ${fmtDia(d.hortifruti[0].proxima_troca)} (ciclo de ${d.hortifruti[0].dias_ciclo} dia(s)): ${d.hortifruti.map(x => `${x.insumo} ~${Math.ceil(x.qtd)} ${x.unidade}`).join(' · ')}</div>` : '';
+  }catch(e){ document.getElementById('descSugestao').textContent = 'Não foi possível calcular a sugestão agora.'; }
+}
 
 carregar();
 </script>
