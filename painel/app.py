@@ -3185,6 +3185,8 @@ def compras_plano(ancora: str = Query("seg")):
     from collections import defaultdict
     por_dia = defaultdict(lambda: {"valor": 0.0, "forns": []})
     for it in itens:
+        if it["valor"] <= 0:   # sem boleto (ex: compra no mercado)
+            continue
         por_dia[it["vence"]]["valor"] += it["valor"]
         por_dia[it["vence"]]["forns"].append(it["nome"])
     concentracao = [
