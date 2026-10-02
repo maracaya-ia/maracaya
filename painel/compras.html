@@ -142,7 +142,7 @@
   </div>
 
   <div class="card c-12" id="cardSugestao">
-    <h2>Sugestão de compra 🛒<span class="info" tabindex="0" data-tip="Cruza a previsão de pedidos dos próximos dias (mediana por dia da semana × tendência), o consumo de cada insumo por pedido, o estoque atual e a rota de cada fornecedor. Mostra o que pedir, até quando e quanto — em embalagens quando cadastradas. Seco cobre os dias de cobertura escolhidos abaixo; perecível cobre até duas entregas à frente. Itens sem estoque preenchido não entram.">?</span></h2>
+    <h2>Sugestão de compra 🛒<span class="info" tabindex="0" data-tip="Cruza a previsão de pedidos dos próximos dias (mediana por dia da semana × tendência), o consumo de cada insumo por pedido, o estoque atual e a rota de cada fornecedor. Mostra o que pedir, até quando e quanto — em embalagens quando cadastradas. Cada pedido cobre os dias de cobertura definidos no fornecedor (nunca menos que o maior intervalo entre duas entregas). Itens sem estoque preenchido não entram.">?</span></h2>
     <div class="desc" id="descSugestao">Carregando…</div>
     <div id="sugestaoPedidos"></div>
     <div id="sugestaoHorti" style="margin-top:14px"></div>
@@ -152,12 +152,7 @@
     <h2>Plano de estoque do mês 📦<span class="info" tabindex="0" data-tip="Consumo diário de cada insumo (vendas das últimas 4 semanas × ficha técnica × tendência) projetado pros dias de cobertura, com folga de segurança. O estoque atual agora desconta sozinho a cada pedido novo (e devolve se for cancelado) — a coluna editável serve pra corrigir depois de uma contagem física, não pra registrar toda venda na mão. A coluna COMPRAR mostra quanto falta pra bater a cobertura escolhida. Agrupado por fornecedor pra virar a ordem de compra.">?</span></h2>
     <div class="desc" id="descEstoque">O estoque atual já desconta sozinho a cada pedido — use a coluna editável só pra corrigir após uma contagem física</div>
     <div style="display:flex; gap:16px; margin-bottom:14px; flex-wrap:wrap; align-items:center">
-      <label style="color:var(--texto-suave); font-size:13px">Cobertura:
-        <select id="selCobertura" style="background:var(--fundo); color:var(--texto); border:1px solid var(--borda); border-radius:6px; padding:5px 8px; margin-left:4px">
-          <option value="15">15 dias</option>
-          <option value="30" selected>30 dias (mês)</option>
-          <option value="45">45 dias</option>
-        </select></label>
+      <span style="color:var(--texto-suave); font-size:13px" title="Cada fornecedor tem a sua cobertura (veja a tabela Fornecedores)">Cobertura: por fornecedor</span>
       <label style="color:var(--texto-suave); font-size:13px">Segurança:
         <select id="selSeguranca" style="background:var(--fundo); color:var(--texto); border:1px solid var(--borda); border-radius:6px; padding:5px 8px; margin-left:4px">
           <option value="10">+10%</option>
@@ -179,7 +174,7 @@
     <h2>Fornecedores<span class="info" tabindex="0" data-tip="Valor médio mensal e prazo de pagamento de cada um. Clique no valor pra editar — o calendário recalcula na hora. Perecível pede atenção com entregas fracionadas mesmo em pedido único.">?</span></h2>
     <div class="desc">Clique no valor pra atualizar · <button type="button" class="btn-edit" id="btnNovoForn" style="margin-left:6px">➕ Novo fornecedor</button></div>
     <div style="overflow-x:auto"><table id="tForn">
-      <thead><tr><th>Fornecedor</th><th>Categoria</th><th>Entrega</th><th>Pedir c/ antecedência</th><th>Prazo</th><th>Média/mês</th><th>Gasto real (este mês)</th><th></th></tr></thead>
+      <thead><tr><th>Fornecedor</th><th>Categoria</th><th>Entrega</th><th>Pedir c/ antecedência</th><th>Cobertura</th><th>Prazo</th><th>Média/mês</th><th>Gasto real (este mês)</th><th></th></tr></thead>
       <tbody></tbody>
     </table></div>
   </div>
@@ -201,6 +196,8 @@
     <div id="dlgFDias" style="display:flex; flex-wrap:wrap; gap:6px 12px; font-size:13px"></div>
     <label>Antecedência do pedido (dias antes da entrega)</label>
     <input id="dlgFAntec" type="number" min="0" max="14" step="1" value="1">
+    <label>Cobertura de estoque do pedido (dias)</label>
+    <input id="dlgFCobertura" type="number" min="1" max="90" step="1" value="14">
     <label>Prazo de pagamento (dias)</label>
     <input id="dlgFPrazo" type="number" min="0" max="120" step="1" value="7">
     <label>Média mensal de compra (R$)</label>
@@ -267,7 +264,7 @@ function celulaPedirAte(x){
 }
 function abrirFornecedor(nome){
   const novo = nome === null;
-  const f = novo ? {categoria:'seco', dias_entrega:'seg,ter,qua,qui,sex', prazo:7, valor:0, antecedencia:1} : fornecedoresDados[nome];
+  const f = novo ? {categoria:'seco', dias_entrega:'seg,ter,qua,qui,sex', prazo:7, valor:0, antecedencia:1, cobertura:14} : fornecedoresDados[nome];
   if (!f) return;
   fornecedorEmEdicao = nome;
   document.getElementById('dlgFTitulo').textContent = novo ? 'Novo fornecedor' : nome;
@@ -278,6 +275,7 @@ function abrirFornecedor(nome){
   document.getElementById('dlgFDias').innerHTML = DIAS_SEMANA.map(([k, r]) =>
     `<label style="margin:0; display:flex; gap:4px; align-items:center"><input type="checkbox" style="width:auto" value="${k}" ${marcados.includes(k) ? 'checked' : ''}>${r}</label>`).join('');
   document.getElementById('dlgFAntec').value = f.antecedencia;
+  document.getElementById('dlgFCobertura').value = f.cobertura;
   document.getElementById('dlgFPrazo').value = f.prazo;
   document.getElementById('dlgFValor').value = f.valor;
   document.getElementById('dlgFornecedor').showModal();
@@ -291,6 +289,7 @@ document.getElementById('frmFornecedor').addEventListener('submit', async e => {
   const corpo = {categoria: document.getElementById('dlgFCategoria').value,
     dias_entrega: dias.length === 7 ? 'todos' : dias.join(','),
     antecedencia_dias: document.getElementById('dlgFAntec').value,
+    cobertura_dias: document.getElementById('dlgFCobertura').value,
     prazo_dias: document.getElementById('dlgFPrazo').value, valor_mensal: document.getElementById('dlgFValor').value};
   let r;
   if (fornecedorEmEdicao === null){
@@ -437,6 +436,7 @@ async function carregar(){
     <td><span class="tag ${it.categoria}">${it.categoria === 'perecivel' ? 'Perecível' : 'Seco'}</span></td>
     <td class="num">${it.dias_entrega === 'todos' ? 'Todo dia' : it.dias_entrega}</td>
     <td class="num">${it.antecedencia} dia(s)</td>
+    <td class="num">${it.cobertura} dias</td>
     <td class="num">${it.prazo} dias</td>
     <td><input data-forn="${it.nome}" type="number" step="10" min="0" value="${it.valor.toFixed(2)}"
          style="width:110px; background:var(--fundo); color:var(--texto); border:1px solid var(--borda); border-radius:6px; padding:6px 8px; font-family:'IBM Plex Mono',monospace; font-size:13px"></td>
@@ -525,7 +525,7 @@ async function carregar(){
     const semEstoque = es.itens.filter(x => x.estoque == null).length;
     document.getElementById('descEstoque').innerHTML = semEstoque > 0
       ? `Preencha o estoque atual dos ${semEstoque} insumo(s) em branco — a coluna <strong>Comprar</strong> assume estoque zero até você preencher`
-      : `Cobertura de ${es.cobertura_dias} dias + ${es.seguranca_pct}% de segurança · a coluna <strong>Comprar</strong> é sua ordem de compra`;
+      : `Cobertura de cada fornecedor + ${es.seguranca_pct}% de segurança · a coluna <strong>Comprar</strong> é sua ordem de compra`;
     document.getElementById('kCustoInsumo').textContent = R$(es.custo_dia_total);
     document.getElementById('kCustoInsumoSub').textContent = es.sem_custo > 0
       ? `${es.sem_custo} insumo(s) sem custo cadastrado`
@@ -542,7 +542,6 @@ document.getElementById('selAncora').addEventListener('change', e => {
   estado.ancora = e.target.value; carregar();
 });
 document.addEventListener('change', e => {
-  if (e.target.id === 'selCobertura'){ estado.cobertura = +e.target.value; carregar(); }
   if (e.target.id === 'selSeguranca'){ estado.seguranca = +e.target.value; carregar(); }
 });
 

@@ -3130,7 +3130,7 @@ def compras_plano(ancora: str = Query("seg")):
     NOME_DOW = ["Seg","Ter","Qua","Qui","Sex","Sáb","Dom"]
 
     forns = consultar(
-        "SELECT nome, dias_entrega, prazo_dias, valor_mensal, categoria, antecedencia_dias "
+        "SELECT nome, dias_entrega, prazo_dias, valor_mensal, categoria, antecedencia_dias, cobertura_dias "
         "FROM fornecedores ORDER BY valor_mensal DESC", {})
 
     hoje = consultar(f"SELECT (now() AT TIME ZONE '{TZ}')::date AS d", {})[0]["d"]
@@ -3173,6 +3173,7 @@ def compras_plano(ancora: str = Query("seg")):
             "nome": f["nome"], "categoria": f["categoria"],
             "prazo": int(f["prazo_dias"]), "valor": val,
             "antecedencia": int(f["antecedencia_dias"]),
+            "cobertura": int(f["cobertura_dias"]),
             "real_mes": round(reais.get(f["nome"], 0), 2),
             "dias_entrega": f["dias_entrega"],
             "entrega": ent.isoformat(), "entrega_dow": NOME_DOW[ent.weekday()],
@@ -3227,15 +3228,16 @@ def criar_fornecedor(dados: dict = Body(...)):
         prazo = int(float(dados.get("prazo_dias", 0)))
         valor = float(dados.get("valor_mensal", 0) or 0)
         antec = int(float(dados.get("antecedencia_dias", 1)))
+        cob = int(float(dados.get("cobertura_dias", 14)))
     except (TypeError, ValueError):
         return {"ok": False, "erro": "prazo ou valor inválido"}
-    if not 0 <= prazo <= 120 or valor < 0 or not 0 <= antec <= 14:
+    if not 0 <= prazo <= 120 or valor < 0 or not 0 <= antec <= 14 or not 1 <= cob <= 90:
         return {"ok": False, "erro": "prazo ou valor inválido"}
     if consultar("SELECT 1 FROM fornecedores WHERE lower(nome) = lower(%(n)s)", {"n": nome}):
         return {"ok": False, "erro": "já existe um fornecedor com esse nome"}
-    executar("""INSERT INTO fornecedores (nome, dias_entrega, prazo_dias, valor_mensal, categoria, antecedencia_dias, atualizado_em)
-                VALUES (%(n)s, %(d)s, %(p)s, %(v)s, %(c)s, %(a)s, now())""",
-             {"n": nome, "d": dias, "p": prazo, "v": valor, "c": categoria, "a": antec})
+    executar("""INSERT INTO fornecedores (nome, dias_entrega, prazo_dias, valor_mensal, categoria, antecedencia_dias, cobertura_dias, atualizado_em)
+                VALUES (%(n)s, %(d)s, %(p)s, %(v)s, %(c)s, %(a)s, %(cb)s, now())""",
+             {"n": nome, "d": dias, "p": prazo, "v": valor, "c": categoria, "a": antec, "cb": cob})
     return {"ok": True}
 
 
@@ -3256,7 +3258,7 @@ def salvar_fornecedor(dados: dict = Body(...)):
             return {"ok": False, "erro": "categoria inválida"}
         campos.append("categoria = %(categoria)s")
         params["categoria"] = str(dados["categoria"])
-    for c in ("prazo_dias", "valor_mensal", "antecedencia_dias"):
+    for c in ("prazo_dias", "valor_mensal", "antecedencia_dias", "cobertura_dias"):
         if c in dados:
             try:
                 params[c] = float(dados[c])
@@ -3405,7 +3407,7 @@ def estoque_plano(cobertura_dias: int = Query(30, ge=7, le=60),
                coalesce(fi.fornecedor, '—') AS fornecedor,
                fe.estoque_atual,
                ic.custo_unitario,
-               fo.dias_entrega, fo.antecedencia_dias, fo.categoria, im.minimo AS minimo_manual,
+               fo.dias_entrega, fo.antecedencia_dias, fo.categoria, fo.cobertura_dias AS cobertura_forn, im.minimo AS minimo_manual,
                em.nome AS emb_nome, em.qtd AS emb_qtd, (cc.insumo IS NOT NULL) AS ciclo
         FROM vendas v
         LEFT JOIN insumo_fornecedor fi ON fi.insumo = v.insumo
@@ -3425,7 +3427,8 @@ def estoque_plano(cobertura_dias: int = Query(30, ge=7, le=60),
     custo_dia_total = 0.0
     for i in insumos:
         consumo_dia = float(i["consumo_dia"]) * fator
-        necessidade = consumo_dia * cobertura_dias * seg
+        cobertura_item = int(i["cobertura_forn"]) if i["cobertura_forn"] is not None else cobertura_dias
+        necessidade = consumo_dia * cobertura_item * seg
         estoque = float(i["estoque_atual"]) if i["estoque_atual"] is not None else None
         comprar = max(necessidade - estoque, 0) if estoque is not None else necessidade
         custo_unitario = float(i["custo_unitario"]) if i["custo_unitario"] is not None else None
@@ -3449,6 +3452,7 @@ def estoque_plano(cobertura_dias: int = Query(30, ge=7, le=60),
             "comprar_embalagens": (-(-comprar // emb_qtd) if emb_qtd else None),
             "dias_entrega": i["dias_entrega"] or "todos",
             "antecedencia": int(i["antecedencia_dias"]) if i["antecedencia_dias"] is not None else 1,
+            "cobertura": cobertura_item,
             "categoria": i["categoria"] or "seco",
             "insumo": i["insumo"], "unidade": i["unidade"],
             "fornecedor": i["fornecedor"],
@@ -3562,11 +3566,8 @@ def sugestao_compra(cobertura_dias=30, seguranca_pct=20, janela_dias=7):
             em_dia += 1
             continue
 
-        k = rotas.index(alvo)
-        if i["categoria"] == "perecivel":
-            fim = rotas[k + 2] if k + 2 < len(rotas) else alvo + timedelta(days=7)
-        else:
-            fim = alvo + timedelta(days=cobertura_dias)
+        gaps = [((idx[(j + 1) % len(idx)] - idx[j]) % 7) or 7 for j in range(len(idx))]
+        fim = alvo + timedelta(days=max(i["cobertura"], max(gaps)))
         d_alvo, d_fim = (alvo - hoje).days, min((fim - hoje).days, len(cons))
         necessario = cum[d_fim] - cum[min(d_alvo, len(cons))]
         projetado = max(estoque - cum[min(d_alvo, len(cons))], 0.0)
