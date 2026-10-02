@@ -108,7 +108,7 @@ BEGIN
     molho_extra AS (
         SELECT (CASE
             WHEN co.nome ILIKE '%maracay%' AND co.nome ILIKE '%molho%' THEN 'Maionese Grill'
-            WHEN co.nome ILIKE '%baconese%' THEN 'Molho Baconese'
+            WHEN co.nome ILIKE '%baconese%' THEN 'Maionese de Bacon'
             WHEN co.nome ILIKE '%ervas%' THEN 'Molho Ervas Finas'
             WHEN co.nome ILIKE '%parmes%' THEN 'Molho Parmesão'
             WHEN co.nome ILIKE '%barbecue%' THEN 'Molho Barbecue'
@@ -117,7 +117,7 @@ BEGIN
         JOIN pedido_complementos co ON co.pedido_item_id = b.item_id
         WHERE (CASE
             WHEN co.nome ILIKE '%maracay%' AND co.nome ILIKE '%molho%' THEN 'Maionese Grill'
-            WHEN co.nome ILIKE '%baconese%' THEN 'Molho Baconese'
+            WHEN co.nome ILIKE '%baconese%' THEN 'Maionese de Bacon'
             WHEN co.nome ILIKE '%ervas%' THEN 'Molho Ervas Finas'
             WHEN co.nome ILIKE '%parmes%' THEN 'Molho Parmesão'
             WHEN co.nome ILIKE '%barbecue%' THEN 'Molho Barbecue'

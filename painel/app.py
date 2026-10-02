@@ -1236,7 +1236,7 @@ _PRODUTO_AGUA_ESCOLHA = "água mineral - com ou sem gás"
 _BEBIDA_ESCOLHIDA = "(b.produto ILIKE 'combo%%' OR b.produto IN ('refrigerantes', 'sucos', 'cervejas'))"
 _CASE_MOLHO = """CASE
     WHEN co.nome ILIKE '%%maracay%%' AND co.nome ILIKE '%%molho%%' THEN 'Maionese Grill'
-    WHEN co.nome ILIKE '%%baconese%%' THEN 'Molho Baconese'
+    WHEN co.nome ILIKE '%%baconese%%' THEN 'Maionese de Bacon'
     WHEN co.nome ILIKE '%%ervas%%' THEN 'Molho Ervas Finas'
     WHEN co.nome ILIKE '%%parmes%%' THEN 'Molho Parmesão'
     WHEN co.nome ILIKE '%%barbecue%%' THEN 'Molho Barbecue'
