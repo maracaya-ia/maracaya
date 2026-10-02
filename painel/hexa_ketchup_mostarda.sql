@@ -21,3 +21,7 @@ INSERT INTO insumo_custo (insumo, custo_unitario, atualizado_em) VALUES ('Ketchu
 ON CONFLICT (insumo) DO UPDATE SET custo_unitario = EXCLUDED.custo_unitario, atualizado_em = EXCLUDED.atualizado_em;
 INSERT INTO insumo_fornecedor (insumo, fornecedor) VALUES ('Ketchup', 'Delly''s'), ('Mostarda', 'Delly''s')
 ON CONFLICT (insumo) DO NOTHING;
+
+-- Mostarda Heinz bag 2 kg R$ 37,89 = 0,0189/g
+INSERT INTO insumo_custo (insumo, custo_unitario, atualizado_em) VALUES ('Mostarda', 0.0189, now())
+ON CONFLICT (insumo) DO UPDATE SET custo_unitario = EXCLUDED.custo_unitario, atualizado_em = EXCLUDED.atualizado_em;
