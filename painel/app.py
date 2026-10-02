@@ -2792,8 +2792,10 @@ def zap_pergunta(payload: dict = Body(...),
             return v
 
         nomes_ok = {n_: _sem_acento(n_) for n_ in agreg}
+        # "molho" tambem vale pras maioneses (sao molhos de lanche, controlados em g)
+        tokens_busca = tokens + (["maionese"] if any(t.startswith("molho") for t in tokens) else [])
         filtrados = {n_ for n_, ns in nomes_ok.items()
-                     if any(vv in ns for t in tokens for vv in _variantes(t))}
+                     if any(vv in ns for t in tokens_busca for vv in _variantes(t))}
         escolhidos = filtrados if filtrados else set(agreg)
 
         def _fmt_num(x, casas):
