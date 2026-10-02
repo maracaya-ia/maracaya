@@ -1229,7 +1229,7 @@ END"""
 # baixa a mais do molho escolhido; o molho padrao do lanche continua na ficha tecnica.
 _GRAMAS_POTE_MOLHO = 30
 _CASE_MOLHO = """CASE
-    WHEN co.nome ILIKE '%%maracay%%' AND co.nome ILIKE '%%molho%%' THEN 'Molho Maracayá'
+    WHEN co.nome ILIKE '%%maracay%%' AND co.nome ILIKE '%%molho%%' THEN 'Maionese Grill'
     WHEN co.nome ILIKE '%%baconese%%' THEN 'Molho Baconese'
     WHEN co.nome ILIKE '%%ervas%%' THEN 'Molho Ervas Finas'
     WHEN co.nome ILIKE '%%parmes%%' THEN 'Molho Parmesão'
