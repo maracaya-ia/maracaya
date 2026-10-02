@@ -2193,8 +2193,9 @@ def _fmt_qtd_estoque(valor, un):
 
 
 def _posicao_estoque():
-    """Separa os insumos em negativo / zerado / critico (<3 dias de cobertura) /
-    sem registro - usado tanto pela MIA quanto pelo aviso de fechamento do dia."""
+    """Separa os insumos em negativo / zerado / abaixo do minimo (com a rota do
+    fornecedor: ate quando pedir ou quantos dias fica sem produto) / sem registro -
+    usado pela MIA e pelo aviso de compras das 23h40."""
     ep = estoque_plano(cobertura_dias=30, seguranca_pct=20)
     negativos, zerados, criticos, sem_registro = [], [], [], []
     for i in ep["itens"]:
@@ -2207,8 +2208,17 @@ def _posicao_estoque():
             negativos.append((i["insumo"], i["estoque"], i["unidade"]))
         elif i["estoque"] == 0:
             zerados.append(i["insumo"])
-        elif dias < 3:
-            criticos.append((i["insumo"], i["estoque"], i["unidade"], dias))
+        elif i["abaixo_minimo"] or i["dias_sem_produto"] > 0:
+            if i["dias_sem_produto"] > 0:
+                rota = (f"⚠️ fica {i['dias_sem_produto']} dia(s) sem produto — "
+                        f"próxima entrega {_fmt_data_rota(date.fromisoformat(i['proxima_entrega']))}")
+            elif i["pedir_hoje"]:
+                rota = "pedir HOJE"
+            elif i["pedir_ate"]:
+                rota = f"pedir até {_fmt_data_rota(date.fromisoformat(i['pedir_ate']))}"
+            else:
+                rota = ""
+            criticos.append((i["insumo"], i["estoque"], i["unidade"], dias, rota))
     negativos.sort(key=lambda x: x[1])
     criticos.sort(key=lambda x: x[3])
     return negativos, zerados, criticos, sem_registro
@@ -2290,9 +2300,9 @@ def zap_estoque():
     if zerados:
         partes.append("🟠 *Zerado:* " + ", ".join(zerados))
     if criticos:
-        linhas = "\n".join(f"• {nome}: {_fmt_qtd_estoque(qtd, un)} (~{dias:.1f} dia(s) de cobertura)"
-                           for nome, qtd, un, dias in criticos)
-        partes.append(f"🟡 *Crítico (menos de 3 dias):*\n{linhas}")
+        linhas = "\n".join(f"• {nome}: {_fmt_qtd_estoque(qtd, un)} (~{dias:.1f} dia(s)) — {rota}"
+                           for nome, qtd, un, dias, rota in criticos)
+        partes.append(f"🟡 *Abaixo do mínimo:*\n{linhas}")
     if sem_registro:
         partes.append("❓ *Sem estoque cadastrado:* " + ", ".join(sem_registro[:10]))
     return {"enviar": True, "texto": "\n\n".join(partes)}
@@ -2936,9 +2946,9 @@ def zap_pergunta(payload: dict = Body(...),
                 if zerados:
                     partes.append("🟠 *Zerado:* " + ", ".join(zerados[:10]))
                 if criticos:
-                    linhas = "\n".join(f"• {nome}: {_fmt_qtd_estoque(qtd, un)} (~{dias:.1f} dia(s) de cobertura)"
-                                       for nome, qtd, un, dias in criticos[:10])
-                    partes.append(f"🟡 *Crítico (menos de 3 dias):*\n{linhas}")
+                    linhas = "\n".join(f"• {nome}: {_fmt_qtd_estoque(qtd, un)} (~{dias:.1f} dia(s)) — {rota}"
+                                       for nome, qtd, un, dias, rota in criticos[:10])
+                    partes.append(f"🟡 *Abaixo do mínimo:*\n{linhas}")
                 if sem_registro:
                     partes.append("❓ *Sem estoque cadastrado:* "
                                   + ", ".join(sem_registro[:10]))
@@ -3069,7 +3079,7 @@ def compras_plano(ancora: str = Query("seg")):
     NOME_DOW = ["Seg","Ter","Qua","Qui","Sex","Sáb","Dom"]
 
     forns = consultar(
-        "SELECT nome, dias_entrega, prazo_dias, valor_mensal, categoria "
+        "SELECT nome, dias_entrega, prazo_dias, valor_mensal, categoria, antecedencia_dias "
         "FROM fornecedores ORDER BY valor_mensal DESC", {})
 
     hoje = consultar(f"SELECT (now() AT TIME ZONE '{TZ}')::date AS d", {})[0]["d"]
@@ -3111,6 +3121,7 @@ def compras_plano(ancora: str = Query("seg")):
         itens.append({
             "nome": f["nome"], "categoria": f["categoria"],
             "prazo": int(f["prazo_dias"]), "valor": val,
+            "antecedencia": int(f["antecedencia_dias"]),
             "real_mes": round(reais.get(f["nome"], 0), 2),
             "dias_entrega": f["dias_entrega"],
             "entrega": ent.isoformat(), "entrega_dow": NOME_DOW[ent.weekday()],
@@ -3164,15 +3175,16 @@ def criar_fornecedor(dados: dict = Body(...)):
     try:
         prazo = int(float(dados.get("prazo_dias", 0)))
         valor = float(dados.get("valor_mensal", 0) or 0)
+        antec = int(float(dados.get("antecedencia_dias", 1)))
     except (TypeError, ValueError):
         return {"ok": False, "erro": "prazo ou valor inválido"}
-    if not 0 <= prazo <= 120 or valor < 0:
+    if not 0 <= prazo <= 120 or valor < 0 or not 0 <= antec <= 14:
         return {"ok": False, "erro": "prazo ou valor inválido"}
     if consultar("SELECT 1 FROM fornecedores WHERE lower(nome) = lower(%(n)s)", {"n": nome}):
         return {"ok": False, "erro": "já existe um fornecedor com esse nome"}
-    executar("""INSERT INTO fornecedores (nome, dias_entrega, prazo_dias, valor_mensal, categoria, atualizado_em)
-                VALUES (%(n)s, %(d)s, %(p)s, %(v)s, %(c)s, now())""",
-             {"n": nome, "d": dias, "p": prazo, "v": valor, "c": categoria})
+    executar("""INSERT INTO fornecedores (nome, dias_entrega, prazo_dias, valor_mensal, categoria, antecedencia_dias, atualizado_em)
+                VALUES (%(n)s, %(d)s, %(p)s, %(v)s, %(c)s, %(a)s, now())""",
+             {"n": nome, "d": dias, "p": prazo, "v": valor, "c": categoria, "a": antec})
     return {"ok": True}
 
 
@@ -3193,7 +3205,7 @@ def salvar_fornecedor(dados: dict = Body(...)):
             return {"ok": False, "erro": "categoria inválida"}
         campos.append("categoria = %(categoria)s")
         params["categoria"] = str(dados["categoria"])
-    for c in ("prazo_dias", "valor_mensal"):
+    for c in ("prazo_dias", "valor_mensal", "antecedencia_dias"):
         if c in dados:
             try:
                 params[c] = float(dados[c])
@@ -3205,6 +3217,52 @@ def salvar_fornecedor(dados: dict = Body(...)):
     executar(f"UPDATE fornecedores SET {', '.join(campos)}, atualizado_em = now() "
              f"WHERE nome = %(nome)s", params)
     return {"ok": True}
+
+
+_DIAS_IDX = {"seg": 0, "ter": 1, "qua": 2, "qui": 3, "sex": 4, "sab": 5, "dom": 6}
+_DOW_NOME = ["seg", "ter", "qua", "qui", "sex", "sáb", "dom"]
+
+
+def _fmt_data_rota(d):
+    return f"{_DOW_NOME[d.weekday()]} {d.day:02d}/{d.month:02d}"
+
+
+def _rota_estoque(dias_entrega, antecedencia, hoje, consumo_dia, estoque, minimo_manual, seg):
+    """Mapeia o estoque na rota do fornecedor: minimo (manual ou automatico), ate quando
+    pedir e quantos dias ficaria sem produto se perder a janela do pedido."""
+    from datetime import timedelta
+    dias_entrega = dias_entrega or "todos"
+    idx = sorted(_DIAS_IDX.values()) if dias_entrega == "todos" else sorted(
+        {_DIAS_IDX[d] for d in dias_entrega.split(",") if d in _DIAS_IDX}) or list(range(7))
+    gaps = [((idx[(k + 1) % len(idx)] - idx[k]) % 7) or 7 for k in range(len(idx))]
+    intervalo_max = max(gaps)
+    antecedencia = max(int(antecedencia or 0), 0)
+    minimo_auto = consumo_dia * (antecedencia + intervalo_max) * seg
+    minimo = float(minimo_manual) if minimo_manual is not None else minimo_auto
+
+    r = {"minimo": round(minimo, 2), "minimo_auto": round(minimo_auto, 2),
+         "minimo_manual": minimo_manual is not None,
+         "abaixo_minimo": False, "proxima_entrega": None, "pedir_ate": None,
+         "dias_sem_produto": 0, "pedir_hoje": False}
+    rotas = [hoje + timedelta(days=k) for k in range(0, 45)]
+    rotas = [d for d in rotas if d.weekday() in idx]
+    pegaveis = [d for d in rotas if d >= hoje + timedelta(days=antecedencia)]
+    if pegaveis:
+        r["proxima_entrega"] = pegaveis[0].isoformat()
+    if estoque is None or consumo_dia <= 0:
+        return r
+    r["abaixo_minimo"] = minimo > 0 and estoque <= minimo
+    cobertura = max(estoque, 0) / consumo_dia
+    acaba_em = hoje + timedelta(days=int(cobertura))
+    if pegaveis and pegaveis[0] > acaba_em:
+        r["dias_sem_produto"] = (pegaveis[0] - acaba_em).days
+        r["pedir_hoje"] = True
+    elif pegaveis:
+        ultima = max(d for d in pegaveis if d <= acaba_em)
+        limite = ultima - timedelta(days=antecedencia)
+        r["pedir_ate"] = limite.isoformat()
+        r["pedir_hoje"] = limite <= hoje
+    return r
 
 
 @app.get("/api/estoque_plano")
@@ -3267,15 +3325,19 @@ def estoque_plano(cobertura_dias: int = Query(30, ge=7, le=60),
         SELECT v.insumo, v.unidade, v.por_dia AS consumo_dia,
                coalesce(fi.fornecedor, '—') AS fornecedor,
                fe.estoque_atual,
-               ic.custo_unitario
+               ic.custo_unitario,
+               fo.dias_entrega, fo.antecedencia_dias, im.minimo AS minimo_manual
         FROM vendas v
         LEFT JOIN insumo_fornecedor fi ON fi.insumo = v.insumo
+        LEFT JOIN fornecedores fo ON fo.nome = fi.fornecedor
+        LEFT JOIN insumo_minimo im ON im.insumo = v.insumo
         LEFT JOIN insumo_estoque fe ON fe.insumo = v.insumo
         LEFT JOIN insumo_custo ic ON ic.insumo = v.insumo
         ORDER BY (v.unidade = 'kg') DESC, 3 DESC
     """, {})
 
     seg = 1 + seguranca_pct / 100.0
+    hoje = consultar(f"SELECT (now() AT TIME ZONE '{TZ}')::date AS d", {})[0]["d"]
     itens = []
     custo_dia_total = 0.0
     for i in insumos:
@@ -3287,7 +3349,11 @@ def estoque_plano(cobertura_dias: int = Query(30, ge=7, le=60),
         custo_dia = consumo_dia * custo_unitario if custo_unitario is not None else None
         if custo_dia is not None:
             custo_dia_total += custo_dia
+        rota = _rota_estoque(i["dias_entrega"], i["antecedencia_dias"], hoje, consumo_dia, estoque,
+                             float(i["minimo_manual"]) if i["minimo_manual"] is not None else None, seg)
         itens.append({
+            **rota,
+            "dias_entrega": i["dias_entrega"] or "todos",
             "insumo": i["insumo"], "unidade": i["unidade"],
             "fornecedor": i["fornecedor"],
             "consumo_dia": round(consumo_dia, 2),
@@ -3362,6 +3428,28 @@ def criar_insumo(dados: dict = Body(...)):
                         atualizado_em = now()""", {"i": insumo, "q": est})
     except (TypeError, ValueError):
         pass
+    return {"ok": True}
+
+
+@app.post("/api/estoque_minimo")
+def salvar_estoque_minimo(dados: dict = Body(...)):
+    """minimo vazio/null remove o valor manual e volta pro minimo automatico."""
+    insumo = str(dados.get("insumo", "")).strip()
+    if not insumo:
+        return {"ok": False, "erro": "insumo vazio"}
+    bruto = dados.get("minimo")
+    if bruto is None or str(bruto).strip() == "":
+        executar("DELETE FROM insumo_minimo WHERE insumo = %(i)s", {"i": insumo})
+        return {"ok": True}
+    try:
+        minimo = float(bruto)
+    except (TypeError, ValueError):
+        return {"ok": False, "erro": "mínimo inválido"}
+    if minimo < 0:
+        return {"ok": False, "erro": "mínimo inválido"}
+    executar("""INSERT INTO insumo_minimo (insumo, minimo) VALUES (%(i)s, %(m)s)
+                ON CONFLICT (insumo) DO UPDATE SET minimo = EXCLUDED.minimo""",
+             {"i": insumo, "m": minimo})
     return {"ok": True}
 
 
