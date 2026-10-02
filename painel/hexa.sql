@@ -2,7 +2,7 @@
 -- Receita informada: pao brioche com gergelim, ketchup, mostarda, cebola picadinha,
 -- picles picadinho, queijo cheddar e carne de 150 g.
 -- Assumido (padrao dos demais lanches): 1 Carne Angus, 2 cheddar, embalagem/guardanapo.
--- PENDENTE: cebola picadinha e picles picadinho (quantidade por lanche).
+-- Picles e cebola branca: 20 g cada (ver fim do arquivo).
 
 INSERT INTO ficha_tecnica (produto, insumo, qtd, unidade) VALUES
 ('hexa', 'Pão Brioche com Gergelim', 1, 'un'),
