@@ -21,3 +21,6 @@ INSERT INTO insumo_fornecedor (insumo, fornecedor) VALUES
 ('Molho Barbecue', 'Delly''s'),
 ('Molho Baconese', 'Delly''s')
 ON CONFLICT (insumo) DO NOTHING;
+
+-- Batata McCain 7mm Fast Food 2,5 kg (Delly's, cod. 158269): R$ 15,29/kg = 0,01529/g (antes 0,0146)
+UPDATE insumo_custo SET custo_unitario = 0.015290, atualizado_em = now() WHERE insumo = 'Batata Frita';
