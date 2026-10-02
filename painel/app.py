@@ -1220,14 +1220,18 @@ _CASE_REFRI = """CASE
     WHEN co.nome ILIKE '%%suco%%' AND co.nome ILIKE '%%uva%%' THEN 'Suco Del Valle Uva'
     WHEN co.nome ILIKE '%%suco%%' AND co.nome ILIKE '%%maracuj%%' THEN 'Suco Del Valle Maracujá'
     WHEN co.nome ILIKE '%%suco%%' THEN 'Suco (genérico)'
-    WHEN co.nome ILIKE '%%agua%%' AND co.nome ILIKE '%%gas%%' THEN 'Água com Gás'
-    WHEN co.nome ILIKE '%%agua%%' THEN 'Água Normal'
+    WHEN (co.nome ILIKE '%%agua%%' OR co.nome ILIKE '%%água%%') AND (co.nome ILIKE '%%gas%%' OR co.nome ILIKE '%%gás%%') THEN 'Água com Gás'
+    WHEN co.nome ILIKE '%%agua%%' OR co.nome ILIKE '%%água%%' THEN 'Água Normal'
     WHEN co.nome ILIKE '%%cerveja%%' THEN 'Cerveja (genérica)'
     WHEN co.nome ILIKE '%%refriger%%' THEN 'Refrigerante (genérico)'
 END"""
 # Molho escolhido no pedido (complemento) vai a parte num pote de 30 ml (~30 g) e
 # baixa a mais do molho escolhido; o molho padrao do lanche continua na ficha tecnica.
 _GRAMAS_POTE_MOLHO = 30
+# Nuggets: baixa pelo tamanho escolhido (P = 9, G = 12). Agua mineral "com ou sem gas":
+# o insumo (com gas / normal) vem do complemento escolhido.
+_CASE_NUGGET = "CASE WHEN co.nome ILIKE '%%tamanho p%%' THEN 9 WHEN co.nome ILIKE '%%tamanho g%%' THEN 12 END"
+_PRODUTO_AGUA_ESCOLHA = "água mineral - com ou sem gás"
 _CASE_MOLHO = """CASE
     WHEN co.nome ILIKE '%%maracay%%' AND co.nome ILIKE '%%molho%%' THEN 'Maionese Grill'
     WHEN co.nome ILIKE '%%baconese%%' THEN 'Molho Baconese'
@@ -2753,6 +2757,14 @@ def zap_pergunta(payload: dict = Body(...),
                 FROM base b
                 JOIN pedido_complementos co ON co.pedido_item_id = b.item_id
                 WHERE {_CASE_MOLHO} IS NOT NULL
+                UNION ALL
+                SELECT b.d, 'Nuggets', 'un', b.quantidade * {_CASE_NUGGET}, 1::numeric
+                FROM base b JOIN pedido_complementos co ON co.pedido_item_id = b.item_id
+                WHERE b.produto = 'nuggets' AND {_CASE_NUGGET} IS NOT NULL
+                UNION ALL
+                SELECT b.d, {_CASE_REFRI}, 'un', b.quantidade * coalesce(co.quantidade, 1), 1::numeric
+                FROM base b JOIN pedido_complementos co ON co.pedido_item_id = b.item_id
+                WHERE b.produto = '{_PRODUTO_AGUA_ESCOLHA}' AND {_CASE_REFRI} IS NOT NULL
             )
             SELECT d, insumo, unidade, sum(consumo) AS consumo, min(porcao) AS porcao
             FROM (SELECT * FROM receita UNION ALL SELECT * FROM refri_real
@@ -3309,6 +3321,14 @@ def estoque_plano(cobertura_dias: int = Query(30, ge=7, le=60),
                    coalesce(co.quantidade, 1) * {_GRAMAS_POTE_MOLHO} AS consumo
             FROM base b JOIN pedido_complementos co ON co.pedido_item_id = b.item_id
             WHERE {_CASE_MOLHO} IS NOT NULL
+            UNION ALL
+            SELECT 'Nuggets', 'un', b.quantidade * {_CASE_NUGGET}
+            FROM base b JOIN pedido_complementos co ON co.pedido_item_id = b.item_id
+            WHERE b.produto = 'nuggets' AND {_CASE_NUGGET} IS NOT NULL
+            UNION ALL
+            SELECT {_CASE_REFRI}, 'un', b.quantidade * coalesce(co.quantidade, 1)
+            FROM base b JOIN pedido_complementos co ON co.pedido_item_id = b.item_id
+            WHERE b.produto = '{_PRODUTO_AGUA_ESCOLHA}' AND {_CASE_REFRI} IS NOT NULL
         ),
         vendas0 AS (
             SELECT insumo, unidade, sum(consumo) / 28.0 AS por_dia

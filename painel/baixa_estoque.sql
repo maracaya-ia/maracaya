@@ -57,8 +57,8 @@ BEGIN
                     WHEN co.nome ILIKE '%suco%' AND co.nome ILIKE '%uva%' THEN 'Suco Del Valle Uva'
                     WHEN co.nome ILIKE '%suco%' AND co.nome ILIKE '%maracuj%' THEN 'Suco Del Valle Maracujá'
                     WHEN co.nome ILIKE '%suco%' THEN 'Suco (genérico)'
-                    WHEN co.nome ILIKE '%agua%' AND co.nome ILIKE '%gas%' THEN 'Água com Gás'
-                    WHEN co.nome ILIKE '%agua%' THEN 'Água Normal'
+                    WHEN (co.nome ILIKE '%agua%' OR co.nome ILIKE '%água%') AND (co.nome ILIKE '%gas%' OR co.nome ILIKE '%gás%') THEN 'Água com Gás'
+                    WHEN co.nome ILIKE '%agua%' OR co.nome ILIKE '%água%' THEN 'Água Normal'
                     WHEN co.nome ILIKE '%cerveja%' THEN 'Cerveja (genérica)'
                     WHEN co.nome ILIKE '%refriger%' THEN 'Refrigerante (genérico)'
                 END) IS NOT NULL
@@ -78,8 +78,8 @@ BEGIN
             WHEN co.nome ILIKE '%suco%' AND co.nome ILIKE '%uva%' THEN 'Suco Del Valle Uva'
             WHEN co.nome ILIKE '%suco%' AND co.nome ILIKE '%maracuj%' THEN 'Suco Del Valle Maracujá'
             WHEN co.nome ILIKE '%suco%' THEN 'Suco (genérico)'
-            WHEN co.nome ILIKE '%agua%' AND co.nome ILIKE '%gas%' THEN 'Água com Gás'
-            WHEN co.nome ILIKE '%agua%' THEN 'Água Normal'
+            WHEN (co.nome ILIKE '%agua%' OR co.nome ILIKE '%água%') AND (co.nome ILIKE '%gas%' OR co.nome ILIKE '%gás%') THEN 'Água com Gás'
+            WHEN co.nome ILIKE '%agua%' OR co.nome ILIKE '%água%' THEN 'Água Normal'
             WHEN co.nome ILIKE '%cerveja%' THEN 'Cerveja (genérica)'
             WHEN co.nome ILIKE '%refriger%' THEN 'Refrigerante (genérico)'
         END) AS ins, coalesce(co.quantidade, 1)::numeric AS qtd
@@ -97,8 +97,8 @@ BEGIN
                     WHEN co.nome ILIKE '%suco%' AND co.nome ILIKE '%uva%' THEN 'Suco Del Valle Uva'
                     WHEN co.nome ILIKE '%suco%' AND co.nome ILIKE '%maracuj%' THEN 'Suco Del Valle Maracujá'
                     WHEN co.nome ILIKE '%suco%' THEN 'Suco (genérico)'
-                    WHEN co.nome ILIKE '%agua%' AND co.nome ILIKE '%gas%' THEN 'Água com Gás'
-                    WHEN co.nome ILIKE '%agua%' THEN 'Água Normal'
+                    WHEN (co.nome ILIKE '%agua%' OR co.nome ILIKE '%água%') AND (co.nome ILIKE '%gas%' OR co.nome ILIKE '%gás%') THEN 'Água com Gás'
+                    WHEN co.nome ILIKE '%agua%' OR co.nome ILIKE '%água%' THEN 'Água Normal'
                     WHEN co.nome ILIKE '%cerveja%' THEN 'Cerveja (genérica)'
                     WHEN co.nome ILIKE '%refriger%' THEN 'Refrigerante (genérico)'
         END) IS NOT NULL
@@ -122,8 +122,26 @@ BEGIN
             WHEN co.nome ILIKE '%barbecue%' THEN 'Molho Barbecue'
         END) IS NOT NULL
     )
+    ,
+    nuggets AS (
+        SELECT 'Nuggets'::text AS ins,
+               (b.qtd_item * (CASE WHEN co.nome ILIKE '%tamanho p%' THEN 9
+                                   WHEN co.nome ILIKE '%tamanho g%' THEN 12 END))::numeric AS qtd
+        FROM base b JOIN pedido_complementos co ON co.pedido_item_id = b.item_id
+        WHERE b.produto = 'nuggets'
+          AND (co.nome ILIKE '%tamanho p%' OR co.nome ILIKE '%tamanho g%')
+    ),
+    agua_escolha AS (
+        SELECT (CASE WHEN (co.nome ILIKE '%agua%' OR co.nome ILIKE '%água%') AND (co.nome ILIKE '%gas%' OR co.nome ILIKE '%gás%') THEN 'Água com Gás'
+                     WHEN co.nome ILIKE '%agua%' OR co.nome ILIKE '%água%' THEN 'Água Normal' END) AS ins,
+               (b.qtd_item * coalesce(co.quantidade, 1))::numeric AS qtd
+        FROM base b JOIN pedido_complementos co ON co.pedido_item_id = b.item_id
+        WHERE b.produto = 'água mineral - com ou sem gás' AND (co.nome ILIKE '%agua%' OR co.nome ILIKE '%água%')
+    )
     SELECT ins, sum(qtd) FROM (SELECT * FROM receita UNION ALL SELECT * FROM refri_real
-                               UNION ALL SELECT * FROM molho_extra) t
+                               UNION ALL SELECT * FROM molho_extra
+                               UNION ALL SELECT * FROM nuggets
+                               UNION ALL SELECT * FROM agua_escolha) t
     GROUP BY ins;
 END;
 $$ LANGUAGE plpgsql;
