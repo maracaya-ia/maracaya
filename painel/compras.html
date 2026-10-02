@@ -153,7 +153,7 @@
       <button type="button" class="btn-edit" id="btnNovoInsumo" style="padding:8px 12px; font-size:13px">➕ Novo item</button>
     </div>
     <div style="overflow-x:auto"><table id="tEstoque">
-      <thead><tr><th>Insumo</th><th>Fornecedor</th><th>Consumo/dia</th><th>Necessidade</th><th>Estoque atual</th><th>Comprar</th><th>Custo unit.</th><th>Custo/dia</th><th></th></tr></thead>
+      <thead><tr><th>Insumo</th><th>Fornecedor</th><th>Consumo/dia</th><th>Necessidade</th><th>Estoque atual</th><th>Mínimo<span class="info" tabindex="0" data-tip="Estoque abaixo do qual já é hora de pedir. Automático = consumo/dia × (antecedência do pedido + maior intervalo entre entregas do fornecedor) × segurança. Dá pra fixar um valor manual em Editar.">?</span></th><th>Pedir até<span class="info" tabindex="0" data-tip="Último dia pra pedir e a entrega chegar antes do estoque acabar, de acordo com a rota do fornecedor. Se já passou da janela, mostra quantos dias ficam sem produto até a próxima entrega possível.">?</span></th><th>Comprar</th><th>Custo unit.</th><th>Custo/dia</th><th></th></tr></thead>
       <tbody></tbody>
     </table></div>
   </div>
@@ -162,7 +162,7 @@
     <h2>Fornecedores<span class="info" tabindex="0" data-tip="Valor médio mensal e prazo de pagamento de cada um. Clique no valor pra editar — o calendário recalcula na hora. Perecível pede atenção com entregas fracionadas mesmo em pedido único.">?</span></h2>
     <div class="desc">Clique no valor pra atualizar · <button type="button" class="btn-edit" id="btnNovoForn" style="margin-left:6px">➕ Novo fornecedor</button></div>
     <div style="overflow-x:auto"><table id="tForn">
-      <thead><tr><th>Fornecedor</th><th>Categoria</th><th>Entrega</th><th>Prazo</th><th>Média/mês</th><th>Gasto real (este mês)</th><th></th></tr></thead>
+      <thead><tr><th>Fornecedor</th><th>Categoria</th><th>Entrega</th><th>Pedir c/ antecedência</th><th>Prazo</th><th>Média/mês</th><th>Gasto real (este mês)</th><th></th></tr></thead>
       <tbody></tbody>
     </table></div>
   </div>
@@ -182,6 +182,8 @@
     </select>
     <label>Dias de entrega</label>
     <div id="dlgFDias" style="display:flex; flex-wrap:wrap; gap:6px 12px; font-size:13px"></div>
+    <label>Antecedência do pedido (dias antes da entrega)</label>
+    <input id="dlgFAntec" type="number" min="0" max="14" step="1" value="1">
     <label>Prazo de pagamento (dias)</label>
     <input id="dlgFPrazo" type="number" min="0" max="120" step="1" value="7">
     <label>Média mensal de compra (R$)</label>
@@ -210,6 +212,8 @@
     <select id="dlgForn"></select>
     <label id="dlgEstLabel">Estoque atual</label>
     <input id="dlgEstoque" type="number" step="0.1" min="0" placeholder="—">
+    <label>Estoque mínimo <span id="dlgMinAuto" style="color:var(--texto-suave)"></span></label>
+    <input id="dlgMinimo" type="number" step="any" min="0" placeholder="vazio = automático">
     <label>Custo unitário (R$ por un, kg ou g)</label>
     <input id="dlgCusto" type="number" step="any" min="0" placeholder="0,00">
     <div class="acoes">
@@ -227,9 +231,19 @@ let estado = {ancora:'seg', cobertura:30, seguranca:20};
 let itensEstoque = {}, fornecedoresLista = [], fornecedoresDados = {};
 const DIAS_SEMANA = [['seg','Seg'],['ter','Ter'],['qua','Qua'],['qui','Qui'],['sex','Sex'],['sab','Sáb'],['dom','Dom']];
 let fornecedorEmEdicao = null;
+const DOW_PT = ['dom','seg','ter','qua','qui','sex','sáb'];
+const fmtDia = iso => { const d = new Date(iso + 'T12:00:00'); return `${DOW_PT[d.getDay()]} ${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`; };
+function celulaPedirAte(x){
+  if (x.estoque == null || x.consumo_dia <= 0) return '<span style="color:var(--texto-suave)">—</span>';
+  if (x.dias_sem_produto > 0)
+    return `<span style="color:var(--alerta); font-weight:600">⚠️ ${x.dias_sem_produto} dia(s) sem produto</span><br><span style="color:var(--texto-suave); font-size:11px">próx. entrega ${fmtDia(x.proxima_entrega)}</span>`;
+  if (x.pedir_hoje) return '<span style="color:var(--alerta); font-weight:600">pedir HOJE</span>';
+  if (x.pedir_ate) return `<span style="color:${x.abaixo_minimo ? 'var(--brasa-clara)' : 'var(--texto-suave)'}">${fmtDia(x.pedir_ate)}</span>`;
+  return '—';
+}
 function abrirFornecedor(nome){
   const novo = nome === null;
-  const f = novo ? {categoria:'seco', dias_entrega:'seg,ter,qua,qui,sex', prazo:7, valor:0} : fornecedoresDados[nome];
+  const f = novo ? {categoria:'seco', dias_entrega:'seg,ter,qua,qui,sex', prazo:7, valor:0, antecedencia:1} : fornecedoresDados[nome];
   if (!f) return;
   fornecedorEmEdicao = nome;
   document.getElementById('dlgFTitulo').textContent = novo ? 'Novo fornecedor' : nome;
@@ -239,6 +253,7 @@ function abrirFornecedor(nome){
   const marcados = f.dias_entrega === 'todos' ? DIAS_SEMANA.map(d => d[0]) : f.dias_entrega.split(',');
   document.getElementById('dlgFDias').innerHTML = DIAS_SEMANA.map(([k, r]) =>
     `<label style="margin:0; display:flex; gap:4px; align-items:center"><input type="checkbox" style="width:auto" value="${k}" ${marcados.includes(k) ? 'checked' : ''}>${r}</label>`).join('');
+  document.getElementById('dlgFAntec').value = f.antecedencia;
   document.getElementById('dlgFPrazo').value = f.prazo;
   document.getElementById('dlgFValor').value = f.valor;
   document.getElementById('dlgFornecedor').showModal();
@@ -251,6 +266,7 @@ document.getElementById('frmFornecedor').addEventListener('submit', async e => {
   if (!dias.length){ alert('Marque pelo menos um dia de entrega'); return; }
   const corpo = {categoria: document.getElementById('dlgFCategoria').value,
     dias_entrega: dias.length === 7 ? 'todos' : dias.join(','),
+    antecedencia_dias: document.getElementById('dlgFAntec').value,
     prazo_dias: document.getElementById('dlgFPrazo').value, valor_mensal: document.getElementById('dlgFValor').value};
   let r;
   if (fornecedorEmEdicao === null){
@@ -293,12 +309,15 @@ function abrirEdicao(nome){
   document.getElementById('dlgEstLabel').textContent = novo ? 'Estoque atual (na unidade escolhida)' : `Estoque atual (${x.unidade === 'kg' || x.unidade === 'g' ? x.unidade : 'un'})`;
   document.getElementById('dlgEstoque').value = x.estoque != null ? x.estoque : '';
   document.getElementById('dlgCusto').value = x.custo_unitario != null ? x.custo_unitario : '';
+  document.getElementById('dlgMinimo').value = !novo && x.minimo_manual ? x.minimo : '';
+  document.getElementById('dlgMinAuto').textContent = novo ? '' : `(automático: ${Math.ceil(x.minimo_auto)})`;
   document.getElementById('dlgInsumo').showModal();
 }
 document.getElementById('btnNovoInsumo').addEventListener('click', () => abrirEdicao(null));
 document.getElementById('dlgCancelar').addEventListener('click', () => document.getElementById('dlgInsumo').close());
 document.getElementById('frmInsumo').addEventListener('submit', async e => {
   e.preventDefault();
+  const post = (url, corpo) => fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(corpo)}).then(r => r.json());
   if (insumoEmEdicao === null){
     const nome = document.getElementById('dlgNome').value.trim();
     if (!nome){ document.getElementById('dlgNome').focus(); return; }
@@ -307,13 +326,14 @@ document.getElementById('frmInsumo').addEventListener('submit', async e => {
         fornecedor: document.getElementById('dlgForn').value,
         estoque: document.getElementById('dlgEstoque').value, custo_unitario: document.getElementById('dlgCusto').value})}).then(r => r.json());
     if (!r.ok){ alert(r.erro || 'Não foi possível criar o item'); return; }
+    const minNovoItem = document.getElementById('dlgMinimo').value.trim();
+    if (minNovoItem !== '') await post('/api/estoque_minimo', {insumo: nome, minimo: parseFloat(minNovoItem)});
     document.getElementById('dlgInsumo').close();
     document.getElementById('buscaEstoque').value = nome;
     await carregar();
     return;
   }
   const x = itensEstoque[insumoEmEdicao];
-  const post = (url, corpo) => fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(corpo)}).then(r => r.json());
   const forn = document.getElementById('dlgForn').value;
   const est = parseFloat(document.getElementById('dlgEstoque').value);
   const custo = parseFloat(document.getElementById('dlgCusto').value);
@@ -321,6 +341,11 @@ document.getElementById('frmInsumo').addEventListener('submit', async e => {
   if (forn && forn !== x.fornecedor) tarefas.push(post('/api/insumo_fornecedor', {insumo: x.insumo, fornecedor: forn}));
   if (!isNaN(est) && est >= 0 && est !== x.estoque) tarefas.push(post('/api/estoque', {insumo: x.insumo, estoque: est}));
   if (!isNaN(custo) && custo >= 0 && custo !== x.custo_unitario) tarefas.push(post('/api/insumo_custo', {insumo: x.insumo, custo_unitario: custo}));
+  const minTxt = document.getElementById('dlgMinimo').value.trim();
+  const minNovo = minTxt === '' ? null : parseFloat(minTxt);
+  const minAtual = x.minimo_manual ? x.minimo : null;
+  if (minNovo !== minAtual && (minNovo === null || (!isNaN(minNovo) && minNovo >= 0)))
+    tarefas.push(post('/api/estoque_minimo', {insumo: x.insumo, minimo: minNovo}));
   await Promise.all(tarefas);
   document.getElementById('dlgInsumo').close();
   carregar();
@@ -376,6 +401,7 @@ async function carregar(){
     <td>${it.nome}</td>
     <td><span class="tag ${it.categoria}">${it.categoria === 'perecivel' ? 'Perecível' : 'Seco'}</span></td>
     <td class="num">${it.dias_entrega === 'todos' ? 'Todo dia' : it.dias_entrega}</td>
+    <td class="num">${it.antecedencia} dia(s)</td>
     <td class="num">${it.prazo} dias</td>
     <td><input data-forn="${it.nome}" type="number" step="10" min="0" value="${it.valor.toFixed(2)}"
          style="width:110px; background:var(--fundo); color:var(--texto); border:1px solid var(--borda); border-radius:6px; padding:6px 8px; font-family:'IBM Plex Mono',monospace; font-size:13px"></td>
@@ -416,7 +442,9 @@ async function carregar(){
       <td class="num">${fmtQ(x.necessidade, x.unidade)}</td>
       <td><input data-insumo="${x.insumo.replace(/"/g,'&quot;')}" type="number" step="0.1" min="0"
            value="${x.estoque != null ? x.estoque : ''}" placeholder="—"
-           style="width:90px; background:var(--fundo); color:var(--texto); border:1px solid var(--borda); border-radius:6px; padding:6px 8px; font-family:'IBM Plex Mono',monospace; font-size:13px"></td>
+           style="width:90px; background:var(--fundo); color:var(--texto); border:1px solid ${x.abaixo_minimo ? 'var(--alerta)' : 'var(--borda)'}; border-radius:6px; padding:6px 8px; font-family:'IBM Plex Mono',monospace; font-size:13px"></td>
+      <td class="num" style="color:var(--texto-suave)" title="${x.minimo_manual ? 'mínimo manual' : 'mínimo automático'}">${fmtQ(x.minimo, x.unidade)}${x.minimo_manual ? ' ✎' : ''}</td>
+      <td class="num">${celulaPedirAte(x)}</td>
       <td class="num" style="color:var(--brasa-clara); font-weight:600">${x.comprar > 0 ? fmtQ(x.comprar, x.unidade) : '✓ ok'}</td>
       <td>R$ <input class="inp-custo" data-insumo="${x.insumo.replace(/"/g,'&quot;')}" type="number" step="any" min="0"
            value="${x.custo_unitario != null ? x.custo_unitario : ''}" placeholder="0,00"
