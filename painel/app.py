@@ -2206,6 +2206,8 @@ def _posicao_estoque():
     ep = estoque_plano(cobertura_dias=30, seguranca_pct=20)
     negativos, zerados, criticos, sem_registro = [], [], [], []
     for i in ep["itens"]:
+        if i["ciclo"]:
+            continue
         if i["estoque"] is None:
             if i["insumo"] not in _SEM_SKU_ESTOQUE:
                 sem_registro.append(i["insumo"])
@@ -2296,9 +2298,31 @@ def zap_fechamento():
 def zap_estoque():
     """Aviso diario de compras pendentes - automacao separada do fechamento do
     dia, pra nao misturar o resumo de vendas com o alerta de reposicao."""
+    from datetime import timedelta
     negativos, zerados, criticos, sem_registro = _posicao_estoque()
-    if not negativos and not zerados and not criticos:
+
+    # hortifruti: na vespera da troca, avisa quanto vai ser preciso ate a proxima
+    bloco_troca = None
+    hoje = consultar(f"SELECT (now() AT TIME ZONE '{TZ}')::date AS d", {})[0]["d"]
+    amanha = hoje + timedelta(days=1)
+    idx = _troca_idx()
+    if amanha.weekday() in idx:
+        _, dias_ciclo = _ciclo_troca(amanha, idx)
+        seg_ = 1.2
+        linhas_h = []
+        for i in estoque_plano(cobertura_dias=30, seguranca_pct=20)["itens"]:
+            if i["ciclo"] and i["consumo_dia"] > 0:
+                qtd = i["consumo_dia"] * dias_ciclo * seg_
+                linhas_h.append(f"• {i['insumo']}: ~{-(-qtd // 1):.0f} {i['unidade']}")
+        if linhas_h:
+            bloco_troca = (f"🥬 *Amanhã ({_fmt_data_rota(amanha)}) é dia de troca — hortifruti*\n"
+                           f"Previsão até a próxima troca ({dias_ciclo} dia(s), já com folga de 20%):\n"
+                           + "\n".join(linhas_h))
+
+    if not negativos and not zerados and not criticos and not bloco_troca:
         return {"enviar": False, "texto": ""}
+    if not negativos and not zerados and not criticos:
+        return {"enviar": True, "texto": f"📦 *Compras — Grupo Maracayá*\n\n{bloco_troca}"}
 
     partes = ["📦 *Precisa repor — Grupo Maracayá*"]
     if negativos:
@@ -2312,6 +2336,8 @@ def zap_estoque():
         partes.append(f"🟡 *Abaixo do mínimo:*\n{linhas}")
     if sem_registro:
         partes.append("❓ *Sem estoque cadastrado:* " + ", ".join(sem_registro[:10]))
+    if bloco_troca:
+        partes.append(bloco_troca)
     return {"enviar": True, "texto": "\n\n".join(partes)}
 
 
@@ -3247,6 +3273,20 @@ def _fmt_data_rota(d):
     return f"{_DOW_NOME[d.weekday()]} {d.day:02d}/{d.month:02d}"
 
 
+def _troca_idx():
+    r = consultar("SELECT valor FROM config_estoque WHERE chave = 'troca_dias'", {})
+    dias = r[0]["valor"] if r else "seg,qua,sex"
+    return sorted({_DIAS_IDX[d] for d in dias.split(",") if d in _DIAS_IDX}) or [0, 2, 4]
+
+
+def _ciclo_troca(inicio, idx):
+    """Proxima troca a partir de `inicio` (inclusive) e quantos dias ate a troca seguinte."""
+    from datetime import timedelta
+    datas = [inicio + timedelta(days=k) for k in range(0, 15)
+             if (inicio + timedelta(days=k)).weekday() in idx]
+    return datas[0], (datas[1] - datas[0]).days
+
+
 def _rota_estoque(dias_entrega, antecedencia, hoje, consumo_dia, estoque, minimo_manual, seg):
     """Mapeia o estoque na rota do fornecedor: minimo (manual ou automatico), ate quando
     pedir e quantos dias ficaria sem produto se perder a janela do pedido."""
@@ -3359,12 +3399,13 @@ def estoque_plano(cobertura_dias: int = Query(30, ge=7, le=60),
                fe.estoque_atual,
                ic.custo_unitario,
                fo.dias_entrega, fo.antecedencia_dias, im.minimo AS minimo_manual,
-               em.nome AS emb_nome, em.qtd AS emb_qtd
+               em.nome AS emb_nome, em.qtd AS emb_qtd, (cc.insumo IS NOT NULL) AS ciclo
         FROM vendas v
         LEFT JOIN insumo_fornecedor fi ON fi.insumo = v.insumo
         LEFT JOIN fornecedores fo ON fo.nome = fi.fornecedor
         LEFT JOIN insumo_minimo im ON im.insumo = v.insumo
         LEFT JOIN insumo_embalagem em ON em.insumo = v.insumo
+        LEFT JOIN insumo_ciclo cc ON cc.insumo = v.insumo
         LEFT JOIN insumo_estoque fe ON fe.insumo = v.insumo
         LEFT JOIN insumo_custo ic ON ic.insumo = v.insumo
         ORDER BY (v.unidade = 'kg') DESC, 3 DESC
@@ -3372,6 +3413,7 @@ def estoque_plano(cobertura_dias: int = Query(30, ge=7, le=60),
 
     seg = 1 + seguranca_pct / 100.0
     hoje = consultar(f"SELECT (now() AT TIME ZONE '{TZ}')::date AS d", {})[0]["d"]
+    idx_troca = _troca_idx()
     itens = []
     custo_dia_total = 0.0
     for i in insumos:
@@ -3385,9 +3427,17 @@ def estoque_plano(cobertura_dias: int = Query(30, ge=7, le=60),
             custo_dia_total += custo_dia
         rota = _rota_estoque(i["dias_entrega"], i["antecedencia_dias"], hoje, consumo_dia, estoque,
                              float(i["minimo_manual"]) if i["minimo_manual"] is not None else None, seg)
+        ciclo = {"ciclo": bool(i["ciclo"])}
+        if i["ciclo"]:
+            troca, dias_ciclo = _ciclo_troca(hoje, idx_troca)
+            necessidade = consumo_dia * dias_ciclo * seg
+            comprar = necessidade
+            rota.update({"minimo": 0, "minimo_auto": 0, "minimo_manual": False, "abaixo_minimo": False,
+                         "pedir_ate": None, "dias_sem_produto": 0, "pedir_hoje": False})
+            ciclo.update({"proxima_troca": troca.isoformat(), "dias_ciclo": dias_ciclo})
         emb_qtd = float(i["emb_qtd"]) if i["emb_qtd"] is not None else None
         itens.append({
-            **rota,
+            **rota, **ciclo,
             "embalagem_nome": i["emb_nome"], "embalagem_qtd": emb_qtd,
             "comprar_embalagens": (-(-comprar // emb_qtd) if emb_qtd else None),
             "dias_entrega": i["dias_entrega"] or "todos",
@@ -3403,6 +3453,7 @@ def estoque_plano(cobertura_dias: int = Query(30, ge=7, le=60),
 
     sem_custo = sum(1 for i in itens if i["custo_unitario"] is None)
     return {"itens": itens, "fator_tendencia": round(fator, 3),
+            "troca_dias": ",".join(d for d, k in _DIAS_IDX.items() if k in idx_troca),
             "cobertura_dias": cobertura_dias, "seguranca_pct": seguranca_pct,
             "custo_dia_total": round(custo_dia_total, 2), "sem_custo": sem_custo}
 
@@ -3488,6 +3539,30 @@ def salvar_insumo_embalagem(dados: dict = Body(...)):
     executar("""INSERT INTO insumo_embalagem (insumo, nome, qtd) VALUES (%(i)s, %(n)s, %(q)s)
                 ON CONFLICT (insumo) DO UPDATE SET nome = EXCLUDED.nome, qtd = EXCLUDED.qtd""",
              {"i": insumo, "n": nome, "q": qtd})
+    return {"ok": True}
+
+
+@app.post("/api/insumo_ciclo")
+def salvar_insumo_ciclo(dados: dict = Body(...)):
+    insumo = str(dados.get("insumo", "")).strip()
+    if not insumo:
+        return {"ok": False, "erro": "insumo vazio"}
+    if dados.get("ativo"):
+        executar("INSERT INTO insumo_ciclo (insumo) VALUES (%(i)s) ON CONFLICT DO NOTHING", {"i": insumo})
+    else:
+        executar("DELETE FROM insumo_ciclo WHERE insumo = %(i)s", {"i": insumo})
+    return {"ok": True}
+
+
+@app.post("/api/config_troca")
+def salvar_config_troca(dados: dict = Body(...)):
+    dias = _normalizar_dias(dados.get("dias"))
+    if dias is None:
+        return {"ok": False, "erro": "dias inválidos"}
+    if dias == "todos":
+        dias = ",".join(_DIAS_VALIDOS)
+    executar("""INSERT INTO config_estoque (chave, valor) VALUES ('troca_dias', %(v)s)
+                ON CONFLICT (chave) DO UPDATE SET valor = EXCLUDED.valor""", {"v": dias})
     return {"ok": True}
 
 
