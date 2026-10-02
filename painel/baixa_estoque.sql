@@ -5,6 +5,9 @@
 --
 -- Molho escolhido no pedido: pote de 30 ml (~30 g) a mais do molho escolhido (_CASE_MOLHO no app.py).
 --
+-- Bebida do combo/item generico: se o cliente escolheu menos bebidas que a ficha prevê
+-- (ex: combo com 2 e so 1 no complemento), o resto cai no sabor padrao da ficha.
+--
 -- So mexe em pedidos "recentes" (criado_em nas ultimas 48h) - existe justamente
 -- pra NUNCA disparar durante um backfill historico (que insere pedidos com
 -- criado_em de meses atras). sync.py/sync_saipos.py nao precisam de nenhuma
@@ -35,35 +38,33 @@ BEGIN
         WHERE i.pedido_id = p_pedido_id
     ),
     receita AS (
-        SELECT f.insumo AS ins, (b.qtd_item * f.qtd)::numeric AS qtd
-        FROM base b JOIN ficha_tecnica f ON f.produto = b.produto
-        WHERE NOT (
-            b.produto ILIKE 'combo%'
-            AND f.insumo IN ('Coca Zero','Coca Normal','Guaraná Normal','Guaraná Zero','Fanta Laranja','Sprite',
+        SELECT f.insumo AS ins,
+               (CASE WHEN (b.produto ILIKE 'combo%' OR b.produto IN ('refrigerantes', 'sucos', 'cervejas'))
+                          AND f.insumo IN ('Coca Zero','Coca Normal','Guaraná Normal','Guaraná Zero','Fanta Laranja','Sprite',
                               'Heineken','Stella Artois','Suco Del Valle Uva','Suco Del Valle Maracujá',
                               'Suco (genérico)','Água com Gás','Água Normal','Cerveja (genérica)',
                               'Refrigerante (genérico)')
-            AND EXISTS (
-                SELECT 1 FROM pedido_complementos co
-                WHERE co.pedido_item_id = b.item_id AND (CASE
-                    WHEN co.nome ILIKE '%coca%' AND co.nome ILIKE '%zero%' THEN 'Coca Zero'
-                    WHEN co.nome ILIKE '%coca%' THEN 'Coca Normal'
-                    WHEN co.nome ILIKE '%guaran%' AND co.nome ILIKE '%zero%' THEN 'Guaraná Zero'
-                    WHEN co.nome ILIKE '%guaran%' THEN 'Guaraná Normal'
-                    WHEN co.nome ILIKE '%fanta%' THEN 'Fanta Laranja'
-                    WHEN co.nome ILIKE '%sprite%' THEN 'Sprite'
-                    WHEN co.nome ILIKE '%heineken%' THEN 'Heineken'
-                    WHEN co.nome ILIKE '%stella%' THEN 'Stella Artois'
-                    WHEN co.nome ILIKE '%suco%' AND co.nome ILIKE '%uva%' THEN 'Suco Del Valle Uva'
-                    WHEN co.nome ILIKE '%suco%' AND co.nome ILIKE '%maracuj%' THEN 'Suco Del Valle Maracujá'
-                    WHEN co.nome ILIKE '%suco%' THEN 'Suco (genérico)'
-                    WHEN (co.nome ILIKE '%agua%' OR co.nome ILIKE '%água%') AND (co.nome ILIKE '%gas%' OR co.nome ILIKE '%gás%') THEN 'Água com Gás'
-                    WHEN co.nome ILIKE '%agua%' OR co.nome ILIKE '%água%' THEN 'Água Normal'
-                    WHEN co.nome ILIKE '%cerveja%' THEN 'Cerveja (genérica)'
-                    WHEN co.nome ILIKE '%refriger%' THEN 'Refrigerante (genérico)'
-                END) IS NOT NULL
-            )
-        )
+                     THEN greatest(b.qtd_item * f.qtd - coalesce((
+                              SELECT sum(coalesce(co.quantidade, 1)) FROM pedido_complementos co
+                              WHERE co.pedido_item_id = b.item_id AND (CASE
+            WHEN co.nome ILIKE '%coca%' AND co.nome ILIKE '%zero%' THEN 'Coca Zero'
+            WHEN co.nome ILIKE '%coca%' THEN 'Coca Normal'
+            WHEN co.nome ILIKE '%guaran%' AND co.nome ILIKE '%zero%' THEN 'Guaraná Zero'
+            WHEN co.nome ILIKE '%guaran%' THEN 'Guaraná Normal'
+            WHEN co.nome ILIKE '%fanta%' THEN 'Fanta Laranja'
+            WHEN co.nome ILIKE '%sprite%' THEN 'Sprite'
+            WHEN co.nome ILIKE '%heineken%' THEN 'Heineken'
+            WHEN co.nome ILIKE '%stella%' THEN 'Stella Artois'
+            WHEN co.nome ILIKE '%suco%' AND co.nome ILIKE '%uva%' THEN 'Suco Del Valle Uva'
+            WHEN co.nome ILIKE '%suco%' AND co.nome ILIKE '%maracuj%' THEN 'Suco Del Valle Maracujá'
+            WHEN co.nome ILIKE '%suco%' THEN 'Suco (genérico)'
+            WHEN (co.nome ILIKE '%agua%' OR co.nome ILIKE '%água%') AND (co.nome ILIKE '%gas%' OR co.nome ILIKE '%gás%') THEN 'Água com Gás'
+            WHEN co.nome ILIKE '%agua%' OR co.nome ILIKE '%água%' THEN 'Água Normal'
+            WHEN co.nome ILIKE '%cerveja%' THEN 'Cerveja (genérica)'
+            WHEN co.nome ILIKE '%refriger%' THEN 'Refrigerante (genérico)'
+        END) IS NOT NULL), 0), 0)
+                     ELSE b.qtd_item * f.qtd END)::numeric AS qtd
+        FROM base b JOIN ficha_tecnica f ON f.produto = b.produto
     ),
     refri_real AS (
         SELECT (CASE
@@ -85,7 +86,7 @@ BEGIN
         END) AS ins, coalesce(co.quantidade, 1)::numeric AS qtd
         FROM base b
         JOIN pedido_complementos co ON co.pedido_item_id = b.item_id
-        WHERE b.produto ILIKE 'combo%' AND (CASE
+        WHERE (b.produto ILIKE 'combo%' OR b.produto IN ('refrigerantes', 'sucos', 'cervejas')) AND (CASE
                     WHEN co.nome ILIKE '%coca%' AND co.nome ILIKE '%zero%' THEN 'Coca Zero'
                     WHEN co.nome ILIKE '%coca%' THEN 'Coca Normal'
                     WHEN co.nome ILIKE '%guaran%' AND co.nome ILIKE '%zero%' THEN 'Guaraná Zero'

@@ -1232,6 +1232,8 @@ _GRAMAS_POTE_MOLHO = 30
 # o insumo (com gas / normal) vem do complemento escolhido.
 _CASE_NUGGET = "CASE WHEN co.nome ILIKE '%%tamanho p%%' THEN 9 WHEN co.nome ILIKE '%%tamanho g%%' THEN 12 END"
 _PRODUTO_AGUA_ESCOLHA = "água mineral - com ou sem gás"
+# produtos cuja bebida real vem do complemento: combos + itens de bebida genérica
+_BEBIDA_ESCOLHIDA = "(b.produto ILIKE 'combo%%' OR b.produto IN ('refrigerantes', 'sucos', 'cervejas'))"
 _CASE_MOLHO = """CASE
     WHEN co.nome ILIKE '%%maracay%%' AND co.nome ILIKE '%%molho%%' THEN 'Maionese Grill'
     WHEN co.nome ILIKE '%%baconese%%' THEN 'Molho Baconese'
@@ -2734,21 +2736,22 @@ def zap_pergunta(payload: dict = Body(...),
                 WHERE p.status <> 'canceled' {filtro_periodo} {filtro_extra}
             ),
             receita AS (
-                SELECT b.d, f.insumo, f.unidade, b.quantidade * f.qtd AS consumo, f.qtd AS porcao
+                SELECT b.d, f.insumo, f.unidade,
+                       CASE WHEN {_BEBIDA_ESCOLHIDA} AND f.insumo IN ({_SODAS})
+                            THEN greatest(b.quantidade * f.qtd - coalesce((
+                                     SELECT sum(coalesce(co.quantidade, 1)) FROM pedido_complementos co
+                                     WHERE co.pedido_item_id = b.item_id AND {_CASE_REFRI} IS NOT NULL), 0), 0)
+                            ELSE b.quantidade * f.qtd END AS consumo,
+                       f.qtd AS porcao
                 FROM base b
                 JOIN ficha_tecnica f ON f.produto = b.produto
-                WHERE NOT (
-                    b.produto ILIKE 'combo%%' AND f.insumo IN ({_SODAS})
-                    AND EXISTS (SELECT 1 FROM pedido_complementos co
-                                WHERE co.pedido_item_id = b.item_id AND {_CASE_REFRI} IS NOT NULL)
-                )
             ),
             refri_real AS (
                 SELECT b.d, {_CASE_REFRI} AS insumo, 'un' AS unidade,
                        coalesce(co.quantidade, 1) AS consumo, 1::numeric AS porcao
                 FROM base b
                 JOIN pedido_complementos co ON co.pedido_item_id = b.item_id
-                WHERE b.produto ILIKE 'combo%%' AND {_CASE_REFRI} IS NOT NULL
+                WHERE {_BEBIDA_ESCOLHIDA} AND {_CASE_REFRI} IS NOT NULL
             )
             , molho_extra AS (
                 SELECT b.d, {_CASE_MOLHO} AS insumo, 'g' AS unidade,
@@ -3303,18 +3306,18 @@ def estoque_plano(cobertura_dias: int = Query(30, ge=7, le=60),
               AND p.criado_em >= now() - interval '28 days'
         ),
         receita AS (
-            SELECT f.insumo, f.unidade, b.quantidade * f.qtd AS consumo
+            SELECT f.insumo, f.unidade,
+                   CASE WHEN {_BEBIDA_ESCOLHIDA} AND f.insumo IN ({_SODAS})
+                        THEN greatest(b.quantidade * f.qtd - coalesce((
+                                 SELECT sum(coalesce(co.quantidade, 1)) FROM pedido_complementos co
+                                 WHERE co.pedido_item_id = b.item_id AND {_CASE_REFRI} IS NOT NULL), 0), 0)
+                        ELSE b.quantidade * f.qtd END AS consumo
             FROM base b JOIN ficha_tecnica f ON f.produto = b.produto
-            WHERE NOT (
-                b.produto ILIKE 'combo%%' AND f.insumo IN ({_SODAS})
-                AND EXISTS (SELECT 1 FROM pedido_complementos co
-                            WHERE co.pedido_item_id = b.item_id AND {_CASE_REFRI} IS NOT NULL)
-            )
         ),
         refri_real AS (
             SELECT {_CASE_REFRI} AS insumo, 'un' AS unidade, coalesce(co.quantidade, 1) AS consumo
             FROM base b JOIN pedido_complementos co ON co.pedido_item_id = b.item_id
-            WHERE b.produto ILIKE 'combo%%' AND {_CASE_REFRI} IS NOT NULL
+            WHERE {_BEBIDA_ESCOLHIDA} AND {_CASE_REFRI} IS NOT NULL
         ),
         molho_extra AS (
             SELECT {_CASE_MOLHO} AS insumo, 'g' AS unidade,
