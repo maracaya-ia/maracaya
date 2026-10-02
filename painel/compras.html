@@ -214,6 +214,11 @@
     <input id="dlgEstoque" type="number" step="0.1" min="0" placeholder="—">
     <label>Estoque mínimo <span id="dlgMinAuto" style="color:var(--texto-suave)"></span></label>
     <input id="dlgMinimo" type="number" step="any" min="0" placeholder="vazio = automático">
+    <label>Embalagem de compra (vazio = sem)</label>
+    <div style="display:flex; gap:8px">
+      <input id="dlgEmbNome" type="text" maxlength="30" placeholder="caixa, bolsa, fardo…">
+      <input id="dlgEmbQtd" type="number" step="any" min="0" placeholder="qtd por embalagem">
+    </div>
     <label>Custo unitário (R$ por un, kg ou g)</label>
     <input id="dlgCusto" type="number" step="any" min="0" placeholder="0,00">
     <div class="acoes">
@@ -310,6 +315,8 @@ function abrirEdicao(nome){
   document.getElementById('dlgEstoque').value = x.estoque != null ? x.estoque : '';
   document.getElementById('dlgCusto').value = x.custo_unitario != null ? x.custo_unitario : '';
   document.getElementById('dlgMinimo').value = !novo && x.minimo_manual ? x.minimo : '';
+  document.getElementById('dlgEmbNome').value = !novo && x.embalagem_nome ? x.embalagem_nome : '';
+  document.getElementById('dlgEmbQtd').value = !novo && x.embalagem_qtd ? x.embalagem_qtd : '';
   document.getElementById('dlgMinAuto').textContent = novo ? '' : `(automático: ${Math.ceil(x.minimo_auto)})`;
   document.getElementById('dlgInsumo').showModal();
 }
@@ -341,6 +348,12 @@ document.getElementById('frmInsumo').addEventListener('submit', async e => {
   if (forn && forn !== x.fornecedor) tarefas.push(post('/api/insumo_fornecedor', {insumo: x.insumo, fornecedor: forn}));
   if (!isNaN(est) && est >= 0 && est !== x.estoque) tarefas.push(post('/api/estoque', {insumo: x.insumo, estoque: est}));
   if (!isNaN(custo) && custo >= 0 && custo !== x.custo_unitario) tarefas.push(post('/api/insumo_custo', {insumo: x.insumo, custo_unitario: custo}));
+  const embNome = document.getElementById('dlgEmbNome').value.trim();
+  const embQtdTxt = document.getElementById('dlgEmbQtd').value.trim();
+  if (embNome !== (x.embalagem_nome || '') || (embQtdTxt === '' ? null : parseFloat(embQtdTxt)) !== (x.embalagem_qtd || null)){
+    const rEmb = await post('/api/insumo_embalagem', {insumo: x.insumo, nome: embNome, qtd: embQtdTxt});
+    if (!rEmb.ok){ alert(rEmb.erro || 'Embalagem inválida'); return; }
+  }
   const minTxt = document.getElementById('dlgMinimo').value.trim();
   const minNovo = minTxt === '' ? null : parseFloat(minTxt);
   const minAtual = x.minimo_manual ? x.minimo : null;
@@ -445,7 +458,7 @@ async function carregar(){
            style="width:90px; background:var(--fundo); color:var(--texto); border:1px solid ${x.abaixo_minimo ? 'var(--alerta)' : 'var(--borda)'}; border-radius:6px; padding:6px 8px; font-family:'IBM Plex Mono',monospace; font-size:13px"></td>
       <td class="num" style="color:var(--texto-suave)" title="${x.minimo_manual ? 'mínimo manual' : 'mínimo automático'}">${fmtQ(x.minimo, x.unidade)}${x.minimo_manual ? ' ✎' : ''}</td>
       <td class="num">${celulaPedirAte(x)}</td>
-      <td class="num" style="color:var(--brasa-clara); font-weight:600">${x.comprar > 0 ? fmtQ(x.comprar, x.unidade) : '✓ ok'}</td>
+      <td class="num" style="color:var(--brasa-clara); font-weight:600">${x.comprar > 0 ? fmtQ(x.comprar, x.unidade) : '✓ ok'}${x.comprar > 0 && x.embalagem_qtd ? `<br><span style="color:var(--texto-suave); font-size:11px; font-weight:400">≈ ${x.comprar_embalagens} ${x.embalagem_nome}(s) de ${(+x.embalagem_qtd).toLocaleString('pt-BR')} ${x.unidade}</span>` : ''}</td>
       <td>R$ <input class="inp-custo" data-insumo="${x.insumo.replace(/"/g,'&quot;')}" type="number" step="any" min="0"
            value="${x.custo_unitario != null ? x.custo_unitario : ''}" placeholder="0,00"
            style="width:80px; background:var(--fundo); color:var(--texto); border:1px solid var(--borda); border-radius:6px; padding:6px 8px; font-family:'IBM Plex Mono',monospace; font-size:13px"></td>

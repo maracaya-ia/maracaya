@@ -3358,11 +3358,13 @@ def estoque_plano(cobertura_dias: int = Query(30, ge=7, le=60),
                coalesce(fi.fornecedor, '—') AS fornecedor,
                fe.estoque_atual,
                ic.custo_unitario,
-               fo.dias_entrega, fo.antecedencia_dias, im.minimo AS minimo_manual
+               fo.dias_entrega, fo.antecedencia_dias, im.minimo AS minimo_manual,
+               em.nome AS emb_nome, em.qtd AS emb_qtd
         FROM vendas v
         LEFT JOIN insumo_fornecedor fi ON fi.insumo = v.insumo
         LEFT JOIN fornecedores fo ON fo.nome = fi.fornecedor
         LEFT JOIN insumo_minimo im ON im.insumo = v.insumo
+        LEFT JOIN insumo_embalagem em ON em.insumo = v.insumo
         LEFT JOIN insumo_estoque fe ON fe.insumo = v.insumo
         LEFT JOIN insumo_custo ic ON ic.insumo = v.insumo
         ORDER BY (v.unidade = 'kg') DESC, 3 DESC
@@ -3383,8 +3385,11 @@ def estoque_plano(cobertura_dias: int = Query(30, ge=7, le=60),
             custo_dia_total += custo_dia
         rota = _rota_estoque(i["dias_entrega"], i["antecedencia_dias"], hoje, consumo_dia, estoque,
                              float(i["minimo_manual"]) if i["minimo_manual"] is not None else None, seg)
+        emb_qtd = float(i["emb_qtd"]) if i["emb_qtd"] is not None else None
         itens.append({
             **rota,
+            "embalagem_nome": i["emb_nome"], "embalagem_qtd": emb_qtd,
+            "comprar_embalagens": (-(-comprar // emb_qtd) if emb_qtd else None),
             "dias_entrega": i["dias_entrega"] or "todos",
             "insumo": i["insumo"], "unidade": i["unidade"],
             "fornecedor": i["fornecedor"],
@@ -3460,6 +3465,29 @@ def criar_insumo(dados: dict = Body(...)):
                         atualizado_em = now()""", {"i": insumo, "q": est})
     except (TypeError, ValueError):
         pass
+    return {"ok": True}
+
+
+@app.post("/api/insumo_embalagem")
+def salvar_insumo_embalagem(dados: dict = Body(...)):
+    """nome/quantidade vazios removem a embalagem de compra do insumo."""
+    insumo = str(dados.get("insumo", "")).strip()
+    if not insumo:
+        return {"ok": False, "erro": "insumo vazio"}
+    nome = str(dados.get("nome", "") or "").strip()
+    bruto = dados.get("qtd")
+    if not nome and (bruto is None or str(bruto).strip() == ""):
+        executar("DELETE FROM insumo_embalagem WHERE insumo = %(i)s", {"i": insumo})
+        return {"ok": True}
+    try:
+        qtd = float(bruto)
+    except (TypeError, ValueError):
+        return {"ok": False, "erro": "quantidade inválida"}
+    if not nome or len(nome) > 30 or qtd <= 0:
+        return {"ok": False, "erro": "informe o nome e a quantidade da embalagem"}
+    executar("""INSERT INTO insumo_embalagem (insumo, nome, qtd) VALUES (%(i)s, %(n)s, %(q)s)
+                ON CONFLICT (insumo) DO UPDATE SET nome = EXCLUDED.nome, qtd = EXCLUDED.qtd""",
+             {"i": insumo, "n": nome, "q": qtd})
     return {"ok": True}
 
 
