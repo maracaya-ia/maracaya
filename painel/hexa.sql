@@ -17,3 +17,14 @@ ON CONFLICT (produto, insumo) DO UPDATE SET qtd = EXCLUDED.qtd;
 
 -- combo (alias "combo hexa c/ refri" ja aponta pra este nome canonico)
 SELECT montar_combo('combo hexa c/refri + copo edição limitada', 'hexa', 'Guaraná Normal');
+
+-- Picles e cebola branca picadinhos: 20 g cada por lanche (controlados em gramas)
+UPDATE insumo_unidade SET unidade = 'g' WHERE insumo = 'Picles';
+INSERT INTO insumo_unidade (insumo, unidade) VALUES ('Cebola Branca', 'g')
+ON CONFLICT (insumo) DO NOTHING;
+INSERT INTO ficha_tecnica (produto, insumo, qtd, unidade) VALUES
+('hexa', 'Picles', 20, 'g'),
+('hexa', 'Cebola Branca', 20, 'g'),
+('combo hexa c/refri + copo edição limitada', 'Picles', 20, 'g'),
+('combo hexa c/refri + copo edição limitada', 'Cebola Branca', 20, 'g')
+ON CONFLICT (produto, insumo) DO UPDATE SET qtd = EXCLUDED.qtd, unidade = EXCLUDED.unidade;
