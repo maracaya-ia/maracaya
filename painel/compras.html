@@ -150,6 +150,7 @@
           <option value="30">+30%</option>
         </select></label>
       <input id="buscaEstoque" class="busca-estoque" type="search" placeholder="🔍 Buscar insumo ou fornecedor…" autocomplete="off">
+      <button type="button" class="btn-edit" id="btnNovoInsumo" style="padding:8px 12px; font-size:13px">➕ Novo item</button>
     </div>
     <div style="overflow-x:auto"><table id="tEstoque">
       <thead><tr><th>Insumo</th><th>Fornecedor</th><th>Consumo/dia</th><th>Necessidade</th><th>Estoque atual</th><th>Comprar</th><th>Custo unit.</th><th>Custo/dia</th><th></th></tr></thead>
@@ -170,6 +171,16 @@
 <dialog class="modal" id="dlgInsumo">
   <form method="dialog" id="frmInsumo">
     <h3 id="dlgTitulo">Editar insumo</h3>
+    <div id="dlgNovoCampos" hidden>
+      <label>Nome do item</label>
+      <input id="dlgNome" type="text" maxlength="80" placeholder="ex: Molho Cheddar">
+      <label>Unidade de controle do estoque</label>
+      <select id="dlgUnidade">
+        <option value="un">Unidade (un)</option>
+        <option value="g">Grama (g)</option>
+        <option value="kg">Quilo (kg)</option>
+      </select>
+    </div>
     <label>Fornecedor</label>
     <select id="dlgForn"></select>
     <label id="dlgEstLabel">Estoque atual</label>
@@ -202,22 +213,40 @@ document.addEventListener('input', e => { if (e.target.id === 'buscaEstoque') fi
 
 let insumoEmEdicao = null;
 function abrirEdicao(nome){
-  const x = itensEstoque[nome];
+  const novo = nome === null;
+  const x = novo ? {insumo:'', unidade:'un', fornecedor:'—', estoque:null, custo_unitario:null} : itensEstoque[nome];
   if (!x) return;
   insumoEmEdicao = nome;
-  document.getElementById('dlgTitulo').textContent = x.insumo;
+  document.getElementById('dlgNovoCampos').hidden = !novo;
+  document.getElementById('dlgNome').value = '';
+  document.getElementById('dlgUnidade').value = 'un';
+  document.getElementById('dlgTitulo').textContent = novo ? 'Novo item de estoque' : x.insumo;
   const nomes = [...new Set([...fornecedoresLista, x.fornecedor].filter(f => f && f !== '—'))];
   document.getElementById('dlgForn').innerHTML =
     (x.fornecedor === '—' ? '<option value="">— sem fornecedor —</option>' : '') +
     nomes.map(f => `<option value="${f}" ${f === x.fornecedor ? 'selected' : ''}>${f}</option>`).join('');
-  document.getElementById('dlgEstLabel').textContent = `Estoque atual (${x.unidade === 'kg' ? 'kg' : 'un'})`;
+  document.getElementById('dlgEstLabel').textContent = novo ? 'Estoque atual (na unidade escolhida)' : `Estoque atual (${x.unidade === 'kg' || x.unidade === 'g' ? x.unidade : 'un'})`;
   document.getElementById('dlgEstoque').value = x.estoque != null ? x.estoque : '';
   document.getElementById('dlgCusto').value = x.custo_unitario != null ? x.custo_unitario : '';
   document.getElementById('dlgInsumo').showModal();
 }
+document.getElementById('btnNovoInsumo').addEventListener('click', () => abrirEdicao(null));
 document.getElementById('dlgCancelar').addEventListener('click', () => document.getElementById('dlgInsumo').close());
 document.getElementById('frmInsumo').addEventListener('submit', async e => {
   e.preventDefault();
+  if (insumoEmEdicao === null){
+    const nome = document.getElementById('dlgNome').value.trim();
+    if (!nome){ document.getElementById('dlgNome').focus(); return; }
+    const r = await fetch('/api/insumo_novo', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({insumo: nome, unidade: document.getElementById('dlgUnidade').value,
+        fornecedor: document.getElementById('dlgForn').value,
+        estoque: document.getElementById('dlgEstoque').value, custo_unitario: document.getElementById('dlgCusto').value})}).then(r => r.json());
+    if (!r.ok){ alert(r.erro || 'Não foi possível criar o item'); return; }
+    document.getElementById('dlgInsumo').close();
+    document.getElementById('buscaEstoque').value = nome;
+    await carregar();
+    return;
+  }
   const x = itensEstoque[insumoEmEdicao];
   const post = (url, corpo) => fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(corpo)}).then(r => r.json());
   const forn = document.getElementById('dlgForn').value;
@@ -308,7 +337,7 @@ async function carregar(){
     const es = await rs.json();
     const fmtQ = (v, u) => v == null ? '—' : (u === 'kg'
       ? (+v).toLocaleString('pt-BR', {maximumFractionDigits:1}) + ' kg'
-      : Math.ceil(+v).toLocaleString('pt-BR') + ' un');
+      : Math.ceil(+v).toLocaleString('pt-BR') + (u === 'g' ? ' g' : ' un'));
     itensEstoque = Object.fromEntries(es.itens.map(x => [x.insumo, x]));
     es.itens.sort((a, b) => a.insumo.localeCompare(b.insumo, 'pt-BR', {sensitivity:'base'}));
     document.querySelector('#tEstoque tbody').innerHTML = es.itens.map(x => `<tr data-busca="${semAcento(x.insumo + ' ' + x.fornecedor)}">

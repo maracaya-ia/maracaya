@@ -2177,7 +2177,9 @@ _SEM_SKU_ESTOQUE = {"Refrigerante (genérico)", "Suco (genérico)", "Cerveja (ge
 
 
 def _fmt_qtd_estoque(valor, un):
-    return f"{valor:.1f} kg" if un == "kg" else f"{valor:.0f} un"
+    if un == "kg":
+        return f"{valor:.1f} kg"
+    return f"{valor:.0f} g" if un == "g" else f"{valor:.0f} un"
 
 
 def _posicao_estoque():
@@ -2871,7 +2873,8 @@ def zap_pergunta(payload: dict = Body(...),
 
         todos_insumos = consultar("""
             SELECT ie.insumo, ie.estoque_atual,
-                   (SELECT f.unidade FROM ficha_tecnica f WHERE f.insumo = ie.insumo LIMIT 1) AS unidade
+                   coalesce((SELECT f.unidade FROM ficha_tecnica f WHERE f.insumo = ie.insumo LIMIT 1),
+                            (SELECT u.unidade FROM insumo_unidade u WHERE u.insumo = ie.insumo)) AS unidade
             FROM insumo_estoque ie
         """, {})
         nomes_ok_est = {i["insumo"]: _sem_acento(i["insumo"]) for i in todos_insumos}
@@ -2890,8 +2893,9 @@ def zap_pergunta(payload: dict = Body(...),
             linhas = []
             for nome in sorted(achados_est):
                 i = por_insumo[nome]
-                un = "kg" if i["unidade"] == "kg" else "un"
-                linhas.append(f"• {nome}: *{float(i['estoque_atual']):.1f} {un}* em estoque")
+                un = i["unidade"] if i["unidade"] in ("kg", "g") else "un"
+                casas = 0 if un in ("g", "un") and float(i["estoque_atual"]).is_integer() else 1
+                linhas.append(f"• {nome}: *{float(i['estoque_atual']):.{casas}f} {un}* em estoque")
             resposta = "📦 *Estoque atual*\n" + "\n".join(linhas)
         else:
             negativos, zerados, criticos, sem_registro = _posicao_estoque()
@@ -3169,10 +3173,16 @@ def estoque_plano(cobertura_dias: int = Query(30, ge=7, le=60),
             FROM base b JOIN pedido_complementos co ON co.pedido_item_id = b.item_id
             WHERE b.produto ILIKE 'combo%%' AND {_CASE_REFRI} IS NOT NULL
         ),
-        vendas AS (
+        vendas0 AS (
             SELECT insumo, unidade, sum(consumo) / 28.0 AS por_dia
             FROM (SELECT * FROM receita UNION ALL SELECT * FROM refri_real) t
             GROUP BY 1, 2
+        ),
+        vendas AS (
+            SELECT insumo, unidade, por_dia FROM vendas0
+            UNION ALL
+            SELECT u.insumo, u.unidade, 0 FROM insumo_unidade u
+            WHERE NOT EXISTS (SELECT 1 FROM vendas0 v WHERE v.insumo = u.insumo)
         )
         SELECT v.insumo, v.unidade, v.por_dia AS consumo_dia,
                coalesce(fi.fornecedor, '—') AS fornecedor,
@@ -3229,6 +3239,49 @@ def salvar_estoque(dados: dict = Body(...)):
         ON CONFLICT (insumo) DO UPDATE
             SET estoque_atual = EXCLUDED.estoque_atual, atualizado_em = now()
     """, {"i": insumo, "q": qtd})
+    return {"ok": True}
+
+
+@app.post("/api/insumo_novo")
+def criar_insumo(dados: dict = Body(...)):
+    insumo = str(dados.get("insumo", "")).strip()
+    unidade = str(dados.get("unidade", "un")).strip().lower()
+    if not insumo or len(insumo) > 80:
+        return {"ok": False, "erro": "nome inválido"}
+    if unidade not in ("un", "kg", "g"):
+        return {"ok": False, "erro": "unidade inválida"}
+    existe = consultar("""
+        SELECT 1 FROM insumo_unidade WHERE lower(insumo) = lower(%(i)s)
+        UNION SELECT 1 FROM ficha_tecnica WHERE lower(insumo) = lower(%(i)s)
+        UNION SELECT 1 FROM insumo_estoque WHERE lower(insumo) = lower(%(i)s)
+    """, {"i": insumo})
+    if existe:
+        return {"ok": False, "erro": "já existe um insumo com esse nome"}
+    executar("INSERT INTO insumo_unidade (insumo, unidade) VALUES (%(i)s, %(u)s)",
+             {"i": insumo, "u": unidade})
+    forn = str(dados.get("fornecedor", "") or "").strip()
+    if forn:
+        executar("""INSERT INTO insumo_fornecedor (insumo, fornecedor) VALUES (%(i)s, %(f)s)
+                    ON CONFLICT (insumo) DO UPDATE SET fornecedor = EXCLUDED.fornecedor""",
+                 {"i": insumo, "f": forn})
+    try:
+        custo = float(dados.get("custo_unitario"))
+        if custo >= 0:
+            executar("""INSERT INTO insumo_custo (insumo, custo_unitario, atualizado_em)
+                        VALUES (%(i)s, %(c)s, now())
+                        ON CONFLICT (insumo) DO UPDATE SET custo_unitario = EXCLUDED.custo_unitario,
+                        atualizado_em = now()""", {"i": insumo, "c": custo})
+    except (TypeError, ValueError):
+        pass
+    try:
+        est = float(dados.get("estoque"))
+        if est >= 0:
+            executar("""INSERT INTO insumo_estoque (insumo, estoque_atual, atualizado_em)
+                        VALUES (%(i)s, %(q)s, now())
+                        ON CONFLICT (insumo) DO UPDATE SET estoque_atual = EXCLUDED.estoque_atual,
+                        atualizado_em = now()""", {"i": insumo, "q": est})
+    except (TypeError, ValueError):
+        pass
     return {"ok": True}
 
 
