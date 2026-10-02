@@ -160,13 +160,38 @@
 
   <div class="card c-12">
     <h2>Fornecedores<span class="info" tabindex="0" data-tip="Valor médio mensal e prazo de pagamento de cada um. Clique no valor pra editar — o calendário recalcula na hora. Perecível pede atenção com entregas fracionadas mesmo em pedido único.">?</span></h2>
-    <div class="desc">Clique no valor pra atualizar</div>
+    <div class="desc">Clique no valor pra atualizar · <button type="button" class="btn-edit" id="btnNovoForn" style="margin-left:6px">➕ Novo fornecedor</button></div>
     <div style="overflow-x:auto"><table id="tForn">
-      <thead><tr><th>Fornecedor</th><th>Categoria</th><th>Entrega</th><th>Prazo</th><th>Média/mês</th><th>Gasto real (este mês)</th></tr></thead>
+      <thead><tr><th>Fornecedor</th><th>Categoria</th><th>Entrega</th><th>Prazo</th><th>Média/mês</th><th>Gasto real (este mês)</th><th></th></tr></thead>
       <tbody></tbody>
     </table></div>
   </div>
 </section>
+
+<dialog class="modal" id="dlgFornecedor">
+  <form method="dialog" id="frmFornecedor">
+    <h3 id="dlgFTitulo">Novo fornecedor</h3>
+    <div id="dlgFNomeBox">
+      <label>Nome</label>
+      <input id="dlgFNome" type="text" maxlength="60" placeholder="ex: Ki Pudim">
+    </div>
+    <label>Categoria</label>
+    <select id="dlgFCategoria">
+      <option value="seco">Seco</option>
+      <option value="perecivel">Perecível</option>
+    </select>
+    <label>Dias de entrega</label>
+    <div id="dlgFDias" style="display:flex; flex-wrap:wrap; gap:6px 12px; font-size:13px"></div>
+    <label>Prazo de pagamento (dias)</label>
+    <input id="dlgFPrazo" type="number" min="0" max="120" step="1" value="7">
+    <label>Média mensal de compra (R$)</label>
+    <input id="dlgFValor" type="number" min="0" step="10" value="0">
+    <div class="acoes">
+      <button type="button" id="dlgFCancelar">Cancelar</button>
+      <button type="submit" class="primario">Salvar</button>
+    </div>
+  </form>
+</dialog>
 
 <dialog class="modal" id="dlgInsumo">
   <form method="dialog" id="frmInsumo">
@@ -199,7 +224,47 @@
 <script>
 const R$ = v => (+(v ?? 0)).toLocaleString('pt-BR', {style:'currency', currency:'BRL'});
 let estado = {ancora:'seg', cobertura:30, seguranca:20};
-let itensEstoque = {}, fornecedoresLista = [];
+let itensEstoque = {}, fornecedoresLista = [], fornecedoresDados = {};
+const DIAS_SEMANA = [['seg','Seg'],['ter','Ter'],['qua','Qua'],['qui','Qui'],['sex','Sex'],['sab','Sáb'],['dom','Dom']];
+let fornecedorEmEdicao = null;
+function abrirFornecedor(nome){
+  const novo = nome === null;
+  const f = novo ? {categoria:'seco', dias_entrega:'seg,ter,qua,qui,sex', prazo:7, valor:0} : fornecedoresDados[nome];
+  if (!f) return;
+  fornecedorEmEdicao = nome;
+  document.getElementById('dlgFTitulo').textContent = novo ? 'Novo fornecedor' : nome;
+  document.getElementById('dlgFNomeBox').hidden = !novo;
+  document.getElementById('dlgFNome').value = '';
+  document.getElementById('dlgFCategoria').value = f.categoria;
+  const marcados = f.dias_entrega === 'todos' ? DIAS_SEMANA.map(d => d[0]) : f.dias_entrega.split(',');
+  document.getElementById('dlgFDias').innerHTML = DIAS_SEMANA.map(([k, r]) =>
+    `<label style="margin:0; display:flex; gap:4px; align-items:center"><input type="checkbox" style="width:auto" value="${k}" ${marcados.includes(k) ? 'checked' : ''}>${r}</label>`).join('');
+  document.getElementById('dlgFPrazo').value = f.prazo;
+  document.getElementById('dlgFValor').value = f.valor;
+  document.getElementById('dlgFornecedor').showModal();
+}
+document.getElementById('btnNovoForn').addEventListener('click', () => abrirFornecedor(null));
+document.getElementById('dlgFCancelar').addEventListener('click', () => document.getElementById('dlgFornecedor').close());
+document.getElementById('frmFornecedor').addEventListener('submit', async e => {
+  e.preventDefault();
+  const dias = [...document.querySelectorAll('#dlgFDias input:checked')].map(i => i.value);
+  if (!dias.length){ alert('Marque pelo menos um dia de entrega'); return; }
+  const corpo = {categoria: document.getElementById('dlgFCategoria').value,
+    dias_entrega: dias.length === 7 ? 'todos' : dias.join(','),
+    prazo_dias: document.getElementById('dlgFPrazo').value, valor_mensal: document.getElementById('dlgFValor').value};
+  let r;
+  if (fornecedorEmEdicao === null){
+    corpo.nome = document.getElementById('dlgFNome').value.trim();
+    if (!corpo.nome){ document.getElementById('dlgFNome').focus(); return; }
+    r = await fetch('/api/fornecedor_novo', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(corpo)}).then(r => r.json());
+  } else {
+    corpo.nome = fornecedorEmEdicao;
+    r = await fetch('/api/fornecedor', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(corpo)}).then(r => r.json());
+  }
+  if (!r.ok){ alert(r.erro || 'Não foi possível salvar'); return; }
+  document.getElementById('dlgFornecedor').close();
+  carregar();
+});
 const semAcento = t => (t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/"/g, '');
 
 function filtrarEstoque(){
@@ -316,7 +381,11 @@ async function carregar(){
          style="width:110px; background:var(--fundo); color:var(--texto); border:1px solid var(--borda); border-radius:6px; padding:6px 8px; font-family:'IBM Plex Mono',monospace; font-size:13px"></td>
     <td class="num" style="color:${(it.real_mes||0) > it.valor ? 'var(--alerta)' : ((it.real_mes||0) > 0 ? 'var(--ok)' : 'var(--texto-suave)')}">
       ${(it.real_mes||0) > 0 ? R$(it.real_mes) + ((it.real_mes > it.valor) ? ' ⚠️' : '') : '—'}</td>
+    <td><button class="btn-edit" data-edit-forn="${it.nome.replace(/"/g,'&quot;')}">✏️ Editar</button></td>
   </tr>`).join('');
+  fornecedoresDados = Object.fromEntries(d.itens.map(it => [it.nome, it]));
+  document.querySelectorAll('#tForn .btn-edit').forEach(b =>
+    b.addEventListener('click', () => abrirFornecedor(b.dataset.editForn)));
 
   document.querySelectorAll('#tForn input').forEach(inp => {
     inp.addEventListener('keydown', e => { if (e.key === 'Enter') inp.blur(); });

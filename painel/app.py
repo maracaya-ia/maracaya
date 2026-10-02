@@ -3110,16 +3110,62 @@ def compras_plano(ancora: str = Query("seg")):
             "pico": pico}
 
 
+_DIAS_VALIDOS = ["seg", "ter", "qua", "qui", "sex", "sab", "dom"]
+
+
+def _normalizar_dias(txt):
+    txt = str(txt or "").strip().lower()
+    if txt == "todos":
+        return "todos"
+    dias = [d.strip() for d in txt.split(",") if d.strip()]
+    if not dias or any(d not in _DIAS_VALIDOS for d in dias):
+        return None
+    return ",".join(d for d in _DIAS_VALIDOS if d in dias) if len(set(dias)) < 7 else "todos"
+
+
+@app.post("/api/fornecedor_novo")
+def criar_fornecedor(dados: dict = Body(...)):
+    nome = str(dados.get("nome", "")).strip()
+    if not nome or len(nome) > 60:
+        return {"ok": False, "erro": "nome inválido"}
+    categoria = str(dados.get("categoria", "seco")).strip().lower()
+    if categoria not in ("seco", "perecivel"):
+        return {"ok": False, "erro": "categoria inválida"}
+    dias = _normalizar_dias(dados.get("dias_entrega", "todos"))
+    if dias is None:
+        return {"ok": False, "erro": "dias de entrega inválidos"}
+    try:
+        prazo = int(float(dados.get("prazo_dias", 0)))
+        valor = float(dados.get("valor_mensal", 0) or 0)
+    except (TypeError, ValueError):
+        return {"ok": False, "erro": "prazo ou valor inválido"}
+    if not 0 <= prazo <= 120 or valor < 0:
+        return {"ok": False, "erro": "prazo ou valor inválido"}
+    if consultar("SELECT 1 FROM fornecedores WHERE lower(nome) = lower(%(n)s)", {"n": nome}):
+        return {"ok": False, "erro": "já existe um fornecedor com esse nome"}
+    executar("""INSERT INTO fornecedores (nome, dias_entrega, prazo_dias, valor_mensal, categoria, atualizado_em)
+                VALUES (%(n)s, %(d)s, %(p)s, %(v)s, %(c)s, now())""",
+             {"n": nome, "d": dias, "p": prazo, "v": valor, "c": categoria})
+    return {"ok": True}
+
+
 @app.post("/api/fornecedor")
 def salvar_fornecedor(dados: dict = Body(...)):
     nome = str(dados.get("nome", "")).strip()
     if not nome:
         return {"ok": False, "erro": "nome vazio"}
     campos, params = [], {"nome": nome}
-    for c in ("dias_entrega", "categoria"):
-        if c in dados:
-            campos.append(f"{c} = %({c})s")
-            params[c] = str(dados[c])
+    if "dias_entrega" in dados:
+        dias = _normalizar_dias(dados["dias_entrega"])
+        if dias is None:
+            return {"ok": False, "erro": "dias de entrega inválidos"}
+        campos.append("dias_entrega = %(dias_entrega)s")
+        params["dias_entrega"] = dias
+    if "categoria" in dados:
+        if str(dados["categoria"]) not in ("seco", "perecivel"):
+            return {"ok": False, "erro": "categoria inválida"}
+        campos.append("categoria = %(categoria)s")
+        params["categoria"] = str(dados["categoria"])
     for c in ("prazo_dias", "valor_mensal"):
         if c in dados:
             try:
