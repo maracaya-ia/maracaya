@@ -310,6 +310,7 @@ async function carregar(){
       ? (+v).toLocaleString('pt-BR', {maximumFractionDigits:1}) + ' kg'
       : Math.ceil(+v).toLocaleString('pt-BR') + ' un');
     itensEstoque = Object.fromEntries(es.itens.map(x => [x.insumo, x]));
+    es.itens.sort((a, b) => a.insumo.localeCompare(b.insumo, 'pt-BR', {sensitivity:'base'}));
     document.querySelector('#tEstoque tbody').innerHTML = es.itens.map(x => `<tr data-busca="${semAcento(x.insumo + ' ' + x.fornecedor)}">
       <td>${x.insumo}</td>
       <td style="color:var(--texto-suave)">${x.fornecedor}</td>
