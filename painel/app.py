@@ -3695,6 +3695,7 @@ def zap_sugestao():
 
 @app.post("/api/estoque")
 def salvar_estoque(dados: dict = Body(...)):
+    """Contagem manual: o numero digitado vira o estoque (e o ajuste fica no historico)."""
     insumo = str(dados.get("insumo", "")).strip()
     if not insumo:
         return {"ok": False, "erro": "insumo vazio"}
@@ -3702,13 +3703,76 @@ def salvar_estoque(dados: dict = Body(...)):
         qtd = float(dados.get("estoque"))
     except (TypeError, ValueError):
         return {"ok": False, "erro": "quantidade inválida"}
+    antes = consultar("SELECT estoque_atual FROM insumo_estoque WHERE insumo = %(i)s", {"i": insumo})
     executar("""
         INSERT INTO insumo_estoque (insumo, estoque_atual, atualizado_em)
         VALUES (%(i)s, %(q)s, now())
         ON CONFLICT (insumo) DO UPDATE
             SET estoque_atual = EXCLUDED.estoque_atual, atualizado_em = now()
     """, {"i": insumo, "q": qtd})
+    delta = qtd - float(antes[0]["estoque_atual"]) if antes else qtd
+    if delta != 0 or not antes:
+        executar("""INSERT INTO estoque_movimento (insumo, tipo, delta, saldo_apos, obs)
+                    VALUES (%(i)s, %(t)s, %(d)s, %(q)s, %(o)s)""",
+                 {"i": insumo, "t": "ajuste" if antes else "inicial", "d": delta, "q": qtd,
+                  "o": "contagem manual" if antes else "primeira contagem"})
     return {"ok": True}
+
+
+@app.post("/api/estoque_entrada")
+def entrada_estoque(dados: dict = Body(...)):
+    """Entrega recebida: soma ao estoque atual (sem precisar recontar tudo)."""
+    insumo = str(dados.get("insumo", "")).strip()
+    if not insumo:
+        return {"ok": False, "erro": "insumo vazio"}
+    try:
+        qtd = float(dados.get("quantidade"))
+    except (TypeError, ValueError):
+        return {"ok": False, "erro": "quantidade inválida"}
+    if qtd <= 0:
+        return {"ok": False, "erro": "a quantidade recebida precisa ser maior que zero"}
+    obs = (str(dados.get("obs", "") or "").strip()[:120]) or None
+    r = consultar("""
+        INSERT INTO insumo_estoque (insumo, estoque_atual, atualizado_em)
+        VALUES (%(i)s, %(q)s, now())
+        ON CONFLICT (insumo) DO UPDATE
+            SET estoque_atual = insumo_estoque.estoque_atual + EXCLUDED.estoque_atual, atualizado_em = now()
+        RETURNING estoque_atual
+    """, {"i": insumo, "q": qtd})
+    saldo = float(r[0]["estoque_atual"])
+    executar("""INSERT INTO estoque_movimento (insumo, tipo, delta, saldo_apos, obs)
+                VALUES (%(i)s, 'entrada', %(d)s, %(s)s, %(o)s)""",
+             {"i": insumo, "d": qtd, "s": saldo, "o": obs or "entrega recebida"})
+    return {"ok": True, "saldo": saldo}
+
+
+@app.get("/api/estoque_historico")
+def estoque_historico(insumo: str = Query(...), limite: int = Query(80, ge=1, le=300)):
+    movimentos = consultar(f"""
+        SELECT m.tipo, m.delta, m.saldo_apos, m.obs, m.pedido_id, p.numero_curto, m.criado_em
+        FROM estoque_movimento m LEFT JOIN pedidos p ON p.id = m.pedido_id
+        WHERE m.insumo = %(i)s
+        ORDER BY m.criado_em DESC, m.id DESC LIMIT %(l)s
+    """, {"i": insumo, "l": limite})
+    por_dia = consultar(f"""
+        SELECT (criado_em AT TIME ZONE '{TZ}')::date AS dia,
+               coalesce(sum(-delta) FILTER (WHERE tipo = 'baixa'), 0) AS baixas,
+               coalesce(sum(delta) FILTER (WHERE tipo IN ('entrada', 'estorno')), 0) AS entradas,
+               coalesce(sum(delta) FILTER (WHERE tipo IN ('ajuste', 'inicial')), 0) AS ajustes
+        FROM estoque_movimento
+        WHERE insumo = %(i)s AND criado_em >= now() - interval '14 days'
+        GROUP BY 1 ORDER BY 1 DESC
+    """, {"i": insumo})
+    atual = consultar("SELECT estoque_atual FROM insumo_estoque WHERE insumo = %(i)s", {"i": insumo})
+    return {
+        "insumo": insumo,
+        "estoque": float(atual[0]["estoque_atual"]) if atual else None,
+        "movimentos": [{**m, "delta": float(m["delta"]),
+                        "saldo_apos": float(m["saldo_apos"]) if m["saldo_apos"] is not None else None,
+                        "criado_em": m["criado_em"].isoformat()} for m in movimentos],
+        "por_dia": [{"dia": d["dia"].isoformat(), "baixas": float(d["baixas"]),
+                     "entradas": float(d["entradas"]), "ajustes": float(d["ajustes"])} for d in por_dia],
+    }
 
 
 @app.post("/api/insumo_novo")
@@ -3749,6 +3813,8 @@ def criar_insumo(dados: dict = Body(...)):
                         VALUES (%(i)s, %(q)s, now())
                         ON CONFLICT (insumo) DO UPDATE SET estoque_atual = EXCLUDED.estoque_atual,
                         atualizado_em = now()""", {"i": insumo, "q": est})
+            executar("""INSERT INTO estoque_movimento (insumo, tipo, delta, saldo_apos, obs)
+                        VALUES (%(i)s, 'inicial', %(q)s, %(q)s, 'cadastro do item')""", {"i": insumo, "q": est})
     except (TypeError, ValueError):
         pass
     return {"ok": True}

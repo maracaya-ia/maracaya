@@ -171,12 +171,22 @@ BEGIN
         WHERE EXISTS (SELECT 1 FROM insumo_estoque ie WHERE ie.insumo = c.insumo)
         ON CONFLICT (pedido_id, insumo) DO NOTHING;
 
-        UPDATE insumo_estoque ie SET estoque_atual = ie.estoque_atual - b.quantidade, atualizado_em = now()
-        FROM pedido_baixa_estoque b WHERE b.pedido_id = NEW.id AND b.insumo = ie.insumo;
+        WITH upd AS (
+            UPDATE insumo_estoque ie SET estoque_atual = ie.estoque_atual - b.quantidade, atualizado_em = now()
+            FROM pedido_baixa_estoque b WHERE b.pedido_id = NEW.id AND b.insumo = ie.insumo
+            RETURNING ie.insumo, b.quantidade, ie.estoque_atual
+        )
+        INSERT INTO estoque_movimento (insumo, tipo, delta, saldo_apos, pedido_id)
+        SELECT insumo, 'baixa', -quantidade, estoque_atual, NEW.id FROM upd;
 
     ELSIF NEW.status = 'canceled' AND ja_baixado THEN
-        UPDATE insumo_estoque ie SET estoque_atual = ie.estoque_atual + b.quantidade, atualizado_em = now()
-        FROM pedido_baixa_estoque b WHERE b.pedido_id = NEW.id AND b.insumo = ie.insumo;
+        WITH upd AS (
+            UPDATE insumo_estoque ie SET estoque_atual = ie.estoque_atual + b.quantidade, atualizado_em = now()
+            FROM pedido_baixa_estoque b WHERE b.pedido_id = NEW.id AND b.insumo = ie.insumo
+            RETURNING ie.insumo, b.quantidade, ie.estoque_atual
+        )
+        INSERT INTO estoque_movimento (insumo, tipo, delta, saldo_apos, pedido_id, obs)
+        SELECT insumo, 'estorno', quantidade, estoque_atual, NEW.id, 'pedido cancelado' FROM upd;
 
         DELETE FROM pedido_baixa_estoque WHERE pedido_id = NEW.id;
     END IF;

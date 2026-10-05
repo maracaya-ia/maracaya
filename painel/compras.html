@@ -78,7 +78,7 @@
   .btn-edit{background:transparent; color:var(--texto-suave); border:1px solid var(--borda);
     border-radius:6px; padding:4px 9px; cursor:pointer; font-size:12px}
   .btn-edit:hover{color:var(--brasa); border-color:var(--brasa)}
-  dialog.modal{background:var(--painel); color:var(--texto); border:1px solid var(--borda);
+  dialog.modal{margin:auto; background:var(--painel); color:var(--texto); border:1px solid var(--borda);
     border-radius:12px; padding:22px; width:min(380px, 92vw)}
   dialog.modal::backdrop{background:rgba(0,0,0,.55)}
   dialog.modal h3{font-family:'Sora'; font-size:15px; margin-bottom:14px}
@@ -96,6 +96,15 @@
   .badge-sug.hoje{color:var(--alerta); border-color:var(--alerta); font-weight:600}
   .pedido-sug table{font-size:12.5px}
   .pedido-sug td, .pedido-sug th{padding:5px 6px}
+  .acoes-estoque{display:flex; gap:5px; white-space:nowrap}
+  .mov-tabela{width:100%; font-size:12.5px; margin-top:8px}
+  .mov-tabela td, .mov-tabela th{padding:5px 6px; border-bottom:1px solid var(--borda); text-align:left}
+  .mov-tabela td.num{font-family:'IBM Plex Mono',monospace; text-align:right}
+  .mov-pos{color:var(--ok)} .mov-neg{color:var(--alerta)}
+  dialog.modal.largo{width:min(640px, 94vw)}
+  .dia-resumo{display:flex; gap:10px; flex-wrap:wrap; margin-top:6px; font-size:12px; color:var(--texto-suave)}
+  .dia-resumo span{background:var(--fundo); border:1px solid var(--borda); border-radius:8px; padding:4px 8px}
+  #tEstoque th:last-child, #tEstoque td:last-child{position:sticky; right:0; background:var(--painel); box-shadow:-8px 0 8px -8px rgba(0,0,0,.45)}
 </style>
 <link rel="stylesheet" href="/static/_tema.css">
 </head>
@@ -179,6 +188,32 @@
     </table></div>
   </div>
 </section>
+
+<dialog class="modal" id="dlgEntrada">
+  <form method="dialog" id="frmEntrada">
+    <h3 id="dlgEntTitulo">Receber entrega</h3>
+    <div id="dlgEntEmbBox" hidden>
+      <label id="dlgEntEmbLabel">Embalagens recebidas</label>
+      <input id="dlgEntEmb" type="number" step="any" min="0" placeholder="ex: 3">
+    </div>
+    <label id="dlgEntQtdLabel">Quantidade recebida</label>
+    <input id="dlgEntQtd" type="number" step="any" min="0" placeholder="ex: 120" required>
+    <label>Observação (opcional)</label>
+    <input id="dlgEntObs" type="text" maxlength="120" placeholder="ex: NF 1234, entrega de sexta">
+    <div id="dlgEntPrevia" style="margin-top:12px; font-size:13px; color:var(--texto-suave)"></div>
+    <div class="acoes">
+      <button type="button" id="dlgEntCancelar">Cancelar</button>
+      <button type="submit" class="primario">Somar ao estoque</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog class="modal largo" id="dlgHistorico">
+  <h3 id="dlgHistTitulo">Histórico</h3>
+  <div id="dlgHistResumo"></div>
+  <div style="max-height:46vh; overflow:auto"><table class="mov-tabela"><thead><tr><th>Quando</th><th>Movimento</th><th style="text-align:right">Quantidade</th><th style="text-align:right">Saldo</th></tr></thead><tbody id="dlgHistLinhas"></tbody></table></div>
+  <div class="acoes"><button type="button" id="dlgHistFechar">Fechar</button></div>
+</dialog>
 
 <dialog class="modal" id="dlgFornecedor">
   <form method="dialog" id="frmFornecedor">
@@ -493,10 +528,17 @@ async function carregar(){
            value="${x.custo_unitario != null ? x.custo_unitario : ''}" placeholder="0,00"
            style="width:80px; background:var(--fundo); color:var(--texto); border:1px solid var(--borda); border-radius:6px; padding:6px 8px; font-family:'IBM Plex Mono',monospace; font-size:13px"></td>
       <td class="num" style="color:var(--texto-suave)">${x.custo_dia != null ? R$(x.custo_dia) : '—'}</td>
-      <td><button class="btn-edit" data-editar="${x.insumo.replace(/"/g,'&quot;')}" title="Editar fornecedor, estoque e custo">✏️ Editar</button></td>
+      <td><div class="acoes-estoque">
+        <button class="btn-edit" data-receber="${x.insumo.replace(/"/g,'&quot;')}" title="Receber entrega (soma ao estoque)" aria-label="Receber entrega">📥</button>
+        <button class="btn-edit" data-historico="${x.insumo.replace(/"/g,'&quot;')}" title="Ver baixas, entregas e contagens deste item">🕘</button>
+        <button class="btn-edit" data-editar="${x.insumo.replace(/"/g,'&quot;')}" title="Editar fornecedor, estoque e custo" aria-label="Editar">✏️</button></div></td>
     </tr>`).join('');
-    document.querySelectorAll('#tEstoque .btn-edit').forEach(b =>
+    document.querySelectorAll('#tEstoque [data-editar]').forEach(b =>
       b.addEventListener('click', () => abrirEdicao(b.dataset.editar)));
+    document.querySelectorAll('#tEstoque [data-receber]').forEach(b =>
+      b.addEventListener('click', () => abrirEntrada(b.dataset.receber)));
+    document.querySelectorAll('#tEstoque [data-historico]').forEach(b =>
+      b.addEventListener('click', () => abrirHistorico(b.dataset.historico)));
     filtrarEstoque();
     document.querySelectorAll('#tEstoque input:not(.inp-custo)').forEach(inp => {
       inp.addEventListener('keydown', e => { if (e.key === 'Enter') inp.blur(); });
@@ -589,6 +631,73 @@ async function carregarSugestao(){
       <div style="font-size:13px; color:var(--texto-suave)">🥬 <strong style="color:var(--texto)">Hortifruti</strong> — próxima troca ${fmtDia(d.hortifruti[0].proxima_troca)} (ciclo de ${d.hortifruti[0].dias_ciclo} dia(s)): ${d.hortifruti.map(x => `${x.insumo} ~${Math.ceil(x.qtd)} ${x.unidade}`).join(' · ')}</div>` : '';
   }catch(e){ document.getElementById('descSugestao').textContent = 'Não foi possível calcular a sugestão agora.'; }
 }
+
+// ---- receber entrega / historico ----
+const TIPO_MOV = {baixa:'🍔 Baixa de pedido', estorno:'↩️ Pedido cancelado', entrada:'📥 Entrega recebida',
+                  ajuste:'✏️ Contagem manual', inicial:'🆕 Primeira contagem'};
+const fmtMov = (v, u) => (+v).toLocaleString('pt-BR', {maximumFractionDigits: u === 'kg' ? 2 : 1});
+let insumoEntrada = null;
+function abrirEntrada(nome){
+  const x = itensEstoque[nome]; if (!x) return;
+  insumoEntrada = nome;
+  document.getElementById('dlgEntTitulo').textContent = `Receber entrega — ${x.insumo}`;
+  document.getElementById('dlgEntQtdLabel').textContent = `Quantidade recebida (${x.unidade})`;
+  const temEmb = !!x.embalagem_qtd;
+  document.getElementById('dlgEntEmbBox').hidden = !temEmb;
+  if (temEmb) document.getElementById('dlgEntEmbLabel').textContent =
+    `${x.embalagem_nome}(s) recebido(s) — 1 ${x.embalagem_nome} = ${fmtMov(x.embalagem_qtd, x.unidade)} ${x.unidade}`;
+  document.getElementById('dlgEntEmb').value = '';
+  document.getElementById('dlgEntQtd').value = '';
+  document.getElementById('dlgEntObs').value = '';
+  atualizarPreviaEntrada();
+  document.getElementById('dlgEntrada').showModal();
+}
+function atualizarPreviaEntrada(){
+  const x = itensEstoque[insumoEntrada]; if (!x) return;
+  const q = parseFloat(document.getElementById('dlgEntQtd').value);
+  const atual = x.estoque == null ? 0 : x.estoque;
+  document.getElementById('dlgEntPrevia').innerHTML = isNaN(q) || q <= 0
+    ? `Estoque atual: <strong>${fmtMov(atual, x.unidade)} ${x.unidade}</strong>`
+    : `Estoque: ${fmtMov(atual, x.unidade)} → <strong style="color:var(--ok)">${fmtMov(atual + q, x.unidade)} ${x.unidade}</strong> (+${fmtMov(q, x.unidade)})`;
+}
+document.getElementById('dlgEntQtd').addEventListener('input', atualizarPreviaEntrada);
+document.getElementById('dlgEntEmb').addEventListener('input', () => {
+  const x = itensEstoque[insumoEntrada]; const n = parseFloat(document.getElementById('dlgEntEmb').value);
+  if (x && x.embalagem_qtd && !isNaN(n)) document.getElementById('dlgEntQtd').value = +(n * x.embalagem_qtd).toFixed(3);
+  atualizarPreviaEntrada();
+});
+document.getElementById('dlgEntCancelar').addEventListener('click', () => document.getElementById('dlgEntrada').close());
+document.getElementById('frmEntrada').addEventListener('submit', async e => {
+  e.preventDefault();
+  const q = parseFloat(document.getElementById('dlgEntQtd').value);
+  if (isNaN(q) || q <= 0){ alert('Informe a quantidade recebida'); return; }
+  const r = await fetch('/api/estoque_entrada', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({insumo: insumoEntrada, quantidade: q, obs: document.getElementById('dlgEntObs').value})}).then(r => r.json());
+  if (!r.ok){ alert(r.erro || 'Não foi possível registrar a entrega'); return; }
+  document.getElementById('dlgEntrada').close();
+  carregar();
+});
+
+async function abrirHistorico(nome){
+  const x = itensEstoque[nome]; if (!x) return;
+  document.getElementById('dlgHistTitulo').textContent = `Histórico — ${x.insumo}`;
+  document.getElementById('dlgHistLinhas').innerHTML = '<tr><td colspan="4">Carregando…</td></tr>';
+  document.getElementById('dlgHistorico').showModal();
+  const d = await fetch(`/api/estoque_historico?insumo=${encodeURIComponent(nome)}`).then(r => r.json());
+  document.getElementById('dlgHistResumo').innerHTML =
+    `<div class="dia-resumo"><span>Estoque atual: <strong style="color:var(--texto)">${d.estoque == null ? '—' : fmtMov(d.estoque, x.unidade) + ' ' + x.unidade}</strong></span>` +
+    d.por_dia.slice(0, 5).map(p => `<span>${fmtDia(p.dia)}: <span class="mov-neg">−${fmtMov(p.baixas, x.unidade)}</span>` +
+      (p.entradas ? ` · <span class="mov-pos">+${fmtMov(p.entradas, x.unidade)}</span>` : '') +
+      (p.ajustes ? ` · ✏️ ${p.ajustes > 0 ? '+' : ''}${fmtMov(p.ajustes, x.unidade)}` : '') + `</span>`).join('') + '</div>';
+  document.getElementById('dlgHistLinhas').innerHTML = d.movimentos.length ? d.movimentos.map(m => {
+    const quando = new Date(m.criado_em).toLocaleString('pt-BR', {day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit'});
+    const origem = m.pedido_id ? ` <span style="color:var(--texto-suave)">#${m.numero_curto ?? m.pedido_id}</span>` : (m.obs && !['entrega recebida','contagem manual','primeira contagem','cadastro do item'].some(p => m.obs.startsWith(p)) ? ` <span style="color:var(--texto-suave)">${m.obs}</span>` : '');
+    return `<tr><td>${quando}</td><td>${TIPO_MOV[m.tipo] || m.tipo}${origem}</td>
+      <td class="num ${m.delta >= 0 ? 'mov-pos' : 'mov-neg'}">${m.delta >= 0 ? '+' : ''}${fmtMov(m.delta, x.unidade)}</td>
+      <td class="num">${m.saldo_apos == null ? '—' : fmtMov(m.saldo_apos, x.unidade)}</td></tr>`;
+  }).join('') : '<tr><td colspan="4">Sem movimentos registrados ainda.</td></tr>';
+}
+document.getElementById('dlgHistFechar').addEventListener('click', () => document.getElementById('dlgHistorico').close());
 
 carregar();
 </script>
