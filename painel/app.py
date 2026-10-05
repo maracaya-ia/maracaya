@@ -2957,13 +2957,20 @@ def zap_pergunta(payload: dict = Body(...),
                 v.add(t[:-1])
             if t.endswith(("aes", "oes")):
                 v.add(t[:-3] + "ao")
+            if t.endswith("ns"):          # pudins -> pudim, bacons -> bacon
+                v.add(t[:-2] + "m")
+            if t.endswith(("ais", "eis")):
+                v.add(t[:-2] + "l")
             return v
 
         todos_insumos = consultar("""
-            SELECT ie.insumo, ie.estoque_atual,
-                   coalesce((SELECT f.unidade FROM ficha_tecnica f WHERE f.insumo = ie.insumo LIMIT 1),
-                            (SELECT u.unidade FROM insumo_unidade u WHERE u.insumo = ie.insumo)) AS unidade
-            FROM insumo_estoque ie
+            SELECT i.insumo, ie.estoque_atual,
+                   coalesce((SELECT f.unidade FROM ficha_tecnica f WHERE f.insumo = i.insumo LIMIT 1),
+                            (SELECT u.unidade FROM insumo_unidade u WHERE u.insumo = i.insumo)) AS unidade,
+                   EXISTS (SELECT 1 FROM insumo_ciclo c WHERE c.insumo = i.insumo) AS ciclo
+            FROM (SELECT insumo FROM insumo_estoque UNION SELECT insumo FROM insumo_unidade
+                  UNION SELECT insumo FROM ficha_tecnica) i
+            LEFT JOIN insumo_estoque ie ON ie.insumo = i.insumo
         """, {})
         nomes_ok_est = {i["insumo"]: _sem_acento(i["insumo"]) for i in todos_insumos}
 
@@ -2982,6 +2989,10 @@ def zap_pergunta(payload: dict = Body(...),
             for nome in sorted(achados_est):
                 i = por_insumo[nome]
                 un = i["unidade"] if i["unidade"] in ("kg", "g") else "un"
+                if i["estoque_atual"] is None:
+                    linhas.append(f"• {nome}: " + ("controlado por troca (sem contagem de estoque)"
+                                                  if i["ciclo"] else "❓ estoque ainda não cadastrado"))
+                    continue
                 casas = 0 if un in ("g", "un") and float(i["estoque_atual"]).is_integer() else 1
                 linhas.append(f"• {nome}: *{float(i['estoque_atual']):.{casas}f} {un}* em estoque")
             resposta = "📦 *Estoque atual*\n" + "\n".join(linhas)
