@@ -3789,6 +3789,9 @@ def zap_margem_baixa(simular: bool = Query(False)):
     tol99 = float(_cfg_alerta("desconto99_tolerancia", "15"))
     marcar = re.sub(r"\D", "", _cfg_alerta("desconto99_marcar", ""))
     linhas, _ = _calcular_periodo("p.criado_em >= now() - interval '30 days'", "", {})
+    for l in linhas:
+        if isinstance(l["data"], str):
+            l["data"] = datetime.fromisoformat(l["data"])
     corte = datetime.now(timezone.utc) - timedelta(hours=3)
     ja = set() if simular else {r["pedido_id"] for r in consultar("SELECT pedido_id FROM alerta_margem", {})}
     cand = [l for l in linhas if l["margem"] < minimo and l["id"] not in ja
