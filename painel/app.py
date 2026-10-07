@@ -3745,7 +3745,7 @@ def zap_desconto99(simular: bool = Query(False)):
         WHERE p.origem IN ('99food', 'food99') AND p.status <> 'canceled'
           AND {janela} {ja_avisado}
           AND coalesce(p.desconto_loja, 0) - coalesce(p.taxa_entrega, 0) >= %(tol)s
-        ORDER BY {"4 DESC" if simular else "p.criado_em"} LIMIT {1 if simular else 5}
+        ORDER BY {"8 DESC" if simular else "p.criado_em"} LIMIT {1 if simular else 5}
     """, {"tol": tolerancia})
     if not pedidos:
         return {"enviar": False, "texto": "", "mentioned": []}
