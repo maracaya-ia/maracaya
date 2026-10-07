@@ -3,7 +3,7 @@
 CREATE TABLE IF NOT EXISTS config_alertas (chave TEXT PRIMARY KEY, valor TEXT NOT NULL);
 INSERT INTO config_alertas (chave, valor) VALUES
   ('desconto99_tolerancia', '15'),            -- R$ acima da taxa de entrega que dispara o alerta
-  ('desconto99_marcar', '5561999916123')      -- WhatsApp do Kui (DDI+DDD+numero)
+  ('desconto99_marcar', '556199916123')       -- WhatsApp do Kui (DDI+DDD+numero, no formato do JID: sem o 9 extra)
 ON CONFLICT (chave) DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS alerta_desconto99 (
