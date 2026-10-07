@@ -3775,6 +3775,66 @@ def zap_desconto99(simular: bool = Query(False)):
     return {"enviar": True, "texto": texto, "mentioned": [marcar] if marcar else []}
 
 
+
+_CANAL_LEGENDA = {"ifood": "iFood", "99food": "99", "food99": "99", "catalog": "Site",
+                  "site delivery (saipos)": "Site"}
+
+
+@app.get("/api/zap/margem_baixa")
+def zap_margem_baixa(simular: bool = Query(False)):
+    """Pedidos novos com margem abaixo do minimo (mesma conta da Performance). Pedidos da 99 que ja
+    caem no alerta de desconto acima da entrega ficam de fora, pra nao avisar duas vezes o mesmo pedido."""
+    from datetime import datetime, timedelta, timezone
+    minimo = float(_cfg_alerta("margem_minima", "15"))
+    tol99 = float(_cfg_alerta("desconto99_tolerancia", "15"))
+    marcar = re.sub(r"\D", "", _cfg_alerta("desconto99_marcar", ""))
+    linhas, _ = _calcular_periodo("p.criado_em >= now() - interval '30 days'", "", {})
+    corte = datetime.now(timezone.utc) - timedelta(hours=3)
+    ja = set() if simular else {r["pedido_id"] for r in consultar("SELECT pedido_id FROM alerta_margem", {})}
+    cand = [l for l in linhas if l["margem"] < minimo and l["id"] not in ja
+            and (simular or l["data"] >= corte)]
+    if not cand:
+        return {"enviar": False, "texto": "", "mentioned": []}
+    extra = {r["id"]: r for r in consultar("""
+        SELECT p.id, coalesce(p.taxa_entrega, 0) AS entrega, coalesce(p.desconto_loja, 0) AS desc_loja,
+               (SELECT string_agg(i.quantidade::int || 'x ' || i.nome, ', ' ORDER BY i.id)
+                  FROM pedido_itens i WHERE i.pedido_id = p.id) AS itens
+        FROM pedidos p WHERE p.id = ANY(%(ids)s)""", {"ids": [l["id"] for l in cand]})}
+    pedidos = []
+    for l in sorted(cand, key=lambda x: x["margem"] if simular else x["data"]):
+        e = extra[l["id"]]
+        if (l["origem"] or "").lower() in ("99food", "food99") and float(e["desc_loja"]) - float(e["entrega"]) >= tol99:
+            continue
+        pedidos.append((l, e))
+    pedidos = pedidos[:1] if simular else pedidos[:5]
+    if not pedidos:
+        return {"enviar": False, "texto": "", "mentioned": []}
+
+    def brl(v):
+        return "R$ " + _fmt_milhar(float(v), 2)
+
+    from zoneinfo import ZoneInfo
+    blocos = []
+    for l, e in pedidos:
+        quando = l["data"].astimezone(ZoneInfo(TZ)).strftime("%d/%m %H:%M")
+        canal = _CANAL_LEGENDA.get((l["origem"] or "").lower(), "Balcão")
+        blocos.append(
+            f"*Pedido #{l['numero'] or l['id']}* · {l['marca'] or '—'} · {canal} · {quando}\n"
+            f"• Subtotal {brl(l['subtotal'])} · desconto da loja {brl(l['desconto_loja'])} · frete {brl(l['frete'])}\n"
+            f"• CMV {brl(l['cmv'])} · comissão+taxa {brl(l['comissao'] + l['taxa_transacao'])}\n"
+            f"• Lucro {brl(l['lucro'])} · *margem {l['margem']:.1f}%* (mínimo {minimo:.0f}%)\n"
+            f"• Itens: {(e['itens'] or '—')[:160]}")
+    mencao = f"@{marcar} " if marcar else ""
+    texto = (f"🔻 *Margem baixa*\n{mencao}confere {'esse pedido' if len(pedidos) == 1 else 'esses pedidos'}:\n\n"
+             + "\n\n".join(blocos)
+             + "\n\n_Margem calculada com as mesmas regras da aba Performance (lucro ÷ subtotal)._")
+    if not simular:
+        for l, _ in pedidos:
+            executar("""INSERT INTO alerta_margem (pedido_id, margem) VALUES (%(i)s, %(m)s)
+                        ON CONFLICT (pedido_id) DO NOTHING""", {"i": l["id"], "m": round(l["margem"], 2)})
+    return {"enviar": True, "texto": texto, "mentioned": [marcar] if marcar else []}
+
+
 @app.post("/api/estoque")
 def salvar_estoque(dados: dict = Body(...)):
     """Contagem manual: o numero digitado vira o estoque (e o ajuste fica no historico)."""
