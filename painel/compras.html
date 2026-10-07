@@ -154,6 +154,7 @@
     <h2>Sugestão de compra 🛒<span class="info" tabindex="0" data-tip="Cruza a previsão de pedidos dos próximos dias (mediana por dia da semana × tendência), o consumo de cada insumo por pedido, o estoque atual e a rota de cada fornecedor. Mostra o que pedir, até quando e quanto — em embalagens quando cadastradas. Cada pedido cobre os dias de cobertura definidos no fornecedor (nunca menos que o maior intervalo entre duas entregas). Itens sem estoque preenchido não entram.">?</span></h2>
     <div class="desc" id="descSugestao">Carregando…</div>
     <div id="sugestaoPedidos"></div>
+    <div id="sugestaoProximos" style="margin-top:6px"></div>
     <div id="sugestaoHorti" style="margin-top:14px"></div>
   </div>
 
@@ -596,7 +597,7 @@ async function carregarSugestao(){
     sugestaoCache = d;
     const nHoje = d.pedidos.filter(p => p.pedir_hoje).length;
     document.getElementById('descSugestao').innerHTML =
-      (d.pedidos.length ? `<strong>${nHoje}</strong> pedido(s) pra fazer hoje · ${d.pedidos.length - nHoje} nos próximos ${d.janela_dias} dias` : 'Nada pra pedir nos próximos dias ✅') +
+      (d.pedidos.length ? `Semana até ${fmtDia(d.semana_fim)}: <strong>${nHoje}</strong> pedido(s) pra fazer hoje · ${d.pedidos.length - nHoje} ainda esta semana` : `Nada pra pedir até ${fmtDia(d.semana_fim)} ✅`) +
       ` · previsão de pedidos (próx. 7 dias): ${d.pedidos_previstos.join(' · ')}` +
       (d.sem_estoque.length ? `<br><span style="color:var(--alerta)">❓ Sem estoque preenchido (fora da sugestão): ${d.sem_estoque.join(', ')}</span>` : '');
     const fmtN = (v, u) => (+v).toLocaleString('pt-BR', {maximumFractionDigits: u === 'kg' ? 1 : 0});
@@ -627,6 +628,10 @@ async function carregarSugestao(){
       try{ await navigator.clipboard.writeText(texto); b.textContent = '✅ Copiado'; }catch(e){ prompt('Copie o pedido:', texto); }
       setTimeout(() => b.textContent = '📋 Copiar pedido', 2000);
     }));
+    const rotasTxt = r => r === 'todos' ? 'todo dia' : r.split(',').map(x => x === 'sab' ? 'sáb' : x).join('/');
+    document.getElementById('sugestaoProximos').innerHTML = d.proximos.length ? `
+      <div style="font-size:13px; color:var(--texto-suave); margin-top:4px">📅 <strong style="color:var(--texto)">Próximas rotas</strong> (sem pedido esta semana):
+        ${d.proximos.map(p => `<div style="margin-top:3px">• <strong style="color:var(--texto)">${p.fornecedor}</strong> — rotas ${rotasTxt(p.rotas)} · próxima entrega ${fmtDia(p.entrega)}</div>`).join('')}</div>` : '';
     document.getElementById('sugestaoHorti').innerHTML = d.hortifruti.length ? `
       <div style="font-size:13px; color:var(--texto-suave)">🥬 <strong style="color:var(--texto)">Hortifruti</strong> — próxima troca ${fmtDia(d.hortifruti[0].proxima_troca)} (ciclo de ${d.hortifruti[0].dias_ciclo} dia(s)): ${d.hortifruti.map(x => `${x.insumo} ~${Math.ceil(x.qtd)} ${x.unidade}`).join(' · ')}</div>` : '';
   }catch(e){ document.getElementById('descSugestao').textContent = 'Não foi possível calcular a sugestão agora.'; }
