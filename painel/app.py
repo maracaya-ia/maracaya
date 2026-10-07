@@ -3721,6 +3721,60 @@ def zap_sugestao():
     return {"enviar": True, "texto": _texto_sugestao(sug)}
 
 
+
+def _cfg_alerta(chave, padrao):
+    r = consultar("SELECT valor FROM config_alertas WHERE chave = %(c)s", {"c": chave})
+    return r[0]["valor"] if r else padrao
+
+
+@app.get("/api/zap/desconto99")
+def zap_desconto99(simular: bool = Query(False)):
+    """Pedidos da 99 em que o desconto da loja passou da taxa de entrega (unico desconto que a
+    loja pode bancar). Cada pedido e avisado uma vez; simular=1 so mostra o maior recente, sem marcar."""
+    tolerancia = float(_cfg_alerta("desconto99_tolerancia", "15"))
+    marcar = re.sub(r"\D", "", _cfg_alerta("desconto99_marcar", ""))
+    janela = "criado_em >= now() - interval '30 days'" if simular else "criado_em >= now() - interval '3 hours'"
+    ja_avisado = "" if simular else "AND NOT EXISTS (SELECT 1 FROM alerta_desconto99 a WHERE a.pedido_id = p.id)"
+    pedidos = consultar(f"""
+        SELECT p.id, p.numero_curto, p.marca, p.criado_em, p.subtotal,
+               coalesce(p.taxa_entrega, 0) AS entrega, coalesce(p.desconto_loja, 0) AS desconto,
+               coalesce(p.desconto_loja, 0) - coalesce(p.taxa_entrega, 0) AS excesso,
+               (SELECT string_agg(i.quantidade::int || 'x ' || i.nome, ', ' ORDER BY i.id)
+                  FROM pedido_itens i WHERE i.pedido_id = p.id) AS itens
+        FROM pedidos p
+        WHERE p.origem IN ('99food', 'food99') AND p.status <> 'canceled'
+          AND {janela} {ja_avisado}
+          AND coalesce(p.desconto_loja, 0) - coalesce(p.taxa_entrega, 0) >= %(tol)s
+        ORDER BY {"4 DESC" if simular else "p.criado_em"} LIMIT {1 if simular else 5}
+    """, {"tol": tolerancia})
+    if not pedidos:
+        return {"enviar": False, "texto": "", "mentioned": []}
+
+    def brl(v):
+        return "R$ " + _fmt_milhar(float(v), 2)
+
+    blocos = []
+    for p in pedidos:
+        quando = p["criado_em"].astimezone(__import__("zoneinfo").ZoneInfo(TZ)).strftime("%d/%m %H:%M")
+        pct = 100 * float(p["desconto"]) / float(p["subtotal"]) if p["subtotal"] else 0
+        blocos.append(
+            f"*Pedido #{p['numero_curto'] or p['id']}* · {p['marca'] or '—'} · {quando}\n"
+            f"• Subtotal {brl(p['subtotal'])} · entrega {brl(p['entrega'])}\n"
+            f"• Desconto da loja: *{brl(p['desconto'])}* ({pct:.0f}% do subtotal) — "
+            f"*{brl(p['excesso'])} além da entrega*\n"
+            f"• Itens: {(p['itens'] or '—')[:160]}")
+    mencao = f"@{marcar} " if marcar else ""
+    texto = (f"🚨 *99 — desconto acima da entrega*\n"
+             f"{mencao}confere {'esse pedido' if len(pedidos) == 1 else 'esses pedidos'}:\n\n"
+             + "\n\n".join(blocos)
+             + "\n\n_O único desconto que a loja deve bancar na 99 é o valor da entrega._")
+    if not simular:
+        for p in pedidos:
+            executar("""INSERT INTO alerta_desconto99 (pedido_id, excesso) VALUES (%(i)s, %(e)s)
+                        ON CONFLICT (pedido_id) DO NOTHING""", {"i": p["id"], "e": p["excesso"]})
+    return {"enviar": True, "texto": texto, "mentioned": [marcar] if marcar else []}
+
+
 @app.post("/api/estoque")
 def salvar_estoque(dados: dict = Body(...)):
     """Contagem manual: o numero digitado vira o estoque (e o ajuste fica no historico)."""
