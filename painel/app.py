@@ -3838,6 +3838,37 @@ def zap_margem_baixa(simular: bool = Query(False)):
     return {"enviar": True, "texto": texto, "mentioned": [marcar] if marcar else []}
 
 
+
+@app.get("/api/zap/repasse_semana")
+def zap_repasse_semana(inicio: str = Query(None)):
+    """Repasse (iFood e 99) da ultima semana fechada, segunda a domingo - mesma conta da Performance
+    (receita apos desconto da loja, menos comissao, taxa e frete pago a plataforma)."""
+    hoje = consultar(f"SELECT (now() AT TIME ZONE '{TZ}')::date AS d", {})[0]["d"]
+    if inicio:
+        ini = date.fromisoformat(inicio)
+    else:
+        ini = hoje - timedelta(days=hoje.weekday() + 7)   # segunda da semana passada
+    fim = ini + timedelta(days=7)
+    cond = (f"(p.criado_em AT TIME ZONE '{TZ}')::date >= %(ini)s "
+            f"AND (p.criado_em AT TIME ZONE '{TZ}')::date < %(fim)s")
+    canais = []
+    for chave, nome in (("ifood", "iFood"), ("99food", "99")):
+        linhas, _ = _calcular_periodo(cond, _filtro_canal(chave), {"ini": ini, "fim": fim})
+        canais.append((nome, sum(l["repasse"] for l in linhas), len(linhas)))
+
+    def brl(v):
+        return "R$ " + _fmt_milhar(float(v), 2)
+
+    periodo = f"{_fmt_data_rota(ini)} a {_fmt_data_rota(fim - timedelta(days=1))}"
+    total = sum(c[1] for c in canais)
+    texto = (f"💰 *Repasse da semana — {periodo}*\n\n"
+             + "\n".join(f"• {n}: *{brl(v)}* ({q} pedidos)" for n, v, q in canais)
+             + f"\n\n*Total iFood + 99: {brl(total)}*\n"
+             "_Estimado pelo sistema: valor dos pedidos menos descontos da loja, comissão do canal, "
+             "taxa de transação e frete pago à plataforma._")
+    return {"enviar": True, "texto": texto, "canais": [{"canal": n, "repasse": round(v, 2), "pedidos": q} for n, v, q in canais]}
+
+
 @app.post("/api/estoque")
 def salvar_estoque(dados: dict = Body(...)):
     """Contagem manual: o numero digitado vira o estoque (e o ajuste fica no historico)."""
