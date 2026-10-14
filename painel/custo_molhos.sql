@@ -44,3 +44,7 @@ INSERT INTO insumo_custo (insumo, custo_unitario, atualizado_em) VALUES
 ON CONFLICT (insumo) DO UPDATE SET custo_unitario = EXCLUDED.custo_unitario, atualizado_em = EXCLUDED.atualizado_em;
 INSERT INTO insumo_embalagem (insumo, nome, qtd) VALUES ('Hambúrguer de Frango', 'pacote', 20), ('Nuggets', 'pacote', 115)
 ON CONFLICT (insumo) DO UPDATE SET nome = EXCLUDED.nome, qtd = EXCLUDED.qtd;
+
+-- Papel kraft: R$ 0,07 por unidade (informado pelo Alvaro em 14/10/2026)
+INSERT INTO insumo_custo (insumo, custo_unitario, atualizado_em) VALUES ('Papel Kraft', 0.07, now())
+ON CONFLICT (insumo) DO UPDATE SET custo_unitario = EXCLUDED.custo_unitario, atualizado_em = EXCLUDED.atualizado_em;
