@@ -36,3 +36,11 @@ ON CONFLICT (insumo) DO UPDATE SET nome = EXCLUDED.nome, qtd = EXCLUDED.qtd;
 -- Sal Lebre sache Bom Sabor 2000 x 0,8 g (Delly's, cod. 10211): R$ 27,49 / 2000 = 0,013745 por sache
 INSERT INTO insumo_custo (insumo, custo_unitario, atualizado_em) VALUES ('Sachê de Sal', 0.013745, now())
 ON CONFLICT (insumo) DO UPDATE SET custo_unitario = EXCLUDED.custo_unitario, atualizado_em = EXCLUDED.atualizado_em;
+
+-- Hamburguer de frango Seara 2 kg com 20 un a R$ 55,99 = 2,7995 cada
+-- Nuggets Chicken Supreme Seara 2,5 kg (R$ 29,49/kg = R$ 73,73 o pacote) com ~115 un = 0,6411 cada
+INSERT INTO insumo_custo (insumo, custo_unitario, atualizado_em) VALUES
+('Hambúrguer de Frango', 2.799500, now()), ('Nuggets', 0.641087, now())
+ON CONFLICT (insumo) DO UPDATE SET custo_unitario = EXCLUDED.custo_unitario, atualizado_em = EXCLUDED.atualizado_em;
+INSERT INTO insumo_embalagem (insumo, nome, qtd) VALUES ('Hambúrguer de Frango', 'pacote', 20), ('Nuggets', 'pacote', 115)
+ON CONFLICT (insumo) DO UPDATE SET nome = EXCLUDED.nome, qtd = EXCLUDED.qtd;
