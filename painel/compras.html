@@ -565,7 +565,7 @@ async function carregar(){
         if (j.ok){ inp.style.borderColor = 'var(--ok)'; setTimeout(carregar, 400); }
       });
     });
-    const semEstoque = es.itens.filter(x => x.estoque == null).length;
+    const semEstoque = es.itens.filter(x => x.estoque == null && !x.ciclo && !x.generico).length;
     document.getElementById('descEstoque').innerHTML = semEstoque > 0
       ? `Preencha o estoque atual dos ${semEstoque} insumo(s) em branco — a coluna <strong>Comprar</strong> assume estoque zero até você preencher`
       : `Cobertura de cada fornecedor + ${es.seguranca_pct}% de segurança · a coluna <strong>Comprar</strong> é sua ordem de compra`;

@@ -3468,6 +3468,7 @@ def estoque_plano(cobertura_dias: int = Query(30, ge=7, le=60),
             "cobertura": cobertura_item,
             "categoria": i["categoria"] or "seco",
             "insumo": i["insumo"], "unidade": i["unidade"],
+            "generico": i["insumo"] in _SEM_SKU_ESTOQUE,
             "fornecedor": i["fornecedor"],
             "consumo_dia": round(consumo_dia, 2),
             "necessidade": round(necessidade, 2),
@@ -3477,7 +3478,7 @@ def estoque_plano(cobertura_dias: int = Query(30, ge=7, le=60),
             "custo_dia": round(custo_dia, 2) if custo_dia is not None else None,
         })
 
-    sem_custo = sum(1 for i in itens if i["custo_unitario"] is None)
+    sem_custo = sum(1 for i in itens if i["custo_unitario"] is None and not i["generico"])
     return {"itens": itens, "fator_tendencia": round(fator, 3),
             "pedidos_dia_base": rec / 28.0,
             "troca_dias": ",".join(d for d, k in _DIAS_IDX.items() if k in idx_troca),
