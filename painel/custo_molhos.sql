@@ -48,3 +48,7 @@ ON CONFLICT (insumo) DO UPDATE SET nome = EXCLUDED.nome, qtd = EXCLUDED.qtd;
 -- Papel kraft: R$ 0,07 por unidade (informado pelo Alvaro em 14/10/2026)
 INSERT INTO insumo_custo (insumo, custo_unitario, atualizado_em) VALUES ('Papel Kraft', 0.07, now())
 ON CONFLICT (insumo) DO UPDATE SET custo_unitario = EXCLUDED.custo_unitario, atualizado_em = EXCLUDED.atualizado_em;
+
+-- Papel acoplado: R$ 0,30 por unidade (informado pelo Alvaro em 14/10/2026)
+INSERT INTO insumo_custo (insumo, custo_unitario, atualizado_em) VALUES ('Papel Acoplado', 0.30, now())
+ON CONFLICT (insumo) DO UPDATE SET custo_unitario = EXCLUDED.custo_unitario, atualizado_em = EXCLUDED.atualizado_em;
