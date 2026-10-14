@@ -166,18 +166,32 @@ BEGIN
     SELECT EXISTS(SELECT 1 FROM pedido_baixa_estoque WHERE pedido_id = NEW.id) INTO ja_baixado;
 
     IF NEW.status <> 'canceled' AND NOT ja_baixado THEN
+        -- hortifruti (ciclo de troca) nao tem contagem de estoque, entao nao baixa
         INSERT INTO pedido_baixa_estoque (pedido_id, insumo, quantidade)
         SELECT NEW.id, c.insumo, c.quantidade FROM calcular_consumo_pedido(NEW.id) c
         WHERE EXISTS (SELECT 1 FROM insumo_estoque ie WHERE ie.insumo = c.insumo)
+          AND NOT EXISTS (SELECT 1 FROM insumo_ciclo cc WHERE cc.insumo = c.insumo)
         ON CONFLICT (pedido_id, insumo) DO NOTHING;
 
-        WITH upd AS (
-            UPDATE insumo_estoque ie SET estoque_atual = ie.estoque_atual - b.quantidade, atualizado_em = now()
-            FROM pedido_baixa_estoque b WHERE b.pedido_id = NEW.id AND b.insumo = ie.insumo
-            RETURNING ie.insumo, b.quantidade, ie.estoque_atual
+        -- o estoque nunca fica negativo: tira so o que tem (piso em zero) e o registro da baixa
+        -- guarda o que realmente saiu, pra o cancelamento devolver exatamente isso
+        WITH alvo AS (
+            SELECT b.insumo, b.quantidade AS pedido_q,
+                   LEAST(b.quantidade, GREATEST(ie.estoque_atual, 0)) AS tirado
+            FROM pedido_baixa_estoque b JOIN insumo_estoque ie ON ie.insumo = b.insumo
+            WHERE b.pedido_id = NEW.id
+        ), upd AS (
+            UPDATE insumo_estoque ie SET estoque_atual = ie.estoque_atual - a.tirado, atualizado_em = now()
+            FROM alvo a WHERE ie.insumo = a.insumo
+            RETURNING ie.insumo, ie.estoque_atual, a.tirado, a.pedido_q
+        ), reg AS (
+            UPDATE pedido_baixa_estoque b SET quantidade = u.tirado
+            FROM upd u WHERE b.pedido_id = NEW.id AND b.insumo = u.insumo
         )
-        INSERT INTO estoque_movimento (insumo, tipo, delta, saldo_apos, pedido_id)
-        SELECT insumo, 'baixa', -quantidade, estoque_atual, NEW.id FROM upd;
+        INSERT INTO estoque_movimento (insumo, tipo, delta, saldo_apos, pedido_id, obs)
+        SELECT insumo, 'baixa', -tirado, estoque_atual, NEW.id,
+               CASE WHEN pedido_q > tirado THEN 'estoque zerou (faltaram ' || (pedido_q - tirado) || ')' END
+        FROM upd;
 
     ELSIF NEW.status = 'canceled' AND ja_baixado THEN
         WITH upd AS (
