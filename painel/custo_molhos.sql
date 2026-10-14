@@ -32,3 +32,7 @@ INSERT INTO insumo_custo (insumo, custo_unitario, atualizado_em) VALUES
 ON CONFLICT (insumo) DO UPDATE SET custo_unitario = EXCLUDED.custo_unitario, atualizado_em = EXCLUDED.atualizado_em;
 INSERT INTO insumo_embalagem (insumo, nome, qtd) VALUES ('Queijo Cheddar', 'pacote', 184), ('Queijo Mussarela', 'pacote', 184)
 ON CONFLICT (insumo) DO UPDATE SET nome = EXCLUDED.nome, qtd = EXCLUDED.qtd;
+
+-- Sal Lebre sache Bom Sabor 2000 x 0,8 g (Delly's, cod. 10211): R$ 27,49 / 2000 = 0,013745 por sache
+INSERT INTO insumo_custo (insumo, custo_unitario, atualizado_em) VALUES ('Sachê de Sal', 0.013745, now())
+ON CONFLICT (insumo) DO UPDATE SET custo_unitario = EXCLUDED.custo_unitario, atualizado_em = EXCLUDED.atualizado_em;
