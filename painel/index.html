@@ -189,6 +189,7 @@
       </div>
     </div>
     <div class="area" style="min-height:300px"><canvas id="gMensal"></canvas></div>
+    <div id="notaMensal" style="color:var(--texto-suave); font-size:12px; margin-top:8px"></div>
     <div style="overflow-x:auto; margin-top:14px"><table id="tMensal" style="width:100%; border-collapse:collapse; font-size:13px"></table></div>
   </div>
   <div class="card c-12">
@@ -606,17 +607,22 @@ function desenharMensal(){
   const modo = metrica === 'ticket' ? 'lado' : document.getElementById('mensalModo').value;
   document.getElementById('mensalModo').disabled = metrica === 'ticket';
   const dia = +d.hoje.slice(8, 10);
-  const rotulos = d.meses.map(m => `${MES_ABREV[+m.mes.slice(5) - 1]}/${m.mes.slice(2, 4)}${m.parcial ? ` (até ${dia})` : ''}`);
+  const rotulos = d.meses.map(m => `${MES_ABREV[+m.mes.slice(5) - 1]}/${m.mes.slice(2, 4)}${m.parcial ? ` (até ${dia})` : ''}${m.historico ? ' *' : ''}`);
+  document.getElementById('notaMensal').textContent = d.meses.some(m => m.historico)
+    ? '* Meses do histórico: faturamento do grupo (arquivo), com o Sobradinho do sistema e o GC como o restante. Antes do sistema não há pedidos do GC, então pedidos e ticket só aparecem a partir de jul/26.'
+    : '';
   const valor = (s, i) => metrica === 'faturamento' ? s.faturamento[i]
+    : s.pedidos[i] == null ? null
     : metrica === 'pedidos' ? s.pedidos[i] : (s.pedidos[i] ? s.faturamento[i] / s.pedidos[i] : 0);
-  const fmt = v => metrica === 'pedidos' ? NUM(Math.round(v)) : R$(v);
+  const mesIncompleto = i => metrica !== 'faturamento' && d.series.some(s => s.pedidos[i] == null);
+  const fmt = v => v == null ? '—' : metrica === 'pedidos' ? NUM(Math.round(v)) : R$(v);
   desenhar('gMensal', {type:'bar', data:{labels: rotulos,
     datasets: d.series.map(s => ({label: nomeSerie(s), data: d.meses.map((_, i) => valor(s, i)),
       backgroundColor: COR_SERIE[`${s.marca}|${s.unidade}`] || '#8B8F99', borderRadius:3, stack: modo === 'empilhado' ? 'a' : undefined}))},
     options:{maintainAspectRatio:false, interaction:{mode:'index', intersect:false},
       plugins:{legend:{position:'bottom'}, tooltip:{callbacks:{
         label: c => `${c.dataset.label}: ${fmt(c.parsed.y)}`,
-        footer: items => metrica === 'ticket' ? '' : `Total: ${fmt(items.reduce((a, c) => a + c.parsed.y, 0))}`}}},
+        footer: items => metrica === 'ticket' || mesIncompleto(items[0].dataIndex) ? '' : `Total: ${fmt(items.reduce((a, c) => a + c.parsed.y, 0))}`}}},
       scales:{x:{stacked: modo === 'empilhado'}, y:{stacked: modo === 'empilhado', ticks:{callback: v => metrica === 'pedidos' ? NUM(v) : 'R$ ' + NUM(v)}}}}});
 
   // tabela: valores por mes + total + variacao vs mes anterior (meses fechados)
@@ -625,9 +631,10 @@ function desenharMensal(){
   const totais = d.meses.map((_, i) => d.series.reduce((a, s) => a + (metrica === 'ticket' ? 0 : valor(s, i)), 0));
   const ticketTot = i => { const f = d.series.reduce((a, s) => a + s.faturamento[i], 0), p = d.series.reduce((a, s) => a + s.pedidos[i], 0); return p ? f / p : 0; };
   let linhas = d.meses.map((m, i) => {
-    const tot = metrica === 'ticket' ? ticketTot(i) : totais[i];
-    const ant = i > 0 ? (metrica === 'ticket' ? ticketTot(i - 1) : totais[i - 1]) : null;
-    const delta = (ant && !m.parcial) ? (100 * (tot - ant) / ant) : null;
+    const inc = mesIncompleto(i);
+    const tot = inc ? null : metrica === 'ticket' ? ticketTot(i) : totais[i];
+    const ant = i > 0 && !mesIncompleto(i - 1) ? (metrica === 'ticket' ? ticketTot(i - 1) : totais[i - 1]) : null;
+    const delta = (tot != null && ant && !m.parcial) ? (100 * (tot - ant) / ant) : null;
     return `<tr><td style="padding:6px 8px; border-bottom:1px solid var(--borda)">${rotulos[i]}</td>
       ${d.series.map(s => `<td ${td}>${fmt(valor(s, i))}</td>`).join('')}
       <td ${td}><strong>${fmt(tot)}</strong></td>

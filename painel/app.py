@@ -3906,7 +3906,26 @@ def faturamento_mensal(meses: int = Query(12, ge=2, le=24)):
             "faturamento": [float(idx[(mm, marca, un)]["faturamento"]) if (mm, marca, un) in idx else 0.0 for mm in lista],
             "pedidos": [int(idx[(mm, marca, un)]["pedidos"]) if (mm, marca, un) in idx else 0 for mm in lista],
         })
-    return {"meses": [{"mes": mm, "parcial": mm == mes_atual} for mm in lista],
+    # meses cobertos pelo arquivo do grupo (so Maracaya ate junho): total do arquivo, Sobradinho do banco, GC = resto
+    hist = {r["mes"]: float(r["faturamento"]) for r in consultar(
+        "SELECT mes, faturamento FROM faturamento_historico WHERE usar", {})}
+    historico = [mm for mm in lista if mm in hist]
+    if historico:
+        def serie(marca, un):
+            for sr in series:
+                if sr["marca"] == marca and sr["unidade"] == un:
+                    return sr
+            sr = {"marca": marca, "unidade": un, "faturamento": [0.0] * len(lista), "pedidos": [0] * len(lista)}
+            series.append(sr)
+            return sr
+        gc = serie("Maracayá Burger", "Colorado")
+        for mm in historico:
+            i = lista.index(mm)
+            outros = sum(sr["faturamento"][i] for sr in series if sr is not gc)
+            gc["faturamento"][i] = round(max(hist[mm] - outros, 0.0), 2)
+            gc["pedidos"][i] = None          # pedidos do GC antes do sistema: desconhecido
+        series.sort(key=lambda sr: (ordem_marca.get(sr["marca"], 9), ordem_un.get(sr["unidade"], 9)))
+    return {"meses": [{"mes": mm, "parcial": mm == mes_atual, "historico": mm in historico} for mm in lista],
             "series": series, "hoje": hoje.isoformat()}
 
 
