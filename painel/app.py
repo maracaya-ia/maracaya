@@ -3925,8 +3925,10 @@ def faturamento_mensal(meses: int = Query(12, ge=2, le=24)):
             gc["faturamento"][i] = round(max(hist[mm] - outros, 0.0), 2)
             gc["pedidos"][i] = None          # pedidos do GC antes do sistema: desconhecido
         series.sort(key=lambda sr: (ordem_marca.get(sr["marca"], 9), ordem_un.get(sr["unidade"], 9)))
+    func = consultar("SELECT valor FROM config_geral WHERE chave = 'funcionarios'", {})
     return {"meses": [{"mes": mm, "parcial": mm == mes_atual, "historico": mm in historico} for mm in lista],
-            "series": series, "hoje": hoje.isoformat()}
+            "series": series, "hoje": hoje.isoformat(),
+            "funcionarios": int(func[0]["valor"]) if func else None}
 
 
 @app.post("/api/estoque")

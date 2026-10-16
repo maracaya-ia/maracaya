@@ -129,6 +129,16 @@
     width:min(300px, 72vw); background:#0E1013; border:1px solid var(--borda);
     padding:10px 12px; border-radius:10px; font-size:12px; font-weight:400;
     line-height:1.55; color:#EDEAE2; z-index:9; white-space:normal; text-align:left}
+  .hero{display:flex; align-items:center; gap:28px; flex-wrap:wrap; margin-bottom:12px; padding:22px 26px;
+    border:1px solid var(--brasa); border-radius:14px;
+    background:linear-gradient(135deg, rgba(255,122,47,.20), rgba(255,122,47,.05))}
+  .hero .grande{font-family:'Sora',sans-serif; font-size:52px; font-weight:700; line-height:1; color:var(--brasa); letter-spacing:-.03em}
+  .hero .titulo{font-family:'Sora',sans-serif; font-size:17px; font-weight:700; margin-bottom:4px}
+  .hero .detalhe{color:var(--texto-suave); font-size:13px; line-height:1.55}
+  .hero .detalhe b{color:var(--texto)}
+  .hero .time{margin-left:auto; text-align:center; background:var(--painel); border:1px solid var(--borda); border-radius:12px; padding:12px 18px}
+  .hero .time .n{font-family:'IBM Plex Mono',monospace; font-size:28px; font-weight:600; color:var(--texto)}
+  .hero .time .l{color:var(--texto-suave); font-size:11px; text-transform:uppercase; letter-spacing:.06em}
 </style>
 <link rel="stylesheet" href="/static/_tema.css">
 </head>
@@ -166,6 +176,15 @@
 <div id="sentinela" class="sentinela ok" hidden></div>
 
 <div id="meta" class="meta" hidden></div>
+
+<section class="hero" id="heroCrescimento" hidden>
+  <div class="grande" id="heroPct">—</div>
+  <div>
+    <div class="titulo" id="heroTitulo">A empresa cresceu esse ano</div>
+    <div class="detalhe" id="heroDetalhe"></div>
+  </div>
+  <div class="time" id="heroTime" hidden><div class="n" id="heroFunc">—</div><div class="l">funcionários hoje</div></div>
+</section>
 
 <section class="kpis">
   <div class="kpi destaque"><div class="rotulo">Faturamento</div><div class="valor" id="kFat">—</div><div class="sub" id="kFatSub"></div></div>
@@ -643,10 +662,32 @@ function desenharMensal(){
   document.getElementById('tMensal').innerHTML =
     `<thead><tr><th ${th} style="text-align:left">Mês</th>${d.series.map(s => `<th ${th}>${nomeSerie(s)}</th>`).join('')}<th ${th}>${metrica === 'ticket' ? 'Geral' : 'Total'}</th><th ${th}>vs mês anterior</th></tr></thead><tbody>${linhas}</tbody>`;
 }
+
+function atualizarHero(){
+  const d = mensalDados; if (!d) return;
+  const totais = d.meses.map((m, i) => ({m, t: d.series.reduce((a, s) => a + s.faturamento[i], 0)}));
+  const primeiro = totais[0], fechados = totais.filter(x => !x.m.parcial), ultimo = fechados[fechados.length - 1];
+  if (!primeiro || !ultimo || ultimo === primeiro || primeiro.t <= 0) return;
+  const pct = 100 * (ultimo.t - primeiro.t) / primeiro.t;
+  const nomeMes = x => `${MES_ABREV[+x.m.mes.slice(5) - 1]}/${x.m.mes.slice(2, 4)}`;
+  const acumulado = totais.reduce((a, x) => a + x.t, 0);
+  const ano = d.hoje.slice(0, 4);
+  document.getElementById('heroPct').textContent = `${pct >= 0 ? '+' : ''}${pct.toFixed(0)}%`;
+  document.getElementById('heroTitulo').textContent = pct >= 0 ? `A empresa cresceu ${pct.toFixed(0)}% em ${ano}, até o momento` : `A empresa recuou ${Math.abs(pct).toFixed(0)}% em ${ano}, até o momento`;
+  document.getElementById('heroDetalhe').innerHTML =
+    `Faturamento mensal: <b>${R$(primeiro.t)}</b> em ${nomeMes(primeiro)} → <b>${R$(ultimo.t)}</b> em ${nomeMes(ultimo)} (último mês fechado).<br>` +
+    `Acumulado de ${ano} até hoje: <b>${R$(acumulado)}</b>`;
+  if (d.funcionarios){
+    document.getElementById('heroFunc').textContent = d.funcionarios;
+    document.getElementById('heroTime').hidden = false;
+  }
+  document.getElementById('heroCrescimento').hidden = false;
+}
 async function carregarMensal(){
   try{
     mensalDados = await (await fetch('/api/faturamento_mensal?meses=12')).json();
     desenharMensal();
+    atualizarHero();
   }catch(e){ /* grafico mensal nunca derruba o painel */ }
 }
 document.getElementById('mensalMetrica').addEventListener('change', desenharMensal);
