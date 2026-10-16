@@ -3870,6 +3870,46 @@ def zap_repasse_semana(inicio: str = Query(None)):
     return {"enviar": True, "texto": texto, "canais": [{"canal": n, "repasse": round(v, 2), "pedidos": q} for n, v, q in canais]}
 
 
+
+@app.get("/api/faturamento_mensal")
+def faturamento_mensal(meses: int = Query(12, ge=2, le=24)):
+    """Faturamento (e pedidos) por mes de cada marca x unidade, sem cancelados - mes atual e parcial."""
+    rows = consultar(f"""
+        SELECT to_char(date_trunc('month', p.criado_em AT TIME ZONE '{TZ}'), 'YYYY-MM') AS mes,
+               coalesce(p.marca, '—') AS marca, coalesce(p.unidade, '—') AS unidade,
+               count(*) AS pedidos, coalesce(sum(p.total), 0) AS faturamento
+        FROM pedidos p
+        WHERE p.status <> 'canceled'
+          AND date_trunc('month', p.criado_em AT TIME ZONE '{TZ}')
+              >= date_trunc('month', now() AT TIME ZONE '{TZ}') - (%(m)s - 1) * interval '1 month'
+        GROUP BY 1, 2, 3 ORDER BY 1
+    """, {"m": meses})
+    hoje = consultar(f"SELECT (now() AT TIME ZONE '{TZ}')::date AS d", {})[0]["d"]
+    mes_atual = hoje.strftime("%Y-%m")
+    existentes = sorted({r["mes"] for r in rows} | {mes_atual})
+    primeiro = existentes[0]
+    lista, y, m = [], int(primeiro[:4]), int(primeiro[5:])
+    while f"{y:04d}-{m:02d}" <= mes_atual:
+        lista.append(f"{y:04d}-{m:02d}")
+        m += 1
+        if m == 13:
+            y, m = y + 1, 1
+    ordem_marca = {"Maracayá Burger": 0, "Chomp Burger": 1}
+    ordem_un = {"Colorado": 0, "Sobradinho": 1}
+    combos = sorted({(r["marca"], r["unidade"]) for r in rows},
+                    key=lambda x: (ordem_marca.get(x[0], 9), ordem_un.get(x[1], 9)))
+    idx = {(r["mes"], r["marca"], r["unidade"]): r for r in rows}
+    series = []
+    for marca, un in combos:
+        series.append({
+            "marca": marca, "unidade": un,
+            "faturamento": [float(idx[(mm, marca, un)]["faturamento"]) if (mm, marca, un) in idx else 0.0 for mm in lista],
+            "pedidos": [int(idx[(mm, marca, un)]["pedidos"]) if (mm, marca, un) in idx else 0 for mm in lista],
+        })
+    return {"meses": [{"mes": mm, "parcial": mm == mes_atual} for mm in lista],
+            "series": series, "hoje": hoje.isoformat()}
+
+
 @app.post("/api/estoque")
 def salvar_estoque(dados: dict = Body(...)):
     """Contagem manual: o numero digitado vira o estoque (e o ajuste fica no historico)."""
