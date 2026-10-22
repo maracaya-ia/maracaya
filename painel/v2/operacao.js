@@ -63,7 +63,7 @@ function pintar(){
   if(+sv.anterior>0){const p=100*(sv.atual-sv.anterior)/sv.anterior;document.getElementById('o-dsem').innerHTML=`Esta semana até agora: <strong style="color:var(--ink)">${N(sv.atual)} pedidos</strong> (${R(+sv.fat_atual)}) <span class="${p>=0?'up':'down'}">${p>=0?'▲':'▼'} ${Math.abs(p).toFixed(0)}%</span> vs o mesmo ponto da semana passada (${N(sv.anterior)} pedidos, ${R(+sv.fat_anterior)}) — comparação justa, mesmo dia e hora`}
   const hm={};d.heatmap.forEach(x=>hm[`${x.dow}-${x.hora}`]=+x.pedidos);
   const hs=[...new Set(d.heatmap.map(x=>+x.hora))].sort((a,b)=>a-b),hi=Math.max(Math.min(...hs)-1,0),hf=Math.min(Math.max(...hs)+1,23),horas=[];for(let h=hi;h<=hf;h++)horas.push(h);
-  const mc=Math.max(...Object.values(hm),1),box=document.getElementById('o-heat');box.style.gridTemplateColumns=`44px repeat(${horas.length},1fr)`;
+  const mc=Math.max(...Object.values(hm),1),box=document.getElementById('o-heat');box.style.gridTemplateColumns=`44px repeat(${horas.length},minmax(22px,1fr))`;
   box.innerHTML='<div></div>'+horas.map(h=>`<div class="hl">${h}h</div>`).join('')+ordem.map(dw=>`<div class="hd">${DC[dw]}</div>`+horas.map(h=>{const v=hm[`${dw}-${h}`]??0;return `<div class="cel" style="background:${calor(v,mc)}" title="${DC[dw]} ${h}h — ${N(v)} pedidos"></div>`}).join('')).join('');
   document.getElementById('o-atual').innerHTML='<span class="dot" style="display:inline-block;margin-right:6px"></span>Atualizado às '+new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})+' · recalculado conforme o período selecionado';
 }
