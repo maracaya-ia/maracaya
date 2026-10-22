@@ -75,6 +75,7 @@ function render(){
     html+=`<a href="#${k}" data-go="${k}" ${k===screen?'aria-current="page"':''}>${svg(k)}${s.t}${s.nw?'<span class="tag-new">NOVO</span>':''}</a>`});
   document.getElementById('nav').innerHTML=html;
   document.getElementById('bnav').style.gridTemplateColumns=`repeat(${BOTTOM[role].length},1fr)`;
+  document.getElementById('bnav').style.gridTemplateColumns='repeat('+BOTTOM[role].length+',1fr)';
   document.getElementById('bnav').innerHTML=BOTTOM[role].map(k=>{const lab=k==='mais'?'Mais':k==='ze'?'MIA':S[k].t.split(' ')[0];const cur=(k===screen||(k==='mais'&&sheetOpen))?'aria-current="page"':'';
     return k==='ze'?`<a href="#ze" data-go="ze" class="ze-btn" ${cur}><span class="z">${svg('ze')}</span>${lab}</a>`:`<a href="#${k}" data-go="${k}" ${cur}>${svg(k)}${lab}</a>`}).join('');
   document.getElementById('ttl').textContent=screen==='hoje'?({socio:'Bom dia, Álvaro',gerente:'Turno de hoje',cozinha:'Cozinha'})[role]:S[screen].t;
