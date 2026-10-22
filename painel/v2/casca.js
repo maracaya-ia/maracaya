@@ -77,7 +77,7 @@ function render(){
   document.getElementById('nav').innerHTML=html;
   document.getElementById('bnav').innerHTML=BOTTOM[role].map(k=>{const lab=k==='mais'?'Mais':k==='ze'?'Zé':S[k].t.split(' ')[0];const cur=(k===screen||(k==='mais'&&sheetOpen))?'aria-current="page"':'';
     return k==='ze'?`<a href="#ze" data-go="ze" class="ze-btn" ${cur}><span class="z">${svg('ze')}</span>${lab}</a>`:`<a href="#${k}" data-go="${k}" ${cur}>${svg(k)}${lab}</a>`}).join('');
-  document.getElementById('ttl').textContent=screen==='hoje'&&role==='socio'?'Bom dia, Álvaro':S[screen].t;
+  document.getElementById('ttl').textContent=screen==='hoje'?({socio:'Bom dia, Álvaro',gerente:'Turno de hoje',cozinha:'Cozinha'})[role]:S[screen].t;
   document.getElementById('sub').textContent=SUBS[screen]||'';
   document.title=S[screen].t+' · Painel Maracayá 2.0';
   document.getElementById('filters').innerHTML=FILTRO.includes(screen)?filtrosHtml():'';
