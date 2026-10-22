@@ -21,7 +21,7 @@ const BOTTOM={socio:['hoje','vendas','ze','clientes','mais'],gerente:['hoje','op
 const FILTRO=['vendas','resultado','clientes','cardapio','bairros','operacao','unidades'];
 const ROLES=[['socio','Sócio'],['gerente','Gerente'],['cozinha','Cozinha']];
 const TEMAS=[['auto','Auto'],['light','Claro'],['dark','Escuro']];
-const PERIODOS=[['1','Hoje'],['ontem','Ontem'],['7','7 dias'],['30','30 dias'],['90','90 dias'],['mes_atual','Este mês'],['mes_passado','Mês passado']];
+const PERIODOS=[['1','Hoje'],['ontem','Ontem'],['7','7 dias'],['30','30 dias'],['90','90 dias'],['semana_atual','Semana'],['mes_atual','Este mês'],['mes_passado','Mês passado']];
 
 const lsGet=(k,d)=>{try{return localStorage.getItem(k)||d}catch(_){return d}};
 const lsSet=(k,v)=>{try{localStorage.setItem(k,v)}catch(_){}};
@@ -40,6 +40,7 @@ function intervalo(){const p=filtros.periodo,h=new Date();
   if(/^\d+$/.test(p))return{dias:+p};
   let a,b;
   if(p==='ontem'){a=b=new Date(h.getFullYear(),h.getMonth(),h.getDate()-1)}
+  else if(p==='semana_atual'){a=new Date(h.getFullYear(),h.getMonth(),h.getDate()-((h.getDay()+6)%7));b=h}
   else if(p==='mes_atual'){a=new Date(h.getFullYear(),h.getMonth(),1);b=h}
   else{a=new Date(h.getFullYear(),h.getMonth()-1,1);b=new Date(h.getFullYear(),h.getMonth(),0)}
   return{dias:Math.round((b-a)/864e5)+1,ini:iso(a),fim:iso(b)}}

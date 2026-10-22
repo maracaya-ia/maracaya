@@ -100,7 +100,7 @@ def pagina_v2_prototipo():
 
 @app.get("/v2/assets/{nome}")
 def v2_asset(nome: str):
-    if nome not in ("casca.js", "compras.js", "nota.js", "vendas.js"):
+    if nome not in ("casca.js", "compras.js", "nota.js", "vendas.js", "resultado.js"):
         return JSONResponse({"erro": "nao encontrado"}, status_code=404)
     return FileResponse(os.path.join(os.path.dirname(__file__), "v2", nome),
                         media_type="application/javascript", headers={"Cache-Control": "no-cache"})
@@ -4060,6 +4060,53 @@ def contagem_estoque(dados: dict = Body(...)):
         if r.get("ok"):
             n += 1
     return {"ok": n > 0, "itens": n}
+
+
+def _mes_primeiro(mes):
+    """'YYYY-MM' (ou YYYY-MM-DD) -> date do dia 1; None se invalido."""
+    try:
+        ano, m = str(mes)[:7].split("-")
+        return date(int(ano), int(m), 1)
+    except (ValueError, TypeError):
+        return None
+
+
+@app.get("/api/despesas_fixas")
+def listar_despesas_fixas(mes: str = Query(...)):
+    d = _mes_primeiro(mes)
+    if not d:
+        return {"ok": False, "erro": "mes invalido"}
+    itens = consultar("""SELECT id, descricao, valor FROM despesas_fixas
+                         WHERE mes = %(m)s ORDER BY descricao""", {"m": d})
+    itens = [{"id": i["id"], "descricao": i["descricao"], "valor": float(i["valor"])} for i in itens]
+    return {"ok": True, "mes": d.isoformat(), "itens": itens,
+            "total": round(sum(i["valor"] for i in itens), 2)}
+
+
+@app.post("/api/despesas_fixas")
+def salvar_despesa_fixa(dados: dict = Body(...)):
+    d = _mes_primeiro(dados.get("mes"))
+    desc = str(dados.get("descricao", "") or "").strip()[:60]
+    try:
+        valor = float(dados.get("valor"))
+    except (TypeError, ValueError):
+        return {"ok": False, "erro": "valor inválido"}
+    if not d or not desc or valor < 0:
+        return {"ok": False, "erro": "informe mês, descrição e valor"}
+    executar("""INSERT INTO despesas_fixas (mes, descricao, valor) VALUES (%(m)s, %(d)s, %(v)s)
+                ON CONFLICT (mes, descricao) DO UPDATE SET valor = EXCLUDED.valor""",
+             {"m": d, "d": desc, "v": valor})
+    return {"ok": True}
+
+
+@app.post("/api/despesas_fixas_delete")
+def apagar_despesa_fixa(dados: dict = Body(...)):
+    try:
+        i = int(dados.get("id"))
+    except (TypeError, ValueError):
+        return {"ok": False}
+    executar("DELETE FROM despesas_fixas WHERE id = %(i)s", {"i": i})
+    return {"ok": True}
 
 
 @app.get("/api/estoque_historico")
