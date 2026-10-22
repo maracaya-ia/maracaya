@@ -77,7 +77,7 @@ function dlgReceberEntrega(){
   if(!recForn||!nomes.includes(recForn))recForn=nomes[0];
   const ped=sug&&sug.pedidos.find(p=>p.fornecedor===recForn);
   const pedMap={};if(ped)ped.itens.forEach(i=>pedMap[i.insumo]=i.qtd);
-  const lista=itens.filter(x=>x.fornecedor===recForn&&!x.ciclo).sort((a,b)=>(pedMap[b.insumo]?1:0)-(pedMap[a.insumo]?1:0)||a.insumo.localeCompare(b.insumo,'pt-BR'));
+  const lista=itens.filter(x=>x.fornecedor===recForn&&!x.ciclo&&!x.generico).sort((a,b)=>(pedMap[b.insumo]?1:0)-(pedMap[a.insumo]?1:0)||a.insumo.localeCompare(b.insumo,'pt-BR'));
   const entrega=ped?`Entrega prevista: ${fmtDia(ped.entrega)}`:'Sem pedido sugerido pra esse fornecedor agora';
   openModal(`${mhead('Receber entrega','Conferir o que chegou')}
   <form class="mform" id="fRecEnt">
