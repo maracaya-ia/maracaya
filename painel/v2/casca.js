@@ -18,6 +18,7 @@ const S={
 };
 const SUBS={hoje:'Resumo do dia',ze:'Assistente com os números do painel',equipe:'Checklists, escala e recados',vendas:'Antiga Visão geral',resultado:'Antigas Performance + DRE',unidades:'Colorado e Sobradinho lado a lado',clientes:'Base, fidelização e retenção',cardapio:'Custos, margem e itens encalhados',bairros:'De onde vêm os pedidos',operacao:'Tempo de preparo e entrega',compras:'Estoque, sugestão de compra e fornecedores',nota:'Notas de fornecedor do mês'};
 const BOTTOM={socio:['hoje','vendas','ze','clientes','mais'],gerente:['hoje','operacao','ze','equipe','mais'],cozinha:['hoje','compras','equipe','nota','mais']};
+const SEM_PERIODO=['clientes'];
 const FILTRO=['vendas','resultado','clientes','cardapio','bairros','operacao','unidades'];
 const ROLES=[['socio','Sócio'],['gerente','Gerente'],['cozinha','Cozinha']];
 const TEMAS=[['auto','Auto'],['light','Claro'],['dark','Escuro']];
@@ -61,7 +62,7 @@ function filtrosHtml(){
   const o=(arr,sel,todas)=>`<option value="todas"${sel==='todas'?' selected':''}>${todas}</option>`+arr.map(x=>`<option value="${x}"${x===sel?' selected':''}>${x}</option>`).join('');
   return `<select id="f-un" aria-label="Unidade">${o(unidades,filtros.unidade,'Todas as unidades')}</select>
   <select id="f-mc" aria-label="Marca">${o(marcas,filtros.marca,'Todas as marcas')}</select>
-  <select id="f-per" aria-label="Período">${PERIODOS.map(([v,l])=>`<option value="${v}"${v===filtros.periodo?' selected':''}>${l}</option>`).join('')}</select>`}
+  ${SEM_PERIODO.includes(screen)?'':`<select id="f-per" aria-label="Período">${PERIODOS.map(([v,l])=>`<option value="${v}"${v===filtros.periodo?' selected':''}>${l}</option>`).join('')}</select>`}`}
 
 function soon(k){const s=S[k];
   return `<div class="card soon"><h3>${s.t} <span class="ex">em construção</span></h3>

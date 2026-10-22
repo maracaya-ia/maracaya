@@ -332,6 +332,10 @@ form.nf input,form.nf select{border:1px solid var(--line);background:var(--surfa
 tr.clk{cursor:pointer}tr.clk:hover td{background:var(--surface-2)}tr.det>td{background:var(--surface-2);padding:14px}.det-grid{display:grid;grid-template-columns:1fr 1fr;gap:24px}
 .info2{display:inline-grid;place-items:center;width:16px;height:16px;border:1px solid var(--ink-2);border-radius:50%;font-size:10px;color:var(--ink-2);cursor:help;font-weight:600}
 @container dev (max-width:760px){.tres,.canc-grid,.det-grid{grid-template-columns:1fr}.hbar{grid-template-columns:110px 1fr 64px}.trunc{max-width:20ch}}
+.rfv-grid.areas{grid-template-columns:repeat(5,1fr);grid-template-rows:repeat(5,minmax(52px,1fr));grid-template-areas:"npp er er fi ca" "npp er er fi ca" "pe pa pa ep ep" "pe hi qd ep ep" "pe hi qd pr no";min-height:300px}
+.dois{display:grid;grid-template-columns:minmax(180px,1fr) minmax(260px,1.6fr);gap:20px;align-items:center}
+.pag{display:flex;align-items:center;justify-content:space-between;margin-top:12px;flex-wrap:wrap;gap:8px}
+@container dev (max-width:760px){.dois{grid-template-columns:1fr}.rfv-grid.areas{min-height:340px}}
 @media (max-width:760px){.top{position:sticky}.h-big{font-size:40px}.h-time{margin-left:0}}
 </style>
 </head>
@@ -357,10 +361,11 @@ tr.clk{cursor:pointer}tr.clk:hover td{background:var(--surface-2)}tr.det>td{back
     <nav class="bnav" id="bnav"></nav>
   </div>
 </div>
-<script src="/v2/assets/casca.js?v=6"></script>
+<script src="/v2/assets/casca.js?v=7"></script>
 <script src="/v2/assets/compras.js?v=4"></script>
 <script src="/v2/assets/nota.js?v=1"></script>
 <script src="/v2/assets/vendas.js?v=2"></script>
 <script src="/v2/assets/resultado.js?v=2"></script>
+<script src="/v2/assets/clientes.js?v=1"></script>
 </body>
 </html>
