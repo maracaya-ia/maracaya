@@ -45,7 +45,7 @@ function intervalo(){const p=filtros.periodo,h=new Date();
   else if(p==='mes_atual'){a=new Date(h.getFullYear(),h.getMonth(),1);b=h}
   else{a=new Date(h.getFullYear(),h.getMonth()-1,1);b=new Date(h.getFullYear(),h.getMonth(),0)}
   return{dias:Math.round((b-a)/864e5)+1,ini:iso(a),fim:iso(b)}}
-window.V2={filtros,screens:{},intervalo,
+window.V2={filtros,screens:{},intervalo,role:()=>role,
   qs(extra){const iv=intervalo(),p=new URLSearchParams({unidade:filtros.unidade,marca:filtros.marca,dias:iv.dias});
     if(iv.ini){p.set('inicio',iv.ini);p.set('fim',iv.fim)}
     Object.entries(extra||{}).forEach(([k,v])=>p.set(k,v));return p.toString()},

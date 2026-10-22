@@ -100,7 +100,7 @@ def pagina_v2_prototipo():
 
 @app.get("/v2/assets/{nome}")
 def v2_asset(nome: str):
-    if nome not in ("casca.js", "compras.js", "nota.js", "vendas.js", "resultado.js", "clientes.js", "cardapio.js", "bairros.js", "operacao.js", "unidades.js"):
+    if nome not in ("casca.js", "compras.js", "nota.js", "vendas.js", "resultado.js", "clientes.js", "cardapio.js", "bairros.js", "operacao.js", "unidades.js", "hoje.js"):
         return JSONResponse({"erro": "nao encontrado"}, status_code=404)
     return FileResponse(os.path.join(os.path.dirname(__file__), "v2", nome),
                         media_type="application/javascript", headers={"Cache-Control": "no-cache"})
@@ -4106,6 +4106,41 @@ def apagar_despesa_fixa(dados: dict = Body(...)):
     except (TypeError, ValueError):
         return {"ok": False}
     executar("DELETE FROM despesas_fixas WHERE id = %(i)s", {"i": i})
+    return {"ok": True}
+
+
+@app.get("/api/checklist")
+def checklist_do_dia(turno: str = Query(...)):
+    """Itens do turno com o registro de hoje (quem marcou e a que horas)."""
+    itens = consultar(f"""
+        SELECT i.id, i.texto, r.quem,
+               to_char(r.marcado_em AT TIME ZONE '{TZ}', 'HH24:MI') AS hora,
+               r.item_id IS NOT NULL AS feito
+        FROM checklist_itens i
+        LEFT JOIN checklist_registros r
+               ON r.item_id = i.id AND r.dia = (now() AT TIME ZONE '{TZ}')::date
+        WHERE i.turno = %(t)s AND i.ativo
+        ORDER BY i.ordem, i.id
+    """, {"t": turno})
+    return {"turno": turno, "itens": itens,
+            "feitos": sum(1 for i in itens if i["feito"]), "total": len(itens)}
+
+
+@app.post("/api/checklist_marcar")
+def checklist_marcar(dados: dict = Body(...)):
+    try:
+        item = int(dados.get("item_id"))
+    except (TypeError, ValueError):
+        return {"ok": False, "erro": "item inválido"}
+    if dados.get("marcado"):
+        quem = str(dados.get("quem", "") or "").strip()[:40] or None
+        executar(f"""INSERT INTO checklist_registros (item_id, dia, quem)
+                     VALUES (%(i)s, (now() AT TIME ZONE '{TZ}')::date, %(q)s)
+                     ON CONFLICT (item_id, dia) DO UPDATE SET quem = EXCLUDED.quem, marcado_em = now()""",
+                 {"i": item, "q": quem})
+    else:
+        executar(f"""DELETE FROM checklist_registros
+                     WHERE item_id = %(i)s AND dia = (now() AT TIME ZONE '{TZ}')::date""", {"i": item})
     return {"ok": True}
 
 

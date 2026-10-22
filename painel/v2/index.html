@@ -349,6 +349,9 @@ tr.clk{cursor:pointer}tr.clk:hover td{background:var(--surface-2)}tr.det>td{back
 @container dev (max-width:760px){.prev{grid-template-columns:repeat(2,1fr)}}
 .partbar{display:flex;height:16px;border-radius:99px;overflow:hidden;gap:2px}
 .compare{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
+.trio{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.check{display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-bottom:1px solid var(--line);font-size:13.5px;cursor:pointer}.check input{width:20px;height:20px;accent-color:var(--brasa);flex:none;margin-top:1px}
+.vbars{display:flex;align-items:flex-end;gap:8px;height:170px;overflow-x:auto;padding-top:6px}.vb{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:4px;min-width:34px;font-size:11px}.vb i{display:block;width:100%;background:var(--c-sob);border-radius:4px 4px 0 0}.vb.hl i{background:var(--brasa)}.vb .num{font-family:var(--f-mono);font-size:10.5px}.vb small{color:var(--ink-2)}
 @media (max-width:760px){.top{position:sticky}.h-big{font-size:40px}.h-time{margin-left:0}}
 </style>
 </head>
@@ -374,7 +377,7 @@ tr.clk{cursor:pointer}tr.clk:hover td{background:var(--surface-2)}tr.det>td{back
     <nav class="bnav" id="bnav"></nav>
   </div>
 </div>
-<script src="/v2/assets/casca.js?v=11"></script>
+<script src="/v2/assets/casca.js?v=12"></script>
 <script src="/v2/assets/compras.js?v=4"></script>
 <script src="/v2/assets/nota.js?v=1"></script>
 <script src="/v2/assets/vendas.js?v=2"></script>
@@ -384,5 +387,6 @@ tr.clk{cursor:pointer}tr.clk:hover td{background:var(--surface-2)}tr.det>td{back
 <script src="/v2/assets/bairros.js?v=1"></script>
 <script src="/v2/assets/operacao.js?v=4"></script>
 <script src="/v2/assets/unidades.js?v=1"></script>
+<script src="/v2/assets/hoje.js?v=1"></script>
 </body>
 </html>
