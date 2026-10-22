@@ -100,7 +100,7 @@ def pagina_v2_prototipo():
 
 @app.get("/v2/assets/{nome}")
 def v2_asset(nome: str):
-    if nome not in ("casca.js", "compras.js", "nota.js", "vendas.js", "resultado.js", "clientes.js", "cardapio.js", "bairros.js", "operacao.js", "unidades.js", "hoje.js", "equipe.js"):
+    if nome not in ("casca.js", "compras.js", "nota.js", "vendas.js", "resultado.js", "clientes.js", "cardapio.js", "bairros.js", "operacao.js", "unidades.js", "hoje.js", "equipe.js", "ze.js"):
         return JSONResponse({"erro": "nao encontrado"}, status_code=404)
     return FileResponse(os.path.join(os.path.dirname(__file__), "v2", nome),
                         media_type="application/javascript", headers={"Cache-Control": "no-cache"})
