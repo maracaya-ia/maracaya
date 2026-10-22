@@ -100,7 +100,7 @@ def pagina_v2_prototipo():
 
 @app.get("/v2/assets/{nome}")
 def v2_asset(nome: str):
-    if nome != "casca.js":
+    if nome not in ("casca.js", "compras.js"):
         return JSONResponse({"erro": "nao encontrado"}, status_code=404)
     return FileResponse(os.path.join(os.path.dirname(__file__), "v2", nome),
                         media_type="application/javascript", headers={"Cache-Control": "no-cache"})
@@ -4003,6 +4003,63 @@ def entrada_estoque(dados: dict = Body(...)):
                 VALUES (%(i)s, 'entrada', %(d)s, %(s)s, %(o)s)""",
              {"i": insumo, "d": qtd, "s": saldo, "o": obs or "entrega recebida"})
     return {"ok": True, "saldo": saldo}
+
+
+@app.post("/api/estoque_entrega")
+def entrega_estoque(dados: dict = Body(...)):
+    """Recebimento por fornecedor: varios itens de uma vez, cada um vira uma entrada no historico.
+    itens = [{insumo, quantidade, pedido?}]; 'pedido' (quantidade pedida) permite marcar faltas."""
+    forn = str(dados.get("fornecedor", "") or "").strip()[:60]
+    obs_geral = str(dados.get("obs", "") or "").strip()[:80]
+    itens = dados.get("itens") or []
+    if not forn or not isinstance(itens, list) or not itens:
+        return {"ok": False, "erro": "informe o fornecedor e ao menos um item"}
+    gravados, faltas = [], []
+    for it in itens:
+        insumo = str(it.get("insumo", "")).strip()
+        try:
+            qtd = float(it.get("quantidade"))
+        except (TypeError, ValueError):
+            continue
+        if not insumo or qtd <= 0:
+            continue
+        r = consultar("""
+            INSERT INTO insumo_estoque (insumo, estoque_atual, atualizado_em)
+            VALUES (%(i)s, %(q)s, now())
+            ON CONFLICT (insumo) DO UPDATE
+                SET estoque_atual = insumo_estoque.estoque_atual + EXCLUDED.estoque_atual, atualizado_em = now()
+            RETURNING estoque_atual
+        """, {"i": insumo, "q": qtd})
+        saldo = float(r[0]["estoque_atual"])
+        obs = f"entrega {forn}" + (f" · {obs_geral}" if obs_geral else "")
+        try:
+            ped = float(it.get("pedido") or 0)
+        except (TypeError, ValueError):
+            ped = 0
+        if ped and qtd < ped:
+            obs += f" · faltou {round(ped - qtd, 2)}"
+            faltas.append(insumo)
+        executar("""INSERT INTO estoque_movimento (insumo, tipo, delta, saldo_apos, obs)
+                    VALUES (%(i)s, 'entrada', %(d)s, %(s)s, %(o)s)""",
+                 {"i": insumo, "d": qtd, "s": saldo, "o": obs[:120]})
+        gravados.append(insumo)
+    if not gravados:
+        return {"ok": False, "erro": "nenhum item com quantidade válida"}
+    return {"ok": True, "itens": len(gravados), "faltas": faltas}
+
+
+@app.post("/api/estoque_contagem")
+def contagem_estoque(dados: dict = Body(...)):
+    """Contagem em lote: cada item contado vira o estoque; a diferenca fica como 'contagem manual'."""
+    itens = dados.get("itens") or []
+    if not isinstance(itens, list) or not itens:
+        return {"ok": False, "erro": "nenhum item contado"}
+    n = 0
+    for it in itens:
+        r = salvar_estoque({"insumo": it.get("insumo"), "estoque": it.get("contado")})
+        if r.get("ok"):
+            n += 1
+    return {"ok": n > 0, "itens": n}
 
 
 @app.get("/api/estoque_historico")

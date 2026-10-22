@@ -54,7 +54,7 @@ function filtrosHtml(){
 function soon(k){const s=S[k];
   return `<div class="card soon"><h3>${s.t} <span class="ex">em construção</span></h3>
   <p>${s.v1?'Esta tela da 2.0 ainda está sendo construída. Enquanto isso, tudo continua disponível na versão atual.':'Tela nova da 2.0, ainda não construída.'}</p>
-  ${s.v1?`<a class="btn" href="${s.v1}">Abrir na versão atual</a> `:''}<a class="btn alt" href="/v2/prototipo#${k}" target="_blank" rel="noopener">Ver no protótipo</a></div>`}
+  ${s.v1?`<a class="btn brasa" href="${s.v1}">Abrir na versão atual</a> `:''}<a class="btn ghost" href="/v2/prototipo#${k}" target="_blank" rel="noopener">Ver no protótipo</a></div>`}
 
 function render(){
   if(!S[screen]||!S[screen].roles.includes(role))screen='hoje';

@@ -275,18 +275,31 @@ form.nf input,form.nf select{border:1px solid var(--line);background:var(--surfa
   .prop-hero h3{font-size:24px}
 }
 
-.seg{display:inline-flex;background:var(--side-hi);border-radius:9px;padding:3px;width:100%}
-.seg button{flex:1;border:0;background:transparent;padding:4px 6px;border-radius:7px;cursor:pointer;font-size:11.5px;font-weight:600;color:var(--side-dim)}
-.seg button[aria-pressed="true"]{background:var(--side-bg);color:var(--side-fg)}
+.seg{display:inline-flex;background:var(--surface-2);border-radius:9px;padding:3px}
+.seg button{flex:1;border:0;background:transparent;padding:5px 11px;border-radius:7px;cursor:pointer;font-size:13px;font-weight:600;color:var(--ink-2)}
+.seg button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.12)}
+.side-foot .seg,.sheet .seg{width:100%}
+.side-foot .seg{background:var(--side-hi)}.side-foot .seg button{padding:4px 6px;font-size:11.5px;color:var(--side-dim)}
+.side-foot .seg button[aria-pressed="true"]{background:var(--side-bg);color:var(--side-fg);box-shadow:none}
 .side-foot{flex-direction:column;align-items:stretch;gap:8px}
 .side-foot .lbl2{font-size:10.5px;text-transform:uppercase;letter-spacing:.1em;color:var(--side-dim);font-weight:600}
-.sheet .seg{background:var(--surface-2);margin-top:12px}
-.sheet .seg button{color:var(--ink-2)}.sheet .seg button[aria-pressed="true"]{background:var(--surface);color:var(--ink)}
 .sheet .lbl{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-2);font-weight:600}
 .soon{max-width:620px}.soon p{margin:6px 0 12px;color:var(--ink-2)}
-.btn{display:inline-block;background:var(--brasa);color:#fff;text-decoration:none;font-weight:700;font-size:13px;padding:8px 14px;border-radius:9px}
-.btn.alt{background:var(--surface-2);color:var(--ink)}
 .filters select:disabled{opacity:.5}
+.mut{color:var(--ink-2)}small.mut{font-size:11px}
+.lbl{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-2);font-weight:600}
+.aviso{font-size:13px;border-color:var(--warn);background:var(--warn-soft)}.aviso.ok{border-color:var(--ok);background:var(--ok-soft)}
+.busca{flex:1;min-width:200px;border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:7px 10px;font-size:13px}
+.chk2{display:inline-flex;gap:3px;align-items:center;font-size:12.5px}.chk2 input{accent-color:var(--brasa)}
+.ped{border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-top:12px}.ped.hoje{border-color:var(--bad)}
+.ped-top{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px}
+.boletos{display:grid;gap:6px;margin-top:12px}.boleto{display:grid;grid-template-columns:64px 1fr 96px;gap:8px;align-items:center;font-size:12.5px}
+.boleto .dia{color:var(--ink-2)}.boleto b{text-align:right;font-variant-numeric:tabular-nums}
+.boleto .barra{position:relative;background:var(--surface-2);border-radius:6px;min-height:26px;display:flex;align-items:center;overflow:hidden}
+.boleto .barra i{position:absolute;inset:0 auto 0 0;background:var(--brasa-soft)}.boleto.pico .barra i{background:var(--brasa);opacity:.55}
+.boleto .barra span{position:relative;padding:0 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pill.p-n{background:var(--surface-2);color:var(--ink-2)}
+.cin{min-width:70px}td .cin{width:92px}
 @media (max-width:760px){.top{position:sticky}}
 </style>
 </head>
@@ -312,6 +325,7 @@ form.nf input,form.nf select{border:1px solid var(--line);background:var(--surfa
     <nav class="bnav" id="bnav"></nav>
   </div>
 </div>
-<script src="/v2/assets/casca.js?v=1"></script>
+<script src="/v2/assets/casca.js?v=2"></script>
+<script src="/v2/assets/compras.js?v=1"></script>
 </body>
 </html>
