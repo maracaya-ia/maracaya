@@ -1,7 +1,8 @@
 // Componente compartilhado: sidebar + tema claro/escuro
 (function(){
   const PAGINAS = [
-    {href:'/',           nome:'Visão geral', icone:'📊'},
+    {href:'/',           nome:'Painel novo (2.0)', icone:'✨'},
+    {href:'/v1',         nome:'Visão geral', icone:'📊'},
     {href:'/clientes',   nome:'Clientes',    icone:'👥'},
     {href:'/operacao',   nome:'Operação',    icone:'⏱️'},
     {href:'/cardapio',   nome:'Cardápio',    icone:'🍔'},
@@ -24,7 +25,7 @@
     '<div class="sb-logo"><img src="/static/logo-clara.png" class="logo-clara" alt="Maracayá"><img src="/static/logo-escura.png" class="logo-escura" alt="Maracayá"></div>' +
     '<nav class="sb-nav">' +
     PAGINAS.map(p => {
-      const ativo = (p.href === '/' ? path === '/' : path === p.href) ? ' ativo' : '';
+      const ativo = path === p.href ? ' ativo' : '';
       return `<a href="${p.href}" class="sb-item${ativo}"><span class="sb-ico">${p.icone}</span><span class="sb-txt">${p.nome}</span></a>`;
     }).join('') +
     '</nav>' +

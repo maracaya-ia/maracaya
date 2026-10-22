@@ -46,7 +46,7 @@ f.addEventListener('submit',async ev=>{ev.preventDefault();e.hidden=true;const g
   try{const r=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({perfil,senha:document.getElementById('s').value})});
     const d=await r.json().catch(()=>({}));
     if(d.ok){try{localStorage.setItem('m2-perfil-login',perfil)}catch(_){}
-      const n=new URLSearchParams(location.search).get('next');location.href=(n&&n.startsWith('/')&&!n.startsWith('//')&&!n.startsWith('/login'))?n:'/v2'}
+      const n=new URLSearchParams(location.search).get('next');location.href=(n&&n.startsWith('/')&&!n.startsWith('//')&&!n.startsWith('/login'))?n:'/'}
     else{e.textContent=d.erro||'Não foi possível entrar.';e.hidden=false;document.getElementById('s').select()}
   }catch(_){e.textContent='Sem conexão com o servidor.';e.hidden=false}
   go.disabled=false});

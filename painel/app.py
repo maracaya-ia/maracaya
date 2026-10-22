@@ -92,6 +92,13 @@ def listar_marcas():
 
 @app.get("/")
 def pagina():
+    """Painel 2.0 e a pagina principal (desde 2026-10-22); a 1.0 ficou em /v1."""
+    return FileResponse(os.path.join(os.path.dirname(__file__), "v2", "index.html"),
+                        headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/v1")
+def pagina_v1():
     return FileResponse(os.path.join(os.path.dirname(__file__), "index.html"))
 
 
