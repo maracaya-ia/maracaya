@@ -100,7 +100,7 @@ def pagina_v2_prototipo():
 
 @app.get("/v2/assets/{nome}")
 def v2_asset(nome: str):
-    if nome not in ("casca.js", "compras.js", "nota.js", "vendas.js", "resultado.js", "clientes.js", "cardapio.js", "bairros.js", "operacao.js", "unidades.js", "hoje.js"):
+    if nome not in ("casca.js", "compras.js", "nota.js", "vendas.js", "resultado.js", "clientes.js", "cardapio.js", "bairros.js", "operacao.js", "unidades.js", "hoje.js", "equipe.js"):
         return JSONResponse({"erro": "nao encontrado"}, status_code=404)
     return FileResponse(os.path.join(os.path.dirname(__file__), "v2", nome),
                         media_type="application/javascript", headers={"Cache-Control": "no-cache"})
@@ -4141,6 +4141,94 @@ def checklist_marcar(dados: dict = Body(...)):
     else:
         executar(f"""DELETE FROM checklist_registros
                      WHERE item_id = %(i)s AND dia = (now() AT TIME ZONE '{TZ}')::date""", {"i": item})
+    return {"ok": True}
+
+
+@app.post("/api/checklist_item")
+def checklist_item_novo(dados: dict = Body(...)):
+    turno = str(dados.get("turno", "")).strip()
+    texto = str(dados.get("texto", "") or "").strip()[:120]
+    if turno not in ("abertura", "cozinha", "fechamento") or not texto:
+        return {"ok": False, "erro": "informe o turno e o texto do item"}
+    executar("""INSERT INTO checklist_itens (turno, ordem, texto)
+                VALUES (%(t)s, coalesce((SELECT max(ordem) FROM checklist_itens WHERE turno = %(t)s), 0) + 1, %(x)s)
+                ON CONFLICT (turno, texto) DO UPDATE SET ativo = true""", {"t": turno, "x": texto})
+    return {"ok": True}
+
+
+@app.post("/api/checklist_item_remover")
+def checklist_item_remover(dados: dict = Body(...)):
+    try:
+        i = int(dados.get("id"))
+    except (TypeError, ValueError):
+        return {"ok": False}
+    executar("UPDATE checklist_itens SET ativo = false WHERE id = %(i)s", {"i": i})  # historico preservado
+    return {"ok": True}
+
+
+@app.get("/api/checklist_historico")
+def checklist_historico(dias: int = Query(7, ge=1, le=30)):
+    """Por dia e turno: quantos itens foram feitos e quem marcou cada um."""
+    linhas = consultar(f"""
+        SELECT r.dia, i.turno, i.texto, r.quem,
+               to_char(r.marcado_em AT TIME ZONE '{TZ}', 'HH24:MI') AS hora
+        FROM checklist_registros r JOIN checklist_itens i ON i.id = r.item_id
+        WHERE r.dia >= (now() AT TIME ZONE '{TZ}')::date - %(d)s
+        ORDER BY r.dia DESC, i.turno, r.marcado_em
+    """, {"d": dias})
+    totais = {t["turno"]: t["n"] for t in consultar(
+        "SELECT turno, count(*) AS n FROM checklist_itens WHERE ativo GROUP BY turno", {})}
+    out = {}
+    for l in linhas:
+        d = l["dia"].isoformat()
+        out.setdefault(d, {}).setdefault(l["turno"], []).append(
+            {"texto": l["texto"], "quem": l["quem"], "hora": l["hora"]})
+    return {"dias": [{"dia": d, "turnos": t} for d, t in out.items()], "totais": totais}
+
+
+@app.get("/api/recado")
+def recado_atual():
+    r = consultar(f"""SELECT id, texto, autor,
+                             to_char(criado_em AT TIME ZONE '{TZ}', 'DD/MM HH24:MI') AS quando,
+                             (criado_em AT TIME ZONE '{TZ}')::date = (now() AT TIME ZONE '{TZ}')::date AS hoje
+                      FROM recados ORDER BY criado_em DESC LIMIT 1""", {})
+    return {"recado": r[0] if r else None}
+
+
+@app.post("/api/recado")
+def salvar_recado(dados: dict = Body(...)):
+    texto = str(dados.get("texto", "") or "").strip()[:500]
+    autor = str(dados.get("autor", "") or "").strip()[:40] or None
+    if not texto:
+        return {"ok": False, "erro": "escreva o recado"}
+    executar("INSERT INTO recados (texto, autor) VALUES (%(t)s, %(a)s)", {"t": texto, "a": autor})
+    return {"ok": True}
+
+
+@app.get("/api/escala")
+def ler_escala(dias: int = Query(7, ge=1, le=14)):
+    linhas = consultar(f"""SELECT dia, funcao, nome FROM escala
+                           WHERE dia >= (now() AT TIME ZONE '{TZ}')::date
+                             AND dia < (now() AT TIME ZONE '{TZ}')::date + %(d)s""", {"d": dias})
+    return {"escala": [{"dia": l["dia"].isoformat(), "funcao": l["funcao"], "nome": l["nome"]} for l in linhas]}
+
+
+@app.post("/api/escala")
+def salvar_escala(dados: dict = Body(...)):
+    funcao = str(dados.get("funcao", "") or "").strip()[:30]
+    nome = str(dados.get("nome", "") or "").strip()[:40]
+    try:
+        dia = date.fromisoformat(str(dados.get("dia")))
+    except ValueError:
+        return {"ok": False, "erro": "dia inválido"}
+    if not funcao:
+        return {"ok": False, "erro": "função vazia"}
+    if nome:
+        executar("""INSERT INTO escala (dia, funcao, nome) VALUES (%(d)s, %(f)s, %(n)s)
+                    ON CONFLICT (dia, funcao) DO UPDATE SET nome = EXCLUDED.nome""",
+                 {"d": dia, "f": funcao, "n": nome})
+    else:
+        executar("DELETE FROM escala WHERE dia = %(d)s AND funcao = %(f)s", {"d": dia, "f": funcao})
     return {"ok": True}
 
 
