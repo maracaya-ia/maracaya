@@ -104,7 +104,8 @@ matchMedia('(prefers-color-scheme: dark)').addEventListener('change',aplicarTema
 
 aplicarTema();
 {const h=location.hash.slice(1);if(S[h])screen=h}
-render();
+/* as telas (compras.js etc.) carregam depois: desenha só quando todas registraram */
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',render);else render();
 
 /* filtros vêm da API: unidades e marcas reais */
 Promise.all([
