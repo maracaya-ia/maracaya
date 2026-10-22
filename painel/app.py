@@ -117,7 +117,7 @@ def pagina_v2_prototipo():
 
 @app.get("/v2/assets/{nome}")
 def v2_asset(nome: str):
-    if nome not in ("casca.js", "compras.js", "nota.js", "vendas.js", "resultado.js", "clientes.js", "cardapio.js", "bairros.js", "operacao.js", "unidades.js", "hoje.js", "ze.js"):
+    if nome not in ("casca.js", "compras.js", "nota.js", "vendas.js", "resultado.js", "clientes.js", "cardapio.js", "bairros.js", "operacao.js", "unidades.js", "hoje.js", "ze.js", "geral.js"):
         return JSONResponse({"erro": "nao encontrado"}, status_code=404)
     return FileResponse(os.path.join(os.path.dirname(__file__), "v2", nome),
                         media_type="application/javascript", headers={"Cache-Control": "no-cache"})
@@ -4284,6 +4284,24 @@ def pergunta_painel(dados: dict = Body(...)):
     if not r.get("enviar"):
         return {"ok": False, "erro": "não consegui responder agora"}
     return {"ok": True, "texto": r["texto"]}
+
+
+@app.get("/api/margem_baixa")
+def margem_baixa(marca: str = Query("todas"), unidade: str = Query("todas"),
+                 periodo: str = Query("mes_atual"), canal: str = Query("todos")):
+    """Pedidos do periodo com margem abaixo do minimo (config_alertas.margem_minima, o mesmo do alerta do Kui)
+    e pedidos no prejuizo, mais os piores casos. Mesmas regras/totais do DRE."""
+    cond, filtro_marca, params = _filtro_periodo(marca, unidade, periodo, canal)
+    linhas, _cfg = _calcular_periodo(cond, filtro_marca, params)
+    cfg = consultar("SELECT valor FROM config_alertas WHERE chave = 'margem_minima'", {})
+    minimo = float(cfg[0]["valor"]) if cfg else 15.0
+    baixas = [l for l in linhas if l["margem"] < minimo]
+    piores = sorted(baixas, key=lambda l: l["margem"])[:5]
+    return {"minimo": minimo, "total": len(linhas), "baixas": len(baixas),
+            "prejuizo": sum(1 for l in baixas if l["margem"] < 0),
+            "perda": round(sum(-l["lucro"] for l in linhas if l["lucro"] < 0), 2),
+            "piores": [{"id": l["id"], "numero": l["numero"], "origem": l["origem"], "data": l["data"],
+                        "subtotal": l["subtotal"], "lucro": round(l["lucro"], 2), "margem": round(l["margem"], 1)} for l in piores]}
 
 
 @app.get("/api/estoque_historico")
