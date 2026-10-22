@@ -85,6 +85,13 @@ def pagina():
     return FileResponse(os.path.join(os.path.dirname(__file__), "index.html"))
 
 
+@app.get("/v2")
+@app.get("/v2/")
+def pagina_v2():
+    """Preview do prototipo da 2.0 - ao lado da 1.0, sem mexer em nenhuma rota existente."""
+    return FileResponse(os.path.join(os.path.dirname(__file__), "v2", "prototipo.html"))
+
+
 @app.get("/clientes")
 def pagina_clientes():
     return FileResponse(os.path.join(os.path.dirname(__file__), "clientes.html"))
