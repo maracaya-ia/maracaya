@@ -18,7 +18,7 @@ const S={
 };
 const SUBS={hoje:'Resumo do dia',ze:'Assistente com os números do painel',equipe:'Checklists, escala e recados',vendas:'Antiga Visão geral',resultado:'Antigas Performance + DRE',unidades:'Colorado e Sobradinho lado a lado',clientes:'Base, fidelização e retenção',cardapio:'Custos, margem e itens encalhados',bairros:'De onde vêm os pedidos',operacao:'Tempo de preparo e entrega',compras:'Estoque, sugestão de compra e fornecedores',nota:'Notas de fornecedor do mês'};
 const BOTTOM={socio:['hoje','vendas','ze','clientes','mais'],gerente:['hoje','operacao','ze','equipe','mais'],cozinha:['hoje','compras','equipe','nota','mais']};
-const SEM_PERIODO=['clientes','cardapio','bairros'];
+const SEM_PERIODO=['clientes','cardapio','bairros','operacao'];
 const FILTRO=['vendas','resultado','clientes','cardapio','bairros','operacao','unidades'];
 const ROLES=[['socio','Sócio'],['gerente','Gerente'],['cozinha','Cozinha']];
 const TEMAS=[['auto','Auto'],['light','Claro'],['dark','Escuro']];

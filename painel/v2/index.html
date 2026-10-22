@@ -343,6 +343,10 @@ tr.clk{cursor:pointer}tr.clk:hover td{background:var(--surface-2)}tr.det>td{back
 :root[data-theme="dark"] #b-mapa .leaflet-tile-pane{filter:invert(1) hue-rotate(180deg) brightness(.85) contrast(.9) saturate(.6)}
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]) #b-mapa .leaflet-tile-pane{filter:invert(1) hue-rotate(180deg) brightness(.85) contrast(.9) saturate(.6)}}
 @container dev (max-width:760px){#b-mapa{height:340px}}
+.ins{display:flex;gap:10px;align-items:flex-start;background:var(--surface-2);border-radius:10px;padding:10px 12px;font-size:13px;line-height:1.45}
+.prev{display:grid;grid-template-columns:repeat(7,1fr);gap:8px}.pd{background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:10px 8px;text-align:center;display:grid;gap:3px;font-size:12px}.pd.fds{border-color:var(--brasa)}.pd b{font-family:var(--f-mono);font-size:20px;color:var(--brasa-ink)}
+.heat{display:grid;gap:3px;font-size:11px;overflow-x:auto}.heat .hl{text-align:center;color:var(--ink-2)}.heat .hd{display:flex;align-items:center;justify-content:flex-end;padding-right:6px;color:var(--ink-2)}.heat .cel{aspect-ratio:1.4;border-radius:4px;min-width:20px}
+@container dev (max-width:760px){.prev{grid-template-columns:repeat(2,1fr)}}
 @media (max-width:760px){.top{position:sticky}.h-big{font-size:40px}.h-time{margin-left:0}}
 </style>
 </head>
@@ -368,7 +372,7 @@ tr.clk{cursor:pointer}tr.clk:hover td{background:var(--surface-2)}tr.det>td{back
     <nav class="bnav" id="bnav"></nav>
   </div>
 </div>
-<script src="/v2/assets/casca.js?v=9"></script>
+<script src="/v2/assets/casca.js?v=10"></script>
 <script src="/v2/assets/compras.js?v=4"></script>
 <script src="/v2/assets/nota.js?v=1"></script>
 <script src="/v2/assets/vendas.js?v=2"></script>
@@ -376,5 +380,6 @@ tr.clk{cursor:pointer}tr.clk:hover td{background:var(--surface-2)}tr.det>td{back
 <script src="/v2/assets/clientes.js?v=1"></script>
 <script src="/v2/assets/cardapio.js?v=1"></script>
 <script src="/v2/assets/bairros.js?v=1"></script>
+<script src="/v2/assets/operacao.js?v=1"></script>
 </body>
 </html>
