@@ -16,7 +16,7 @@ const S={
   compras:{t:'Compras e estoque',grp:'Cozinha e estoque',roles:['socio','gerente','cozinha'],v1:'/compras'},
   nota:{t:'Lançar nota',grp:'Cozinha e estoque',roles:['socio','gerente','cozinha'],v1:'/lancar-nota'}
 };
-const SUBS={hoje:'Resumo do dia',geral:'Principais números e alertas',ze:'Assistente com os números do painel (a mesma MIA do grupo)',vendas:'Faturamento, canais e crescimento',resultado:'Antigas Performance + DRE',unidades:'Colorado e Sobradinho lado a lado',clientes:'Base, fidelização e retenção',cardapio:'Custos, margem e itens encalhados',bairros:'De onde vêm os pedidos',operacao:'Tempo de preparo e entrega',compras:'Estoque, sugestão de compra e fornecedores',nota:'Notas de fornecedor do mês'};
+const SUBS={hoje:'Resumo do dia',geral:'Resumo por unidade e marca',ze:'Assistente com os números do painel (a mesma MIA do grupo)',vendas:'Faturamento, canais e crescimento',resultado:'Antigas Performance + DRE',unidades:'Colorado e Sobradinho lado a lado',clientes:'Base, fidelização e retenção',cardapio:'Custos, margem e itens encalhados',bairros:'De onde vêm os pedidos',operacao:'Tempo de preparo e entrega',compras:'Estoque, sugestão de compra e fornecedores',nota:'Notas de fornecedor do mês'};
 const BOTTOM={socio:['hoje','vendas','ze','clientes','mais'],gerente:['hoje','operacao','ze','compras','mais'],cozinha:['hoje','compras','nota','mais']};
 const SEM_PERIODO=['clientes','cardapio','bairros','operacao'];
 const FILTRO=['geral','vendas','resultado','clientes','cardapio','bairros','operacao'];
@@ -61,6 +61,7 @@ function segs(){document.querySelectorAll('[data-seg-tema]').forEach(el=>el.inne
   document.querySelectorAll('[data-seg-role]').forEach(el=>el.innerHTML=perfil!=='socio'?'':ROLES.map(([v,l])=>`<button data-role="${v}" aria-pressed="${role===v}">${l}</button>`).join(''))}
 
 function filtrosHtml(){
+  if(screen==='geral')return `<select id="f-per" aria-label="Período">${PERIODOS.map(([v,l])=>`<option value="${v}"${v===filtros.periodo?' selected':''}>${l}</option>`).join('')}</select>`;
   const o=(arr,sel,todas)=>`<option value="todas"${sel==='todas'?' selected':''}>${todas}</option>`+arr.map(x=>`<option value="${x}"${x===sel?' selected':''}>${x}</option>`).join('');
   return `<select id="f-un" aria-label="Unidade">${o(unidades,filtros.unidade,'Todas as unidades')}</select>
   <select id="f-mc" aria-label="Marca">${o(marcas,filtros.marca,'Todas as marcas')}</select>
