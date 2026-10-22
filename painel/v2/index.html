@@ -300,6 +300,8 @@ form.nf input,form.nf select{border:1px solid var(--line);background:var(--surfa
 .boleto .barra span{position:relative;padding:0 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .pill.p-n{background:var(--surface-2);color:var(--ink-2)}
 .cin{min-width:70px}td .cin{width:92px}
+#tEstoque td:last-child,#tEstoque th:last-child{position:sticky;right:0;background:var(--surface);box-shadow:-6px 0 8px -6px rgba(0,0,0,.15)}
+@container dev (max-width:760px){td .cin{width:76px}}
 @media (max-width:760px){.top{position:sticky}}
 </style>
 </head>
@@ -326,6 +328,6 @@ form.nf input,form.nf select{border:1px solid var(--line);background:var(--surfa
   </div>
 </div>
 <script src="/v2/assets/casca.js?v=3"></script>
-<script src="/v2/assets/compras.js?v=2"></script>
+<script src="/v2/assets/compras.js?v=3"></script>
 </body>
 </html>
