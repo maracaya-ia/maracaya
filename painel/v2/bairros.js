@@ -16,14 +16,13 @@ function carregarLeaflet(){
 function esqueleto(){
   mapa=null;camada=null;
   el.innerHTML=`<div class="g">
-  <div class="card s12 ctrl-per"><div class="filters"><select id="b-agr" aria-label="Agrupar"><option value="regiao">Por região/condomínio</option><option value="bairro">Por bairro (oficial)</option></select>
-   <select id="b-dias" aria-label="Janela">${[[30,'Últimos 30 dias'],[60,'Últimos 60 dias'],[90,'Últimos 90 dias'],[365,'Tudo']].map(([v,l])=>`<option value="${v}">${l}</option>`).join('')}</select></div></div>
+  <div class="card s12 ctrl-per"><div class="filters"><select id="b-agr" aria-label="Agrupar"><option value="regiao">Por região/condomínio</option><option value="bairro">Por bairro (oficial)</option></select></div></div>
   <div class="card s7" id="mapa-card"><h3>Mapa de entregas <span class="info2" title="Cada ponto é um pedido de delivery entregue no período — posição vem das coordenadas reais do endereço. Zoom com scroll ou pinça, arraste pra navegar. Concentração de pontos = seu território; vazio com gente morando = oportunidade de marketing.">?</span></h3>
    <p class="hint" id="b-desc">Cada ponto é um pedido entregue</p><div id="b-mapa"></div></div>
   <div class="card s5" id="ranking"><h3>Ranking de regiões <span class="info2" title="Só pedidos de delivery não cancelados. Por região/condomínio: usa as regras cadastradas (Jardim Europa II, Bela Vista...) lidas do texto do endereço; quem não casa com regra aparece pelo bairro oficial. Por bairro: usa o campo oficial do endereço.">?</span></h3>
    <p class="hint">Quem sustenta a casa — delivery no período</p><div class="tw" id="b-rank"></div></div>
   <p class="hint s12" id="b-atual" style="margin:0"></p></div>`;
-  document.getElementById('b-agr').value=st.agrupar;document.getElementById('b-dias').value=st.dias;
+  document.getElementById('b-agr').value=st.agrupar;
   window.V2.setJump([]);
 }
 
@@ -46,12 +45,12 @@ function pintar(){
 }
 async function carregar(){
   if(!ativoAgora())return;const f=window.V2.filtros;
-  try{dados=await fetch(`/api/bairros?marca=${encodeURIComponent(f.marca)}&unidade=${encodeURIComponent(f.unidade)}&dias=${st.dias}&agrupar=${st.agrupar}`).then(r=>r.json());pintar()}
+  try{dados=await fetch(`/api/bairros?marca=${encodeURIComponent(f.marca)}&unidade=${encodeURIComponent(f.unidade)}&dias=${window.V2.intervalo().dias}${window.V2.intervalo().ini?`&inicio=${window.V2.intervalo().ini}&fim=${window.V2.intervalo().fim}`:''}&agrupar=${st.agrupar}`).then(r=>r.json());pintar()}
   catch(e){document.getElementById('b-rank').innerHTML='<p class="hint">Não foi possível carregar.</p>'}
 }
 function ligar(){
   document.addEventListener('change',e=>{if(!ativoAgora())return;
-    if(e.target.id==='b-agr'){st.agrupar=e.target.value;carregar()}else if(e.target.id==='b-dias'){st.dias=+e.target.value;carregar()}});
+    if(e.target.id==='b-agr'){st.agrupar=e.target.value;carregar()}});
 }
 window.V2.screens.bairros={render(c){el=c;if(!ligado){ligar();ligado=true}clearInterval(timer);esqueleto();
   carregarLeaflet().then(carregar).catch(()=>{document.getElementById('b-mapa').innerHTML='<p class="hint" style="padding:20px">Não foi possível carregar o mapa.</p>'});

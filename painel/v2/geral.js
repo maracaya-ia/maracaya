@@ -11,7 +11,7 @@ const nome=(m,u)=>`${m.replace(' Burger','')} · ${u==='Colorado'?'GC':u}`;
 const ativoAgora=()=>!!document.getElementById('g-root');
 let el=null,timer=null,seq=0;
 
-const per=()=>{const p=window.V2.filtros.periodo;return p==='1'?'hoje':p};
+const per=()=>window.V2.periodoApi();
 function intervalo(){const iv=window.V2.intervalo();return iv.ini?`dias=${iv.dias}&inicio=${iv.ini}&fim=${iv.fim}`:`dias=${iv.dias}`}
 async function numeros(marca,unidade){
   const q=`marca=${encodeURIComponent(marca)}&unidade=${encodeURIComponent(unidade)}`;
@@ -29,7 +29,7 @@ async function render(c){
   const porUn=[];for(const un of (u.unidades||[])){const n=await numeros('todas',un);if(n&&n.ped>0)porUn.push({un,n});if(meu!==seq)return}
   const linhas=[];for(const [mc,un] of combos){const n=await numeros(mc,un);if(n&&n.ped>0)linhas.push({mc,un,n});if(meu!==seq)return}
   if(meu!==seq||!el)return;
-  const perTxt=document.querySelector('#filters #f-per option:checked')?.textContent||'período';
+  const perTxt=window.V2.periodoLabel();
   const tot=grupo?grupo.fat:linhas.reduce((a,x)=>a+x.n.fat,0)||1;
   const kp=(l,v,s,cl='')=>`<div class="card kpi ${cl}"><div class="k-l">${l}</div><div class="k-v">${v}</div><div class="k-s">${s||'&nbsp;'}</div></div>`;
   const txCanc=n=>n.tot>0?100*n.canc/n.tot:0;

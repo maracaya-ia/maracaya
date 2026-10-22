@@ -767,7 +767,15 @@ def analise_operacao(marca: str = Query("todas"), unidade: str = Query("todas"),
 
     agora = f"(now() AT TIME ZONE '{TZ}')"
     dia = f"(p.criado_em AT TIME ZONE '{TZ}')::date"
-    if periodo == "semana_atual":
+    custom = _intervalo_custom(periodo)
+    if custom:
+        params["ini"], params["fim"] = custom
+        cond = f"{dia} BETWEEN %(ini)s AND %(fim)s"
+    elif periodo == "hoje":
+        cond = f"{dia} = {agora}::date"
+    elif periodo == "ontem":
+        cond = f"{dia} = ({agora}::date - 1)"
+    elif periodo == "semana_atual":
         cond = f"{dia} >= date_trunc('week', {agora})::date"
     elif periodo == "mes_atual":
         cond = f"{dia} >= date_trunc('month', {agora})::date"
@@ -775,7 +783,7 @@ def analise_operacao(marca: str = Query("todas"), unidade: str = Query("todas"),
         cond = (f"{dia} >= (date_trunc('month', {agora}) - interval '1 month')::date "
                 f"AND {dia} < date_trunc('month', {agora})::date")
     else:
-        params["dias"] = max(min(int(periodo), 365), 7)
+        params["dias"] = max(min(int(periodo), 365), 1)
         cond = "p.criado_em >= now() - (%(dias)s || ' days')::interval"
 
     pl = f"""
@@ -911,9 +919,11 @@ def analise_operacao(marca: str = Query("todas"), unidade: str = Query("todas"),
 
 
 @app.get("/api/cardapio")
-def analise_cardapio(marca: str = Query("todas"), unidade: str = Query("todas"), dias: int = Query(90, ge=7, le=365)):
+def analise_cardapio(marca: str = Query("todas"), unidade: str = Query("todas"), dias: int = Query(90, ge=1, le=365),
+                     inicio: str = Query(None), fim: str = Query(None)):
     filtro_marca = ""
     params = {"dias": dias}
+    cond_p = _cond_janela(params, dias, inicio, fim)
     if marca != "todas":
         filtro_marca = "AND p.marca = %(marca)s"
         params["marca"] = marca
@@ -933,7 +943,7 @@ def analise_cardapio(marca: str = Query("todas"), unidade: str = Query("todas"),
         LEFT JOIN produto_alias a ON a.alias = lower(trim(i.nome))
         LEFT JOIN produto_custos c ON c.nome = coalesce(a.canonico, lower(trim(i.nome)))
         WHERE p.status <> 'canceled'
-          AND p.criado_em >= now() - (%(dias)s || ' days')::interval
+          AND {cond_p}
           AND NOT EXISTS (
               SELECT 1 FROM produto_excluido e
               WHERE e.nome = coalesce(a.canonico, lower(trim(i.nome)))
@@ -995,10 +1005,11 @@ def restaurar_produto(dados: dict = Body(...)):
 
 
 @app.get("/api/bairros")
-def analise_bairros(marca: str = Query("todas"), unidade: str = Query("todas"), dias: int = Query(90, ge=7, le=365),
-                    agrupar: str = Query("regiao")):
+def analise_bairros(marca: str = Query("todas"), unidade: str = Query("todas"), dias: int = Query(90, ge=1, le=365),
+                    agrupar: str = Query("regiao"), inicio: str = Query(None), fim: str = Query(None)):
     filtro_marca = ""
     params = {"dias": dias}
+    cond_p = _cond_janela(params, dias, inicio, fim)
     if marca != "todas":
         filtro_marca = "AND p.marca = %(marca)s"
         params["marca"] = marca
@@ -1010,7 +1021,7 @@ def analise_bairros(marca: str = Query("todas"), unidade: str = Query("todas"), 
         FROM pedidos p
         WHERE p.status <> 'canceled'
           AND p.tipo = 'delivery'
-          AND p.criado_em >= now() - (%(dias)s || ' days')::interval
+          AND {cond_p}
           {filtro_marca}
     """
 
@@ -1325,6 +1336,23 @@ def _filtro_canal(canal):
     return f" AND {c}" if c else ""
 
 
+def _cond_janela(params, dias, inicio=None, fim=None):
+    """Condicao SQL da janela de vendas: inicio/fim (datas) ou os ultimos `dias` dias."""
+    if inicio and fim:
+        params["ini"], params["fim"] = date.fromisoformat(inicio), date.fromisoformat(fim)
+        return f"(p.criado_em AT TIME ZONE '{TZ}')::date BETWEEN %(ini)s AND %(fim)s"
+    return "p.criado_em >= now() - (%(dias)s || ' days')::interval"
+
+
+def _intervalo_custom(periodo):
+    """'2026-10-01..2026-10-15' -> (date, date); None se nao for intervalo personalizado."""
+    if ".." not in str(periodo):
+        return None
+    a, b = str(periodo).split("..", 1)
+    ini, fim = date.fromisoformat(a), date.fromisoformat(b)
+    return (ini, fim) if ini <= fim else (fim, ini)
+
+
 def _filtro_periodo(marca, unidade, periodo, canal="todos"):
     filtro_marca = _filtro_canal(canal)
     params = {}
@@ -1337,7 +1365,11 @@ def _filtro_periodo(marca, unidade, periodo, canal="todos"):
 
     agora = f"(now() AT TIME ZONE '{TZ}')"
     dia = f"(p.criado_em AT TIME ZONE '{TZ}')::date"
-    if periodo == "hoje":
+    custom = _intervalo_custom(periodo)
+    if custom:
+        params["ini"], params["fim"] = custom
+        cond = f"{dia} BETWEEN %(ini)s AND %(fim)s"
+    elif periodo == "hoje":
         cond = f"{dia} = {agora}::date"
     elif periodo == "ontem":
         cond = f"{dia} = ({agora}::date - 1)"
@@ -1366,6 +1398,9 @@ def _menos_um_mes(d):
 def _limites_periodo(periodo, hoje_d):
     """Limites [inicio, fim) do periodo, espelhando os mesmos cond de _filtro_periodo -
     usado so pra montar a janela de comparacao (periodo anterior)."""
+    custom = _intervalo_custom(periodo)
+    if custom:
+        return custom[0], custom[1] + timedelta(days=1)
     if periodo == "hoje":
         return hoje_d, hoje_d + timedelta(days=1)
     if periodo == "ontem":

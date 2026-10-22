@@ -18,11 +18,11 @@ const S={
 };
 const SUBS={hoje:'Resumo do dia',geral:'Resumo por unidade e marca',ze:'Assistente com os números do painel (a mesma MIA do grupo)',vendas:'Faturamento, canais e crescimento',resultado:'Antigas Performance + DRE',unidades:'Colorado e Sobradinho lado a lado',clientes:'Base, fidelização e retenção',cardapio:'Custos, margem e itens encalhados',bairros:'De onde vêm os pedidos',operacao:'Tempo de preparo e entrega',compras:'Estoque, sugestão de compra e fornecedores',nota:'Notas de fornecedor do mês'};
 const BOTTOM={socio:['hoje','vendas','ze','clientes','mais'],gerente:['hoje','operacao','ze','compras','mais'],cozinha:['hoje','compras','nota','mais']};
-const SEM_PERIODO=['clientes','cardapio','bairros','operacao'];
+const SEM_PERIODO=['clientes'];
 const FILTRO=['geral','vendas','resultado','clientes','cardapio','bairros','operacao'];
 const ROLES=[['socio','Sócio'],['gerente','Gerente'],['cozinha','Cozinha']];
 const TEMAS=[['auto','Auto'],['light','Claro'],['dark','Escuro']];
-const PERIODOS=[['1','Hoje'],['ontem','Ontem'],['7','7 dias'],['30','30 dias'],['90','90 dias'],['semana_atual','Semana'],['mes_atual','Este mês'],['mes_passado','Mês passado']];
+const PERIODOS=[['1','Hoje'],['ontem','Ontem'],['7','7 dias'],['30','30 dias'],['90','90 dias'],['semana_atual','Semana'],['mes_atual','Este mês'],['mes_passado','Mês passado'],['custom','Personalizado…']];
 
 const saudacao=()=>{const h=new Date().getHours();return h<12?'Bom dia':h<18?'Boa tarde':'Boa noite'};
 const lsGet=(k,d)=>{try{return localStorage.getItem(k)||d}catch(_){return d}};
@@ -32,13 +32,16 @@ const svg=k=>`<svg viewBox="0 0 24 24" aria-hidden="true">${I[k]||''}</svg>`;
 let perfil='socio',role='socio';   // perfil = quem logou (vem do servidor); role = tela exibida (sócio pode "ver como")
 let tema=lsGet('m2-tema','auto');
 let screen='hoje', sheetOpen=false;
-const filtros={unidade:lsGet('m2-un','todas'),marca:lsGet('m2-mc','todas'),periodo:lsGet('m2-per','30')};
+const filtros={unidade:lsGet('m2-un','todas'),marca:lsGet('m2-mc','todas'),periodo:lsGet('m2-per','30'),ini:lsGet('m2-ini',''),fim:lsGet('m2-fim','')};
 let unidades=[], marcas=[];
 
 /* API pública pra as telas: leem os filtros e reagem a mudanças */
 const iso=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 /* período escolhido -> {dias, ini, fim}; ini/fim só nos períodos de calendário */
+const custom=()=>filtros.periodo==='custom'&&filtros.ini&&filtros.fim;
 function intervalo(){const p=filtros.periodo,h=new Date();
+  if(custom())return{dias:Math.round((new Date(filtros.fim+'T12:00:00')-new Date(filtros.ini+'T12:00:00'))/864e5)+1,ini:filtros.ini,fim:filtros.fim};
+  if(p==='custom')return{dias:30};
   if(/^\d+$/.test(p))return{dias:+p};
   let a,b;
   if(p==='ontem'){a=b=new Date(h.getFullYear(),h.getMonth(),h.getDate()-1)}
@@ -46,7 +49,11 @@ function intervalo(){const p=filtros.periodo,h=new Date();
   else if(p==='mes_atual'){a=new Date(h.getFullYear(),h.getMonth(),1);b=h}
   else{a=new Date(h.getFullYear(),h.getMonth()-1,1);b=new Date(h.getFullYear(),h.getMonth(),0)}
   return{dias:Math.round((b-a)/864e5)+1,ini:iso(a),fim:iso(b)}}
+const dm=iso=>iso.slice(8,10)+'/'+iso.slice(5,7);
 window.V2={filtros,screens:{},intervalo,role:()=>role,
+  /* período no formato das APIs de DRE/operação: hoje, ontem, semana_atual, mes_atual, mes_passado, N dias ou AAAA-MM-DD..AAAA-MM-DD */
+  periodoApi(){const p=filtros.periodo;if(p==='custom')return custom()?filtros.ini+'..'+filtros.fim:'30';return p==='1'?'hoje':p},
+  periodoLabel(){if(custom())return filtros.ini===filtros.fim?dm(filtros.ini):dm(filtros.ini)+' a '+dm(filtros.fim);const f=PERIODOS.find(x=>x[0]===filtros.periodo);return f?f[1]:'período'},
   qs(extra){const iv=intervalo(),p=new URLSearchParams({unidade:filtros.unidade,marca:filtros.marca,dias:iv.dias});
     if(iv.ini){p.set('inicio',iv.ini);p.set('fim',iv.fim)}
     Object.entries(extra||{}).forEach(([k,v])=>p.set(k,v));return p.toString()},
@@ -60,12 +67,13 @@ function segs(){document.querySelectorAll('[data-seg-tema]').forEach(el=>el.inne
   document.querySelectorAll('.ver-como').forEach(el=>el.hidden=perfil!=='socio');
   document.querySelectorAll('[data-seg-role]').forEach(el=>el.innerHTML=perfil!=='socio'?'':ROLES.map(([v,l])=>`<button data-role="${v}" aria-pressed="${role===v}">${l}</button>`).join(''))}
 
+function perHtml(){return `<select id="f-per" aria-label="Período">${PERIODOS.map(([v,l])=>`<option value="${v}"${v===filtros.periodo?' selected':''}>${l}</option>`).join('')}</select>`+(filtros.periodo==='custom'?`<span class="f-datas"><input type="date" id="f-de" value="${filtros.ini}" aria-label="De"><span class="mut">→</span><input type="date" id="f-ate" value="${filtros.fim}" aria-label="Até"></span>`:'')}
 function filtrosHtml(){
-  if(screen==='geral')return `<select id="f-per" aria-label="Período">${PERIODOS.map(([v,l])=>`<option value="${v}"${v===filtros.periodo?' selected':''}>${l}</option>`).join('')}</select>`;
+  if(screen==='geral')return perHtml();
   const o=(arr,sel,todas)=>`<option value="todas"${sel==='todas'?' selected':''}>${todas}</option>`+arr.map(x=>`<option value="${x}"${x===sel?' selected':''}>${x}</option>`).join('');
   return `<select id="f-un" aria-label="Unidade">${o(unidades,filtros.unidade,'Todas as unidades')}</select>
   <select id="f-mc" aria-label="Marca">${o(marcas,filtros.marca,'Todas as marcas')}</select>
-  ${SEM_PERIODO.includes(screen)?'':`<select id="f-per" aria-label="Período">${PERIODOS.map(([v,l])=>`<option value="${v}"${v===filtros.periodo?' selected':''}>${l}</option>`).join('')}</select>`}`}
+  ${SEM_PERIODO.includes(screen)?'':perHtml()}`}
 
 function soon(k){const s=S[k];
   return `<div class="card soon"><h3>${s.t} <span class="ex">em construção</span></h3>
@@ -115,9 +123,16 @@ document.addEventListener('click',e=>{
 });
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&sheetOpen){sheetOpen=false;render()}});
 document.addEventListener('change',e=>{
-  const m={'f-un':['unidade','m2-un'],'f-mc':['marca','m2-mc'],'f-per':['periodo','m2-per']}[e.target.id];
+  const id=e.target.id,impl=()=>window.V2.screens[screen],avisar=()=>{const i=impl();if(i&&i.onFiltros)i.onFiltros()},barra=()=>{const f=document.getElementById('filters');if(f)f.innerHTML=filtrosHtml()};
+  if(id==='f-de'||id==='f-ate'){
+    let de=document.getElementById('f-de').value,ate=document.getElementById('f-ate').value;
+    if(de&&!ate)ate=iso(new Date());if(ate&&!de)de=ate;if(!de||!ate)return;if(de>ate)[de,ate]=[ate,de];
+    filtros.ini=de;filtros.fim=ate;lsSet('m2-ini',de);lsSet('m2-fim',ate);barra();avisar();return}
+  if(id==='f-per'&&e.target.value==='custom'&&!(filtros.ini&&filtros.fim)){const h=new Date(),a=new Date(h.getFullYear(),h.getMonth(),h.getDate()-6);filtros.ini=iso(a);filtros.fim=iso(h);lsSet('m2-ini',filtros.ini);lsSet('m2-fim',filtros.fim)}
+  const m={'f-un':['unidade','m2-un'],'f-mc':['marca','m2-mc'],'f-per':['periodo','m2-per']}[id];
   if(!m)return;filtros[m[0]]=e.target.value;lsSet(m[1],e.target.value);
-  const impl=window.V2.screens[screen];if(impl&&impl.onFiltros)impl.onFiltros();
+  if(id==='f-per')barra();
+  avisar();
 });
 window.addEventListener('hashchange',()=>{const h=location.hash.slice(1);if(S[h]&&h!==screen){screen=h;sheetOpen=false;render()}});
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change',aplicarTema);

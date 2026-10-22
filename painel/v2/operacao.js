@@ -16,7 +16,6 @@ const tip=t=>`<span class="info2" title="${esc(t)}">?</span>`;
 
 function esqueleto(){
   el.innerHTML=`<div class="g">
-  <div class="card s12 ctrl-per"><div class="filters"><span class="lbl">Período</span><select id="o-per" aria-label="Período">${[['semana_atual','Semana atual'],['mes_atual','Este mês'],['mes_passado','Mês passado'],['30','Últimos 30 dias'],['60','Últimos 60 dias'],['90','Últimos 90 dias']].map(([v,l])=>`<option value="${v}"${v===st.periodo?' selected':''}>${l}</option>`).join('')}</select></div></div>
   <div class="sec" id="manual">Escala e leituras</div>
   <div class="card s7" id="o-sem"><h3>Manual da semana ${tip('Pedidos/dia: média de pedidos por dia daquele dia da semana no período. Pico começa: primeira hora em que o movimento atinge 60% da hora mais forte do dia — é quando a equipe precisa estar pronta. Hora mais quente: a hora com mais pedidos.')}</h3><p class="hint">Recalculado com a demanda do período — sua escala baseada em dados</p><div class="tw" id="o-tsem"></div></div>
   <div class="card s5"><h3>Leituras da MIA 🤖 ${tip('Conclusões geradas dos números do período: dia mais forte e mais fraco, diferença de ticket e diagnóstico de gargalo. Mudam sozinhas conforme a demanda muda.')}</h3><p class="hint">Insights gerados dos números do período</p><div id="o-ins" style="display:grid;gap:10px"></div></div>
@@ -37,6 +36,7 @@ function esqueleto(){
 
 function pintar(){
   const d=dados;if(!d||!document.getElementById('o-sem'))return;
+  if(!d.dias_semana||!d.dias_semana.length){document.getElementById('o-tsem').innerHTML='<p class="hint">Sem pedidos no período escolhido.</p>';document.getElementById('o-ins').innerHTML='';return}
   Chart.defaults.color=css('--ink-2');Chart.defaults.borderColor=css('--line');Chart.defaults.font.family='Figtree, system-ui, sans-serif';
   const brasa=css('--brasa'),sob=css('--c-sob'),ordem=[1,2,3,4,5,6,0],por=Object.fromEntries(d.dias_semana.map(x=>[x.dow,x])),meds=d.dias_semana.map(x=>+x.media),mx=Math.max(...meds),mn=Math.min(...meds);
   document.getElementById('o-tsem').innerHTML=`<table><thead><tr><th>Dia</th><th class="r">Pedidos/dia</th><th class="r">Pico começa</th><th class="r">Hora mais quente</th><th class="r">Ticket</th></tr></thead><tbody>${ordem.map(dw=>{const x=por[dw];if(!x)return '';
@@ -77,12 +77,11 @@ async function carregar(){
     const fq=(v,u)=>u==='kg'?(+v).toLocaleString('pt-BR',{maximumFractionDigits:1})+' kg':Math.ceil(+v).toLocaleString('pt-BR')+' un';
     document.getElementById('o-comp').innerHTML=`<table><thead><tr><th>Insumo</th><th class="r">Necessidade (7 dias)</th><th class="r">Com folga de 15%</th></tr></thead><tbody>${lc.insumos.map(x=>`<tr><td>${esc(x.insumo)}</td><td class="r">${fq(x.necessidade,x.unidade)}</td><td class="r"><strong class="down">${fq(x.necessidade*1.15,x.unidade)}</strong></td></tr>`).join('')||'<tr><td colspan="3" class="mut">Sem fichas técnicas cadastradas ainda</td></tr>'}</tbody></table>`;
     document.getElementById('o-dcomp').innerHTML=`Cobre <strong style="color:var(--ink)">${lc.cobertura_pct.toFixed(0)}%</strong> das unidades vendidas${lc.sem_ficha?` · sem ficha: ${esc(lc.sem_ficha)}`:''}`}).catch(()=>{});
-  try{dados=await fetch(`/api/operacao?${qBase()}&periodo=${st.periodo}`).then(r=>r.json());pintar()}
+  try{dados=await fetch(`/api/operacao?${qBase()}&periodo=${encodeURIComponent(window.V2.periodoApi())}`).then(r=>r.json());pintar()}
   catch(e){document.getElementById('o-tsem').innerHTML='<p class="hint">Não foi possível carregar.</p>'}
 }
 function ligar(){
-  document.addEventListener('change',e=>{if(ativoAgora()&&e.target.id==='o-per'){st.periodo=e.target.value;carregar()}});
-  window.addEventListener('v2tema',()=>{if(ativoAgora()&&dados)pintar()});
+    window.addEventListener('v2tema',()=>{if(ativoAgora()&&dados)pintar()});
 }
 window.V2.screens.operacao={render(c){el=c;if(!ligado){ligar();ligado=true}clearInterval(timer);esqueleto();carregarChart().then(carregar).catch(()=>{});timer=setInterval(()=>{if(ativoAgora())carregar();else clearInterval(timer)},10*60*1000)},onFiltros(){carregar()}};
 })();

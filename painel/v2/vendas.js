@@ -35,9 +35,7 @@ function urlDados(){const f=window.V2.filtros,iv=intervalo();
 /* ---- esqueleto ---- */
 function esqueleto(){
   el.innerHTML=`<div class="g">
-  <div class="card s12 ctrl-per"><div class="filters"><span class="lbl">Período personalizado</span><input type="date" id="v-ini" value="${custom.ini}" aria-label="De"><span class="mut">→</span><input type="date" id="v-fim" value="${custom.fim}" aria-label="Até">
-   <button class="btn ghost" id="v-limpar" ${custom.ini?'':'hidden'}>Voltar ao período do filtro</button>
-   <button class="btn ghost" id="v-comp" aria-pressed="${custom.comp}">⇄ Comparar</button>
+  <div class="card s12 ctrl-per"><div class="filters"><button class="btn ghost" id="v-comp" aria-pressed="${custom.comp}">⇄ Comparar</button>
    <span id="v-compbox" ${custom.comp?'':'hidden'} class="filters"><input type="date" id="v-cini" value="${custom.cIni}" aria-label="Comparar de"><span class="mut">→</span><input type="date" id="v-cfim" value="${custom.cFim}" aria-label="Comparar até"></span></div></div>
   <div class="s12" id="v-sent" hidden></div>
   <div class="card s12" id="v-meta" hidden></div>

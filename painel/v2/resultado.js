@@ -14,7 +14,7 @@ const TIPO_FRETE={gratis:'Frete grátis — repasse integral ao motoboy',tabela:
 
 let el=null,ligado=false,canal='todos',comparar=false,dre=null,pedidos=[],gCanc=null,fixas=null,timer=null;
 
-const periodo=()=>{const p=window.V2.filtros.periodo;return p==='1'?'hoje':p};
+const periodo=()=>window.V2.periodoApi();
 const q=()=>{const f=window.V2.filtros;return `marca=${encodeURIComponent(f.marca)}&unidade=${encodeURIComponent(f.unidade)}&periodo=${periodo()}&canal=${canal}`};
 const linha=(L,pre)=>L.find(l=>l.rotulo.startsWith(pre))?.valor??0;
 const mesRef=()=>{const h=new Date(),p=periodo(),d=p==='mes_passado'?new Date(h.getFullYear(),h.getMonth()-1,1):new Date(h.getFullYear(),h.getMonth(),1);return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`};
@@ -56,7 +56,7 @@ function esqueleto(){
 async function carregarDre(){
   const d=await fetch(`/api/dre?${q()}&comparar=${comparar?1:0}`).then(r=>r.json());dre=d;
   const L=d.linhas,res=d.resumo,cmp=d.comparacao,vendas=linha(L,'Vendas cheias'),cmv=linha(L,'CMV'),ped=res.pedidos||0,rr=res.repasse_real;
-  const per=document.querySelector('#filters #f-per option:checked')?.textContent||'';
+  const per=window.V2.periodoLabel();
   document.getElementById('r-faixa').textContent=`${per}${canal!=='todos'?' · '+CANAIS.find(c=>c[0]===canal)[1]:''}${window.V2.filtros.marca!=='todas'?' · '+window.V2.filtros.marca:''}${cmp?` · vs ${fmtCurta(cmp.inicio)}–${fmtCurta(cmp.fim)}`:''}`;
   const kp=(l,v,dl,subs)=>`<div class="card kpi"><div class="k-l">${l}</div><div class="k-v">${v}</div><div class="k-s">${dl||'&nbsp;'}</div>${subs.map(s=>`<div class="k-s">${s[0]}: <b style="color:var(--ink)">${s[1]}</b></div>`).join('')}</div>`;
   document.getElementById('r-kpis').innerHTML=

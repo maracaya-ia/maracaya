@@ -83,7 +83,7 @@ async function gerente(){
     J('/api/resumo_operacao?'+window.V2.qs()).catch(()=>null)]);
   if(!ativoAgora())return;
   const dw=op&&op.dias_semana.find(x=>+x.dow===dow),NT={delivery:'Delivery',takeout:'Balcão/Retirada',onsite:'No local',closed_table:'Mesa'};
-  const per=document.querySelector('#filters #f-per option:checked')?.textContent||'período';
+  const per=window.V2.periodoLabel();
   const k=rs&&rs.kpis,tx=k&&k.total_geral>0?(100*k.cancelados/k.total_geral).toFixed(1):0;
   const horasMap={};if(rs)rs.por_hora.forEach(x=>{horasMap[+x.hora]=+x.pedidos});
   const hs=Object.keys(horasMap).map(Number).sort((a,b)=>a-b),hmx=Math.max(...Object.values(horasMap),1),hp=hs.find(h=>horasMap[h]===hmx);

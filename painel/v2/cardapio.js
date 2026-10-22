@@ -18,7 +18,6 @@ const qBase=()=>{const f=window.V2.filtros;return `marca=${encodeURIComponent(f.
 
 function esqueleto(){
   el.innerHTML=`<div class="g">
-  <div class="card s12 ctrl-per"><div class="filters"><span class="lbl">Janela de vendas</span><select id="k-dias" aria-label="Janela">${[30,60,90].map(v=>`<option value="${v}"${v===st.dias?' selected':''}>Últimos ${v} dias</option>`).join('')}</select></div></div>
   <div class="s12" id="k-aviso" hidden></div>
   <div class="sec" id="quadrante">Quadrante mágico</div>
   <div class="card s12" id="k-quad"><h3>Quadrante mágico <span class="info2" title="Cada bolinha é um produto: quanto mais pra direita, mais vende; quanto mais pra cima, mais margem por unidade deixa (preço médio − CMV). As linhas tracejadas são as medianas e dividem os 4 grupos.">?</span></h3>
@@ -90,7 +89,7 @@ function filtrar(){
 async function carregar(){
   if(!ativoAgora())return;
   fetch(`/api/encalhados?${qBase()}`).then(r=>r.json()).then(r=>{enc=r;pintarEnc()}).catch(()=>{});
-  try{dados=await fetch(`/api/cardapio?${qBase()}&dias=${st.dias}`).then(r=>r.json());pintar()}
+  try{dados=await fetch(`/api/cardapio?${qBase()}&dias=${window.V2.intervalo().dias}${window.V2.intervalo().ini?`&inicio=${window.V2.intervalo().ini}&fim=${window.V2.intervalo().fim}`:''}`).then(r=>r.json());pintar()}
   catch(e){document.getElementById('k-aviso').innerHTML='<div class="card"><h3>Não foi possível carregar</h3></div>';document.getElementById('k-aviso').hidden=false}
 }
 function ligar(){
@@ -99,7 +98,6 @@ function ligar(){
     if(b=e.target.closest('[data-excl]')){if(!confirm(`Excluir "${b.dataset.nome}" da análise de cardápio?\n\nNão apaga as vendas — só tira esse produto do quadrante mágico, da lista de custos e do radar de encalhados. Dá pra restaurar depois.`))return;const r=await post('/api/produtos/excluir',{nome:b.dataset.excl});if(r.ok)carregar();return}
     if(b=e.target.closest('[data-rest]')){const r=await post('/api/produtos/restaurar',{nome:b.dataset.rest});if(r.ok)carregar()}});
   document.addEventListener('change',async e=>{if(!ativoAgora())return;const t=e.target;
-    if(t.id==='k-dias'){st.dias=+t.value;carregar();return}
     if(t.dataset.chave){const v=parseFloat(t.value);if(isNaN(v)||v<0)return;const r=await post('/api/custos',{nome:t.dataset.chave,custo:v});if(r.ok){t.style.borderColor='var(--ok)';setTimeout(carregar,400)}else window.V2.toast(r.erro||'Não foi possível salvar')}});
   document.addEventListener('input',e=>{if(ativoAgora()&&e.target.id==='k-busca'){st.busca=e.target.value;filtrar()}});
   document.addEventListener('keydown',e=>{if(ativoAgora()&&e.key==='Enter'&&e.target.dataset&&e.target.dataset.chave)e.target.blur()});
