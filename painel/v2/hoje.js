@@ -135,11 +135,12 @@ async function cozinha(){
   </div>`};
 }
 
+let seq=0;   // ignora respostas antigas quando os filtros mudam rápido
 async function render(c){
-  el=c;const role=window.V2.role();
+  el=c;const role=window.V2.role(),meu=++seq;
   el.innerHTML='<div id="h-root"><div class="card"><p class="hint" style="margin:0">Carregando o dia…</p></div></div>';window.V2.setJump([]);
   let res=await({socio,gerente,cozinha}[role]||socio)().catch(()=>null);
-  if(res===undefined)return;
+  if(res===undefined||meu!==seq)return;
   if(res===null)res='<div class="card"><h3>Não foi possível carregar</h3><p class="hint">Tente de novo em instantes.</p></div>';
   const html=typeof res==='string'?res:res.html,r=document.getElementById('h-root');if(!r)return;r.innerHTML=html;
   if(res&&res.after)res.after().catch(()=>{});
