@@ -4232,6 +4232,26 @@ def salvar_escala(dados: dict = Body(...)):
     return {"ok": True}
 
 
+PAINEL_DONO = os.environ.get("MIA_DONO", "61995739837@s.whatsapp.net")
+PAINEL_GRUPO = "painel-v2"   # chave propria: a memoria curta da MIA do painel nao mistura com a do grupo do WhatsApp
+
+
+@app.post("/api/zap/pergunta_painel")
+def pergunta_painel(dados: dict = Body(...)):
+    """Chat do painel: reaproveita a mesma logica da MIA do grupo (zap_pergunta),
+    montando o payload como se fosse uma mensagem que marca o assistente."""
+    pergunta = str(dados.get("pergunta", "") or "").strip()[:300]
+    if not pergunta:
+        return {"ok": False, "erro": "escreva uma pergunta"}
+    payload = {"data": {"key": {"remoteJid": PAINEL_GRUPO, "fromMe": False},
+                        "message": {"conversation": pergunta},
+                        "contextInfo": {"mentionedJid": [PAINEL_DONO]}}}
+    r = zap_pergunta(payload, grupo=PAINEL_GRUPO, dono=PAINEL_DONO, dono_lid=None)
+    if not r.get("enviar"):
+        return {"ok": False, "erro": "não consegui responder agora"}
+    return {"ok": True, "texto": r["texto"]}
+
+
 @app.get("/api/estoque_historico")
 def estoque_historico(insumo: str = Query(...), limite: int = Query(80, ge=1, le=300)):
     movimentos = consultar(f"""
