@@ -8,7 +8,7 @@ import re
 import unicodedata
 from datetime import date, timedelta
 from fastapi import FastAPI, Query, Body
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 import psycopg2
 import psycopg2.extras
 
@@ -88,8 +88,22 @@ def pagina():
 @app.get("/v2")
 @app.get("/v2/")
 def pagina_v2():
-    """Preview do prototipo da 2.0 - ao lado da 1.0, sem mexer em nenhuma rota existente."""
+    """Painel 2.0 (em construcao, tela por tela) - ao lado da 1.0."""
+    return FileResponse(os.path.join(os.path.dirname(__file__), "v2", "index.html"),
+                        headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/v2/prototipo")
+def pagina_v2_prototipo():
     return FileResponse(os.path.join(os.path.dirname(__file__), "v2", "prototipo.html"))
+
+
+@app.get("/v2/assets/{nome}")
+def v2_asset(nome: str):
+    if nome != "casca.js":
+        return JSONResponse({"erro": "nao encontrado"}, status_code=404)
+    return FileResponse(os.path.join(os.path.dirname(__file__), "v2", nome),
+                        media_type="application/javascript", headers={"Cache-Control": "no-cache"})
 
 
 @app.get("/clientes")
