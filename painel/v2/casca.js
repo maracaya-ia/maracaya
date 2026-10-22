@@ -4,8 +4,7 @@ const I={hoje:'<path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/><path d="M10 2
 (function(){
 const S={
   hoje:{t:'Hoje',grp:'Dia a dia',roles:['socio','gerente','cozinha'],v1:'/'},
-  ze:{t:'Pergunte ao Zé',grp:'Dia a dia',roles:['socio','gerente'],nw:1},
-  equipe:{t:'Equipe e checklists',grp:'Dia a dia',roles:['socio','gerente','cozinha'],nw:1},
+  ze:{t:'Pergunte para MIA',grp:'Dia a dia',roles:['socio','gerente'],nw:1},
   vendas:{t:'Vendas',grp:'Dinheiro',roles:['socio'],v1:'/'},
   resultado:{t:'Resultado (DRE)',grp:'Dinheiro',roles:['socio'],v1:'/dre'},
   unidades:{t:'Comparar unidades',grp:'Dinheiro',roles:['socio'],nw:1},
@@ -16,8 +15,8 @@ const S={
   compras:{t:'Compras e estoque',grp:'Cozinha e estoque',roles:['socio','gerente','cozinha'],v1:'/compras'},
   nota:{t:'Lançar nota',grp:'Cozinha e estoque',roles:['socio','gerente','cozinha'],v1:'/lancar-nota'}
 };
-const SUBS={hoje:'Resumo do dia',ze:'Assistente com os números do painel',equipe:'Checklists, escala e recados',vendas:'Antiga Visão geral',resultado:'Antigas Performance + DRE',unidades:'Colorado e Sobradinho lado a lado',clientes:'Base, fidelização e retenção',cardapio:'Custos, margem e itens encalhados',bairros:'De onde vêm os pedidos',operacao:'Tempo de preparo e entrega',compras:'Estoque, sugestão de compra e fornecedores',nota:'Notas de fornecedor do mês'};
-const BOTTOM={socio:['hoje','vendas','ze','clientes','mais'],gerente:['hoje','operacao','ze','equipe','mais'],cozinha:['hoje','compras','equipe','nota','mais']};
+const SUBS={hoje:'Resumo do dia',ze:'Assistente com os números do painel (a mesma MIA do grupo)',vendas:'Antiga Visão geral',resultado:'Antigas Performance + DRE',unidades:'Colorado e Sobradinho lado a lado',clientes:'Base, fidelização e retenção',cardapio:'Custos, margem e itens encalhados',bairros:'De onde vêm os pedidos',operacao:'Tempo de preparo e entrega',compras:'Estoque, sugestão de compra e fornecedores',nota:'Notas de fornecedor do mês'};
+const BOTTOM={socio:['hoje','vendas','ze','clientes','mais'],gerente:['hoje','operacao','ze','compras','mais'],cozinha:['hoje','compras','nota','mais']};
 const SEM_PERIODO=['clientes','cardapio','bairros','operacao'];
 const FILTRO=['vendas','resultado','clientes','cardapio','bairros','operacao'];
 const ROLES=[['socio','Sócio'],['gerente','Gerente'],['cozinha','Cozinha']];
@@ -75,7 +74,8 @@ function render(){
   Object.entries(S).forEach(([k,s])=>{if(!s.roles.includes(role))return;if(s.grp!==grp){grp=s.grp;html+=`<div class="navgrp">${grp}</div>`}
     html+=`<a href="#${k}" data-go="${k}" ${k===screen?'aria-current="page"':''}>${svg(k)}${s.t}${s.nw?'<span class="tag-new">NOVO</span>':''}</a>`});
   document.getElementById('nav').innerHTML=html;
-  document.getElementById('bnav').innerHTML=BOTTOM[role].map(k=>{const lab=k==='mais'?'Mais':k==='ze'?'Zé':S[k].t.split(' ')[0];const cur=(k===screen||(k==='mais'&&sheetOpen))?'aria-current="page"':'';
+  document.getElementById('bnav').style.gridTemplateColumns=`repeat(${BOTTOM[role].length},1fr)`;
+  document.getElementById('bnav').innerHTML=BOTTOM[role].map(k=>{const lab=k==='mais'?'Mais':k==='ze'?'MIA':S[k].t.split(' ')[0];const cur=(k===screen||(k==='mais'&&sheetOpen))?'aria-current="page"':'';
     return k==='ze'?`<a href="#ze" data-go="ze" class="ze-btn" ${cur}><span class="z">${svg('ze')}</span>${lab}</a>`:`<a href="#${k}" data-go="${k}" ${cur}>${svg(k)}${lab}</a>`}).join('');
   document.getElementById('ttl').textContent=screen==='hoje'?({socio:'Bom dia, Álvaro',gerente:'Turno de hoje',cozinha:'Cozinha'})[role]:S[screen].t;
   document.getElementById('sub').textContent=SUBS[screen]||'';

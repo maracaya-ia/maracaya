@@ -104,7 +104,7 @@ async function gerente(){
    ${op?`<p class="hint" style="margin:10px 0 0">Cobertura: ${op.cobertura.total>0?Math.round(100*op.cobertura.mediveis/op.cobertura.total):0}% dos pedidos concluídos no portal. Concluir na hora melhora essa métrica.</p>`:''}</div>
   <div class="card s12"><h3>Pedidos por hora</h3><p class="hint">Total em 60 dias · pra planejar a montagem antes do pico</p>
    <div class="vbars">${horas.map(h=>`<div class="vb${h===hp?' hl':''}" title="${h}h: ${N(hs[h])} pedidos"><span class="num">${N(hs[h])}</span><i style="height:${Math.max(3,Math.round(120*hs[h]/mx))}px"></i><small>${h}h</small></div>`).join('')}</div></div>
-  <p class="hint s12" style="margin:0">Quem marcou e a que horas fica registrado. Os itens do checklist são os mesmos da cozinha e da tela Equipe.</p></div>`;
+  <p class="hint s12" style="margin:0">Quem marcou e a que horas fica registrado. Cada marcação guarda o nome de quem fez.</p></div>`;
 }
 
 /* ---------- cozinha ---------- */
