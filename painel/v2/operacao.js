@@ -11,7 +11,7 @@ let el=null,ligado=false,charts={},dados=null,timer=null,st={periodo:'60'};
 function carregarChart(){if(window.Chart)return Promise.resolve();return new Promise((ok,err)=>{const s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js';s.onload=ok;s.onerror=err;document.head.appendChild(s)})}
 function desenhar(id,cfg){const c=document.getElementById(id);if(!c)return;if(charts[id])charts[id].destroy();charts[id]=new Chart(c,cfg)}
 const qBase=()=>{const f=window.V2.filtros;return `marca=${encodeURIComponent(f.marca)}&unidade=${encodeURIComponent(f.unidade)}`};
-const calor=(v,max)=>{const t=max?Math.min(v/max,1):0,m=(a,b)=>Math.round(a+(b-a)*t);return `rgb(${m(232,212)},${m(226,81)},${m(214,28)})`};
+const calor=(v,max)=>`color-mix(in srgb, var(--brasa) ${Math.round(100*(max?Math.min(v/max,1):0))}%, var(--surface-2))`;
 const tip=t=>`<span class="info2" title="${esc(t)}">?</span>`;
 
 function esqueleto(){
