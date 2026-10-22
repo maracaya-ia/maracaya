@@ -159,44 +159,77 @@ function css(){if(document.getElementById('apres-css'))return;const st=document.
 .asvg{width:100%;height:auto;max-height:100%}.aquad{display:grid;grid-template-columns:2.2fr 1fr;gap:1.6em;align-items:center}.aleg2{display:grid;gap:.9em}.aleg2 div{display:grid;grid-template-columns:auto 1fr auto;gap:.1em .6em;align-items:baseline}.aleg2 i{width:.9em;height:.9em;border-radius:50%;grid-row:1/3;align-self:center}.aleg2 span{color:#A69D93;font-size:.9em}.aleg2 small{grid-column:2/4;color:#A69D93;font-size:.8em}
 .acols{display:grid;grid-template-columns:repeat(3,1fr);gap:1.4em}.acol h4{margin:0 0 .6em;font-size:1.1em}.acol div{display:flex;justify-content:space-between;gap:.8em;padding:.45em 0;border-top:1px solid #35302B;font-size:.95em}.acol b{white-space:nowrap}
 .agrid3.tres{grid-template-columns:repeat(3,1fr)}.asub{margin:1em 0 .5em;color:#A69D93;font-size:.9em;text-transform:uppercase;letter-spacing:.08em}
+.ap-prep{width:min(100%,38em);margin:auto;font-size:min(1.5vw,2.4vh,17px);max-height:100%;overflow:auto;padding:1em}.ap-prep h2{font-family:"Bricolage Grotesque",Figtree,sans-serif;font-size:2em;margin:0 0 .3em}.ap-prep p{margin:0 0 1em}
+.ap-sets{list-style:none;margin:0;padding:0;display:grid;gap:.5em}.ap-sets li{display:flex;align-items:center;gap:.8em;background:#1D1A17;border:1px solid #35302B;border-radius:.8em;padding:.55em .9em}.ap-sets li.off{opacity:.45}.ap-sets .n{width:1.7em;height:1.7em;border-radius:50%;background:#F0743E;color:#fff;display:grid;place-items:center;font-weight:800;font-size:.9em;flex:none}.ap-sets li.off .n{background:#35302B}
+.ap-sets label{flex:1;display:flex;align-items:center;gap:.5em;cursor:pointer;font-size:1.05em}.ap-sets input{accent-color:#F0743E;width:1.1em;height:1.1em}.ap-sets small{color:#A69D93;margin-left:auto}.ap-sets .mv{display:flex;gap:.3em}.ap-sets .mv .ap-btn{padding:.2em .6em}.ap-btn:disabled{opacity:.35;cursor:default}
+.ap-prep-btns{display:flex;gap:.7em;align-items:center;margin-top:1.1em;flex-wrap:wrap}.ap-prep-btns .mut{margin-left:auto}.ap-btn.go{background:#F0743E;border-color:#F0743E;color:#fff}.ap-btn.go:disabled{background:#35302B;border-color:#35302B;color:#A69D93}
+.apres.preparando .ap-bot,.apres.preparando #ap-ord{display:none}.apres:not(.preparando) #ap-ord{display:inline-block}
 @media (max-height:520px){.apres{grid-template-rows:minmax(0,1fr)}.ap-top{position:absolute;top:0;right:0;z-index:3;padding:6px 8px}.ap-top .lg,.ap-top .pr{display:none}.ap-bot{position:absolute;bottom:0;left:0;right:0;z-index:3;padding:4px 10px 6px;background:linear-gradient(transparent,rgba(14,12,11,.92))}.ap-stage{padding:0;grid-row:1}.sl{width:100%;height:100%;aspect-ratio:auto;border-radius:0;border:0;font-size:min(1.7vw,3.3vh);padding:1.6em 2.4em 3.6em}.ap-btn{padding:5px 10px;font-size:12px}.ap-dots button{width:7px;height:7px}}
 @media (max-width:760px){.ap-top .pr{display:none}.sl{font-size:min(2.6vw,2vh);padding:1.6em 1.8em}.ap-top{padding:10px 12px}.ap-bot{padding:8px 12px 12px}.ap-btn{padding:8px 10px}}
 `;document.head.appendChild(st)}
 
+/* ---------- setores (ordem editável / sorteio) ---------- */
+const SETORES=[['fin','💰','Financeiro'],['ven','🛒','Vendas e canais'],['car','🍔','Cardápio'],['ope','⏱️','Operação e estoque'],['cli','👥','Clientes'],['cre','📈','Crescimento e meta']];
+const setorDe=t=>/^(O grupo em números|Faturamento por dia|Por unidade|Por marca|Do bruto ao lucro|Margem por pedido)/.test(t)?'fin':/^(Canais|Campeões|Quando o movimento|De onde vêm)/.test(t)?'ven':/^Cardápio/.test(t)?'car':/^(Operação|Estoque)/.test(t)?'ope':/^Clientes/.test(t)?'cli':'cre';
+let fase='preparar',capaIni=null,capaFim=null,sets=[];   // sets: [{id,ico,nome,slides,on}] na ordem atual
+function prepararSetores(todos){
+  capaIni=todos[0];capaFim=todos[todos.length-1];const meio=todos.slice(1,-1);
+  sets=SETORES.map(([id,ico,nome])=>({id,ico,nome,slides:meio.filter(x=>setorDe(x.t)===id),on:true})).filter(x=>x.slides.length);
+}
+function sortear(){
+  const antes=sets.map(x=>x.id).join();let n=0;
+  do{for(let i=sets.length-1;i>0;i--){const j=Number(crypto.getRandomValues(new Uint32Array(1))[0]%(i+1));[sets[i],sets[j]]=[sets[j],sets[i]]}}while(sets.map(x=>x.id).join()===antes&&sets.length>1&&++n<8);
+}
+function ordemPadrao(){sets.sort((a,b)=>SETORES.findIndex(x=>x[0]===a.id)-SETORES.findIndex(x=>x[0]===b.id))}
+function montarLista(){slides=[capaIni,...sets.filter(x=>x.on).flatMap(x=>x.slides),capaFim]}
+
+function painel(){
+  const total=sets.filter(x=>x.on).reduce((a,x)=>a+x.slides.length,0)+2;
+  return `<div class="ap-prep"><h2>Montar a apresentação</h2><p class="mut">Escolha a ordem dos setores. Sortear evita começar sempre pelo mesmo assunto. A capa fica no início e o encerramento no fim.</p>
+   <ol class="ap-sets">${sets.map((x,i)=>`<li class="${x.on?'':'off'}"><span class="n">${i+1}</span><label><input type="checkbox" data-on="${x.id}" ${x.on?'checked':''}> <span class="ic">${x.ico}</span> <b>${esc(x.nome)}</b> <small>${x.slides.length} slide${x.slides.length>1?'s':''}</small></label><span class="mv"><button class="ap-btn" data-up="${i}" aria-label="Subir ${esc(x.nome)}" ${i===0?'disabled':''}>▲</button><button class="ap-btn" data-down="${i}" aria-label="Descer ${esc(x.nome)}" ${i===sets.length-1?'disabled':''}>▼</button></span></li>`).join('')}</ol>
+   <div class="ap-prep-btns"><button class="ap-btn" id="ap-sort">🎲 Sortear ordem</button><button class="ap-btn" id="ap-pad">↺ Ordem padrão</button><span class="mut">${total} slides</span><button class="ap-btn go" id="ap-go" ${carregando?'disabled':''}>${carregando?'Carregando os dados…':'▶ Começar'}</button></div></div>`}
 function pintar(){
-  const st=document.getElementById('ap-stage');if(!st)return;
-  if(carregando){st.innerHTML='<div class="ap-load"><b>Preparando a apresentação…</b>Buscando os números do período</div>';return}
+  const st=document.getElementById('ap-stage');if(!st)return;const ap=document.getElementById('apres');
+  if(ap)ap.classList.toggle('preparando',fase==='preparar');
+  if(fase==='preparar'){st.innerHTML=painel();return}
   const s=slides[idx];
   st.innerHTML=`<div class="sl" role="group" aria-roledescription="slide" aria-label="Slide ${idx+1} de ${slides.length}">${s.capa?s.html:`<h2>${esc(s.t)}</h2><div class="corpo">${s.html}</div>`}</div>`;
   document.getElementById('ap-cnt').textContent=`${idx+1}/${slides.length}`;
-  document.querySelectorAll('#ap-dots button').forEach((b,i)=>b.setAttribute('aria-current',i===idx));
+  document.getElementById('ap-dots').innerHTML=slides.map((x,i)=>`<button data-i="${i}" aria-label="Ir para o slide ${i+1}" aria-current="${i===idx}"></button>`).join('');
 }
-function ir(i){if(!slides.length)return;idx=Math.max(0,Math.min(slides.length-1,i));pintar();if(tocando)reiniciarAuto()}
+function comecar(){if(carregando||!sets.length)return;montarLista();idx=0;fase='apresentar';pintar()}
+function voltarPainel(){parar();fase='preparar';pintar()}
+function ir(i){if(fase!=='apresentar'||!slides.length)return;idx=Math.max(0,Math.min(slides.length-1,i));pintar();if(tocando)reiniciarAuto()}
 function reiniciarAuto(){clearInterval(auto);if(tocando)auto=setInterval(()=>{if(idx>=slides.length-1){parar()}else ir(idx+1)},9000)}
 function parar(){tocando=false;clearInterval(auto);const b=document.getElementById('ap-play');if(b){b.setAttribute('aria-pressed','false');b.textContent='▶ Automático'}}
 function tecla(e){if(!aberto)return;
-  if(e.key==='Escape'){e.preventDefault();fechar()}
-  else if(e.key==='ArrowRight'||e.key==='PageDown'||e.key===' '){e.preventDefault();ir(idx+1)}
+  if(e.key==='Escape'){e.preventDefault();fechar();return}
+  if(fase==='preparar'){if(e.key==='Enter'&&!/BUTTON|INPUT/.test(document.activeElement.tagName)){e.preventDefault();comecar()}return}
+  if(e.key==='ArrowRight'||e.key==='PageDown'||e.key===' '){e.preventDefault();ir(idx+1)}
   else if(e.key==='ArrowLeft'||e.key==='PageUp'){e.preventDefault();ir(idx-1)}
-  else if(e.key==='Home')ir(0);else if(e.key==='End')ir(slides.length-1);else if(e.key==='f'||e.key==='F')tela()}
+  else if(e.key==='Home')ir(0);else if(e.key==='End')ir(slides.length-1);else if(e.key==='f'||e.key==='F')tela();else if(e.key==='o'||e.key==='O')voltarPainel()}
 function tela(){const el=document.getElementById('apres');if(document.fullscreenElement)document.exitFullscreen();else if(el&&el.requestFullscreen)el.requestFullscreen().catch(()=>{})}
 function fechar(){aberto=false;parar();if(document.fullscreenElement)document.exitFullscreen().catch(()=>{});const a=document.getElementById('apres');if(a)a.remove();document.removeEventListener('keydown',tecla,true);document.body.style.overflow=''}
 async function abrir(){
-  if(aberto)return;aberto=true;css();carregando=true;idx=0;slides=[];rotulo=window.V2.periodoLabel();
-  const a=document.createElement('div');a.id='apres';a.className='apres';a.setAttribute('role','dialog');a.setAttribute('aria-label','Apresentação');
-  a.innerHTML=`<div class="ap-top"><div class="lg" role="img" aria-label="Maracayá"></div><div class="pr">${esc(rotulo)}</div><button class="ap-btn" id="ap-fs" title="Tela cheia (F)">⛶ Tela cheia</button><button class="ap-btn" id="ap-x" title="Sair (Esc)">✕ Sair</button></div>
+  if(aberto)return;aberto=true;css();carregando=true;idx=0;slides=[];sets=[];fase='preparar';rotulo=window.V2.periodoLabel();
+  const a=document.createElement('div');a.id='apres';a.className='apres preparando';a.setAttribute('role','dialog');a.setAttribute('aria-label','Apresentação');
+  a.innerHTML=`<div class="ap-top"><div class="lg" role="img" aria-label="Maracayá"></div><div class="pr">${esc(rotulo)}</div><button class="ap-btn" id="ap-ord" title="Reordenar os setores (O)">⇅ Ordem</button><button class="ap-btn" id="ap-fs" title="Tela cheia (F)">⛶ Tela cheia</button><button class="ap-btn" id="ap-x" title="Sair (Esc)">✕ Sair</button></div>
    <div class="ap-stage" id="ap-stage"></div>
    <div class="ap-bot"><button class="ap-btn" id="ap-prev" aria-label="Anterior">‹</button><button class="ap-btn" id="ap-play" aria-pressed="false">▶ Automático</button><div class="ap-dots" id="ap-dots"></div><span class="ap-cnt" id="ap-cnt"></span><button class="ap-btn" id="ap-next" aria-label="Próximo">›</button></div>`;
   document.body.appendChild(a);document.body.style.overflow='hidden';document.addEventListener('keydown',tecla,true);
   a.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;
-    if(b.id==='ap-x')fechar();else if(b.id==='ap-fs')tela();else if(b.id==='ap-prev')ir(idx-1);else if(b.id==='ap-next')ir(idx+1);
+    if(b.id==='ap-x')fechar();else if(b.id==='ap-fs')tela();else if(b.id==='ap-ord')voltarPainel();
+    else if(b.id==='ap-prev')ir(idx-1);else if(b.id==='ap-next')ir(idx+1);
     else if(b.id==='ap-play'){tocando=!tocando;b.setAttribute('aria-pressed',tocando);b.textContent=tocando?'❚❚ Pausar':'▶ Automático';reiniciarAuto()}
+    else if(b.id==='ap-sort'){sortear();pintar()}else if(b.id==='ap-pad'){ordemPadrao();pintar()}else if(b.id==='ap-go')comecar();
+    else if(b.dataset.up!==undefined){const i=+b.dataset.up;if(i>0){[sets[i-1],sets[i]]=[sets[i],sets[i-1]];pintar()}}
+    else if(b.dataset.down!==undefined){const i=+b.dataset.down;if(i<sets.length-1){[sets[i+1],sets[i]]=[sets[i],sets[i+1]];pintar()}}
     else if(b.dataset.i!==undefined)ir(+b.dataset.i)});
-  let x0=null;a.addEventListener('touchstart',e=>{x0=e.touches[0].clientX},{passive:true});a.addEventListener('touchend',e=>{if(x0==null)return;const dx=e.changedTouches[0].clientX-x0;if(Math.abs(dx)>50)ir(idx+(dx<0?1:-1));x0=null});
-  pintar();
-  try{const D=await coletar();if(!aberto)return;slides=montar(D);carregando=false;
-    document.getElementById('ap-dots').innerHTML=slides.map((s,i)=>`<button data-i="${i}" aria-label="Ir para o slide ${i+1}"></button>`).join('');pintar()}
-  catch(e){carregando=false;const st=document.getElementById('ap-stage');if(st)st.innerHTML='<div class="ap-load"><b>Não foi possível montar a apresentação</b>Feche e tente de novo em instantes.</div>'}
+  a.addEventListener('change',e=>{const c=e.target.closest('[data-on]');if(!c)return;const x=sets.find(y=>y.id===c.dataset.on);if(x){x.on=c.checked;if(!sets.some(y=>y.on)){x.on=true}pintar()}});
+  let x0=null;a.addEventListener('touchstart',e=>{x0=e.touches[0].clientX},{passive:true});a.addEventListener('touchend',e=>{if(x0==null||fase!=='apresentar')return;const dx=e.changedTouches[0].clientX-x0;if(Math.abs(dx)>50)ir(idx+(dx<0?1:-1));x0=null});
+  const st=document.getElementById('ap-stage');st.innerHTML='<div class="ap-load"><b>Preparando a apresentação…</b>Buscando os números do período</div>';
+  try{const D=await coletar();if(!aberto)return;prepararSetores(montar(D));carregando=false;pintar()}
+  catch(e){carregando=false;if(st)st.innerHTML='<div class="ap-load"><b>Não foi possível montar a apresentação</b>Feche e tente de novo em instantes.</div>'}
 }
 window.V2.apresentar=abrir;
 })();
