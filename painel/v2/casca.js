@@ -34,13 +34,24 @@ const filtros={unidade:lsGet('m2-un','todas'),marca:lsGet('m2-mc','todas'),perio
 let unidades=[], marcas=[];
 
 /* API pública pra as telas: leem os filtros e reagem a mudanças */
-window.V2={filtros,screens:{},
-  qs(extra){const p=new URLSearchParams({unidade:filtros.unidade,marca:filtros.marca});
-    if(/^\d+$/.test(filtros.periodo))p.set('dias',filtros.periodo);else p.set('periodo',filtros.periodo);
+const iso=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+/* período escolhido -> {dias, ini, fim}; ini/fim só nos períodos de calendário */
+function intervalo(){const p=filtros.periodo,h=new Date();
+  if(/^\d+$/.test(p))return{dias:+p};
+  let a,b;
+  if(p==='ontem'){a=b=new Date(h.getFullYear(),h.getMonth(),h.getDate()-1)}
+  else if(p==='mes_atual'){a=new Date(h.getFullYear(),h.getMonth(),1);b=h}
+  else{a=new Date(h.getFullYear(),h.getMonth()-1,1);b=new Date(h.getFullYear(),h.getMonth(),0)}
+  return{dias:Math.round((b-a)/864e5)+1,ini:iso(a),fim:iso(b)}}
+window.V2={filtros,screens:{},intervalo,
+  qs(extra){const iv=intervalo(),p=new URLSearchParams({unidade:filtros.unidade,marca:filtros.marca,dias:iv.dias});
+    if(iv.ini){p.set('inicio',iv.ini);p.set('fim',iv.fim)}
     Object.entries(extra||{}).forEach(([k,v])=>p.set(k,v));return p.toString()},
+  setJump(list){const jn=document.getElementById('jump');jn.innerHTML=list.map(x=>`<a href="#${screen}" data-jump="${x[0]}">${x[1]}</a>`).join('');jn.hidden=!list.length},
   toast};
 
 function aplicarTema(){const r=document.documentElement;if(tema==='auto')r.removeAttribute('data-theme');else r.setAttribute('data-theme',tema);
+  window.dispatchEvent(new Event('v2tema'));
   const m=document.querySelector('meta[name=theme-color]');if(m)m.content=(tema==='dark'||(tema==='auto'&&matchMedia('(prefers-color-scheme: dark)').matches))?'#0E0C0B':'#1E1B18'}
 function segs(){document.querySelectorAll('[data-seg-tema]').forEach(el=>el.innerHTML=TEMAS.map(([v,l])=>`<button data-tema="${v}" aria-pressed="${tema===v}">${l}</button>`).join(''));
   document.querySelectorAll('[data-seg-role]').forEach(el=>el.innerHTML=ROLES.map(([v,l])=>`<button data-role="${v}" aria-pressed="${role===v}">${l}</button>`).join(''))}
@@ -87,6 +98,7 @@ function toast(t){const o=document.querySelector('.toast');if(o)o.remove();const
 function irPara(k){screen=k;sheetOpen=false;try{history.replaceState(null,'','#'+k)}catch(_){}render()}
 
 document.addEventListener('click',e=>{
+  const jp=e.target.closest('[data-jump]');if(jp){e.preventDefault();const t=document.getElementById(jp.dataset.jump);if(t)t.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'start'});return}
   const go=e.target.closest('[data-go]');
   if(go){e.preventDefault();const k=go.dataset.go;if(k==='mais'){sheetOpen=!sheetOpen;render()}else irPara(k);return}
   const t=e.target.closest('[data-tema]');if(t){tema=t.dataset.tema;lsSet('m2-tema',tema);aplicarTema();segs();return}
