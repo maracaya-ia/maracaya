@@ -78,9 +78,9 @@ function barrasV(itens,destaque){const mx=Math.max(...itens.map(i=>i.v),1);
   return `<div class="vbars">${itens.map(i=>`<div class="vb${i.k===destaque?' hl':''}" title="${esc(i.k)}: ${N(i.v)} pedidos"><span class="num">${N(i.v)}</span><i style="height:${Math.max(3,Math.round(120*i.v/mx))}px"></i><small>${esc(i.k)}</small></div>`).join('')}</div>`}
 async function gerente(){
   const dow=new Date().getDay(),f=window.V2.filtros;
-  const [op,meta,rs]=await Promise.all([
+  const [op,rs]=await Promise.all([
     J(`/api/operacao?marca=${encodeURIComponent(f.marca)}&unidade=${encodeURIComponent(f.unidade)}&periodo=60`).catch(()=>null),
-    J('/api/meta').catch(()=>null),J('/api/resumo_operacao?'+window.V2.qs()).catch(()=>null)]);
+    J('/api/resumo_operacao?'+window.V2.qs()).catch(()=>null)]);
   if(!ativoAgora())return;
   const dw=op&&op.dias_semana.find(x=>+x.dow===dow),NT={delivery:'Delivery',takeout:'Balcão/Retirada',onsite:'No local',closed_table:'Mesa'};
   const per=document.querySelector('#filters #f-per option:checked')?.textContent||'período';
@@ -93,16 +93,14 @@ async function gerente(){
   const nomeUn=f.unidade==='todas'?'todas as unidades':f.unidade,nomeMc=f.marca==='todas'?'todas as marcas':f.marca;
   return `<div class="g">
   <div class="s12" style="font-size:12.5px;color:var(--ink-2)">Operação · <b style="color:var(--ink)">${esc(per)}</b> · ${esc(nomeUn)} · ${esc(nomeMc)}</div>
-  ${kpi('Pedidos',k?N(k.pedidos):'—',k&&dias.length>1?`média de ${N1(k.pedidos/dias.length)}/dia`:'','s3')}
-  ${kpi('Faturamento',k?R0(k.faturamento):'—',k&&dias.length>1?`média de ${R0(k.faturamento/dias.length)}/dia`:'','s3')}
-  ${kpi('Ticket médio',k?R(k.ticket):'—','','s3')}
-  ${kpi('Cancelamentos',k?N(k.cancelados):'—',k?`${tx}% dos pedidos`:'','s3')}
-  ${kpi(`Previsão pra hoje (${DIAS[dow]})`,dw?`${Math.round(dw.media)} pedidos`:'—',dw?`média das ${DIAS[dow]}s · pico às ${dw.pico_inicio}h`:'')}
-  ${kpi(`Ticket das ${DIAS[dow]}s`,dw?R(dw.ticket):'—','60 dias')}
-  ${kpi('Meta da noite',meta&&meta.meta!=null?R0(meta.necessario_por_dia):'—','pra manter o mês no trilho')}
+  ${kpi('Pedidos',k?N(k.pedidos):'—',k&&dias.length>1?`média de ${N1(k.pedidos/dias.length)}/dia`:'','s4')}
+  ${kpi('Ticket médio',k?R(k.ticket):'—','','s4')}
+  ${kpi('Cancelamentos',k?N(k.cancelados):'—',k?`${tx}% dos pedidos`:'','s4')}
+  ${kpi(`Previsão pra hoje (${DIAS[dow]})`,dw?`${Math.round(dw.media)} pedidos`:'—',dw?`média das ${DIAS[dow]}s · pico às ${dw.pico_inicio}h`:'','s6')}
+  ${kpi(`Ticket das ${DIAS[dow]}s`,dw?R(dw.ticket):'—','60 dias','s6')}
   <div class="card s6"><h3>Pedidos por hora</h3><p class="hint">${esc(per)} · pra planejar a montagem antes do pico</p>${hs.length?barrasV(hs.map(h=>({k:h+'h',v:horasMap[h]})),hp+'h'):'<p class="hint">Sem pedidos no período.</p>'}</div>
   <div class="card s6"><h3>Campeões de venda</h3><p class="hint">${esc(per)}</p>${rs&&rs.top_produtos.length?rs.top_produtos.slice(0,8).map(p=>`<div class="hbar" style="grid-template-columns:minmax(0,1fr) 80px 40px"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(p.nome)}">${esc(p.nome)}</span><span class="hb"><i style="width:${Math.max(3,100*p.qtd/maxP)}%"></i></span><b>${N(p.qtd)}</b></div>`).join(''):'<p class="hint">Sem vendas no período.</p>'}</div>
-  <div class="card s6"><h3>Pedidos por canal</h3><p class="hint">${esc(per)}</p>${rs&&rs.canais.length?tbl(['Canal','Pedidos','%','Bruto'],rs.canais.map(c=>[esc(CANAL[c.origem]??c.origem),N(c.pedidos),totC?(100*c.pedidos/totC).toFixed(0)+'%':'—',R0(c.bruto)]),[1,2,3]):'<p class="hint">Sem pedidos no período.</p>'}</div>
+  <div class="card s6"><h3>Pedidos por canal</h3><p class="hint">${esc(per)}</p>${rs&&rs.canais.length?tbl(['Canal','Pedidos','%'],rs.canais.map(c=>[esc(CANAL[c.origem]??c.origem),N(c.pedidos),totC?(100*c.pedidos/totC).toFixed(0)+'%':'—']),[1,2]):'<p class="hint">Sem pedidos no período.</p>'}</div>
   <div class="card s6" id="tempos"><h3>Tempos de atendimento</h3><p class="hint">Do pedido entrar até a conclusão · 60 dias</p>${op&&op.tempos_canal.length?tbl(['Tipo','Mediana','Pior 10%','Pedidos'],op.tempos_canal.map(t=>[NT[t.tipo]??t.tipo,t.mediana+' min',+t.p90>90?`<span class="pill p-bad">${t.p90} min</span>`:t.p90+' min',N(t.pedidos)]),[1,2,3]):'<p class="hint">Sem dados.</p>'}
    ${op?`<p class="hint" style="margin:10px 0 0">Cobertura: ${op.cobertura.total>0?Math.round(100*op.cobertura.mediveis/op.cobertura.total):0}% dos pedidos concluídos no portal. Concluir na hora melhora essa métrica.</p>`:''}</div>
   ${dias.length>1?`<div class="card s12"><h3>Pedidos por dia</h3><p class="hint">${esc(per)}</p>${barrasV(dias)}</div>`:''}

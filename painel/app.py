@@ -1056,12 +1056,15 @@ def analise_bairros(marca: str = Query("todas"), unidade: str = Query("todas"), 
 def resumo_operacao(dias: int = Query(30, ge=1, le=365), marca: str = Query("todas"), unidade: str = Query("todas"),
                     inicio: str = Query(None), fim: str = Query(None)):
     """Principais numeros da operacao (pedidos, faturamento, ticket, cancelamentos, horario, campeoes,
-    canais) para o perfil gerente: sai do mesmo calculo de /api/dados, SEM comissoes, pedagio ou custos."""
+    canais) para o perfil gerente: sai do mesmo calculo de /api/dados, SEM faturamento, comissoes, pedagio ou custos."""
     d = dados(dias=dias, marca=marca, unidade=unidade, inicio=inicio, fim=fim, comp_inicio=None, comp_fim=None)
     return {
-        "kpis": d["kpis"], "por_dia": d["por_dia"], "por_hora": d["por_hora"], "top_produtos":
-        [{"nome": p["nome"], "qtd": p["qtd"]} for p in d["top_produtos"]],
-        "canais": [{"origem": c["origem"], "pedidos": c["pedidos"], "bruto": c["bruto"]} for c in d["canais"]],
+        "kpis": {"pedidos": d["kpis"]["pedidos"], "ticket": d["kpis"]["ticket"],
+                 "cancelados": d["kpis"]["cancelados"], "total_geral": d["kpis"]["total_geral"]},
+        "por_dia": [{"dia": x["dia"], "pedidos": x["pedidos"]} for x in d["por_dia"]],
+        "por_hora": d["por_hora"],
+        "top_produtos": [{"nome": p["nome"], "qtd": p["qtd"]} for p in d["top_produtos"]],
+        "canais": [{"origem": c["origem"], "pedidos": c["pedidos"]} for c in d["canais"]],
         "marcas": d["marcas"],
     }
 
