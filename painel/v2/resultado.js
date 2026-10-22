@@ -87,7 +87,7 @@ function desenharDre(){
   const d=dre;if(!d||!document.getElementById('r-dre'))return;
   const p=periodo(),mes=(p==='mes_atual'||p==='mes_passado')?mesRef():null;
   let extra='',fx=null;
-  if(mes&&fixas&&fixas.mes.startsWith(mes)){
+  if(mes&&fixas&&fixas.mes.startsWith(mes)&&fixas.total>0){
     let tot=fixas.total,nota=`Despesas cadastradas pra ${mesNome(mes)}`;
     if(p==='mes_atual'){const h=new Date(),dm=new Date(h.getFullYear(),h.getMonth()+1,0).getDate();tot=fixas.total*h.getDate()/dm;nota+=` · proporcional aos ${h.getDate()} de ${dm} dias do mês`}
     fx=tot;
@@ -97,7 +97,7 @@ function desenharDre(){
     return `<div class="dre-l ${fin||tot?'soma':''}"><div><span>${l.t==='-'&&!fin&&!tot?'(−) ':''}${esc(l.rotulo)}</span>${l.nota?`<small>${esc(l.nota)}</small>`:''}</div><b>${l.t==='-'?'−':''}${R(Math.abs(l.valor))}</b></div>`}).join('');
   const fixasRows=fx!=null?`<div class="dre-l"><div><span>(−) Despesas fixas</span><small>${esc(`Despesas cadastradas pra ${mesNome(mes)}${p==='mes_atual'?' · proporcional aos dias do mês':''}`)}</small></div><b>−${R(fx)}</b></div>
     <div class="dre-l soma final"><div><span>= Lucro líquido real</span></div><b class="${lucro-fx>=0?'up':'down'}">${R(lucro-fx)}</b></div>`
-    :(mes?'':`<p class="hint" style="margin:8px 0 0">Pra ver o lucro líquido real (com despesas fixas), escolha <b>Este mês</b> ou <b>Mês passado</b> no filtro de período.</p>`);
+    :(mes?`<p class="hint" style="margin:8px 0 0">Cadastre as despesas fixas do mês (card <b>Despesas fixas</b>, abaixo) pra ver o lucro líquido real aqui.</p>`:`<p class="hint" style="margin:8px 0 0">Pra ver o lucro líquido real (com despesas fixas), escolha <b>Este mês</b> ou <b>Mês passado</b> no filtro de período.</p>`);
   document.getElementById('r-dre').innerHTML=rows+fixasRows;
   const L=document.getElementById('r-lucro'),real=fx!=null?lucro-fx:null;
   L.innerHTML=`<div class="k-l">Sobrou na chapa</div><div class="k-v ${lucro>=0?'up':'down'}">${R(lucro)}</div><div class="k-s">margem de <b style="color:var(--ink)">${d.resumo.margem.toFixed(1)}%</b> · ${N(d.resumo.pedidos)} pedidos</div>${real!=null?`<div class="k-s" style="margin-top:6px">Lucro líquido real: <b class="${real>=0?'up':'down'}">${R(real)}</b></div>`:''}`;
