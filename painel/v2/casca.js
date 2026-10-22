@@ -27,7 +27,7 @@ const lsGet=(k,d)=>{try{return localStorage.getItem(k)||d}catch(_){return d}};
 const lsSet=(k,v)=>{try{localStorage.setItem(k,v)}catch(_){}};
 const svg=k=>`<svg viewBox="0 0 24 24" aria-hidden="true">${I[k]||''}</svg>`;
 
-let role=lsGet('m2-role','socio'); if(!ROLES.some(r=>r[0]===role))role='socio';
+let perfil='socio',role='socio';   // perfil = quem logou (vem do servidor); role = tela exibida (sócio pode "ver como")
 let tema=lsGet('m2-tema','auto');
 let screen='hoje', sheetOpen=false;
 const filtros={unidade:lsGet('m2-un','todas'),marca:lsGet('m2-mc','todas'),periodo:lsGet('m2-per','30')};
@@ -55,7 +55,8 @@ function aplicarTema(){const r=document.documentElement;if(tema==='auto')r.remov
   window.dispatchEvent(new Event('v2tema'));
   const m=document.querySelector('meta[name=theme-color]');if(m)m.content=(tema==='dark'||(tema==='auto'&&matchMedia('(prefers-color-scheme: dark)').matches))?'#0E0C0B':'#1E1B18'}
 function segs(){document.querySelectorAll('[data-seg-tema]').forEach(el=>el.innerHTML=TEMAS.map(([v,l])=>`<button data-tema="${v}" aria-pressed="${tema===v}">${l}</button>`).join(''));
-  document.querySelectorAll('[data-seg-role]').forEach(el=>el.innerHTML=ROLES.map(([v,l])=>`<button data-role="${v}" aria-pressed="${role===v}">${l}</button>`).join(''))}
+  document.querySelectorAll('.ver-como').forEach(el=>el.hidden=perfil!=='socio');
+  document.querySelectorAll('[data-seg-role]').forEach(el=>el.innerHTML=perfil!=='socio'?'':ROLES.map(([v,l])=>`<button data-role="${v}" aria-pressed="${role===v}">${l}</button>`).join(''))}
 
 function filtrosHtml(){
   const o=(arr,sel,todas)=>`<option value="todas"${sel==='todas'?' selected':''}>${todas}</option>`+arr.map(x=>`<option value="${x}"${x===sel?' selected':''}>${x}</option>`).join('');
@@ -89,7 +90,8 @@ function render(){
     const sh=document.createElement('div');sh.className='sheet';
     sh.innerHTML=`<div class="lbl" style="margin-bottom:10px">Mais telas</div><div class="grid3">${rest.map(k=>`<a href="#${k}" data-go="${k}">${svg(k)}${S[k].t}</a>`).join('')}</div>
       <div class="lbl" style="margin-top:14px">Tema</div><div class="seg" data-seg-tema></div>
-      <div class="lbl" style="margin-top:12px">Ver como</div><div class="seg" data-seg-role></div>`;
+      <div class="ver-como"><div class="lbl" style="margin-top:12px">Ver como</div><div class="seg" data-seg-role></div></div>
+      <button class="btn ghost" data-sair style="margin-top:14px;width:100%">Sair</button>`;
     document.getElementById('app').appendChild(sh)}
   segs();
   document.getElementById('main').scrollTop=0;
@@ -103,6 +105,7 @@ document.addEventListener('click',e=>{
   const jp=e.target.closest('[data-jump]');if(jp){e.preventDefault();const t=document.getElementById(jp.dataset.jump);if(t)t.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'start'});return}
   const go=e.target.closest('[data-go]');
   if(go){e.preventDefault();const k=go.dataset.go;if(k==='mais'){sheetOpen=!sheetOpen;render()}else irPara(k);return}
+  if(e.target.closest('[data-sair]')){fetch('/api/logout',{method:'POST'}).finally(()=>{location.href='/login'});return}
   const t=e.target.closest('[data-tema]');if(t){tema=t.dataset.tema;lsSet('m2-tema',tema);aplicarTema();segs();return}
   const r=e.target.closest('[data-role]');if(r){role=r.dataset.role;lsSet('m2-role',role);screen='hoje';sheetOpen=false;try{history.replaceState(null,'','#hoje')}catch(_){}render();return}
   if(sheetOpen&&!e.target.closest('.sheet')){sheetOpen=false;render()}
@@ -118,18 +121,27 @@ matchMedia('(prefers-color-scheme: dark)').addEventListener('change',aplicarTema
 
 aplicarTema();
 {const h=location.hash.slice(1);if(S[h])screen=h}
-/* as telas (compras.js etc.) carregam depois: desenha só quando todas registraram */
-if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',render);else render();
-
-/* filtros vêm da API: unidades e marcas reais */
-Promise.all([
-  fetch('/api/unidades').then(r=>r.json()).catch(()=>({})),
-  fetch('/api/dados?dias=30').then(r=>r.json()).catch(()=>({}))
-]).then(([u,d])=>{
-  unidades=u.unidades||[]; marcas=(d.marcas||[]).map(m=>m.marca);
-  if(filtros.unidade!=='todas'&&!unidades.includes(filtros.unidade))filtros.unidade='todas';
-  if(filtros.marca!=='todas'&&!marcas.includes(filtros.marca))filtros.marca='todas';
-  const f=document.getElementById('filters');if(f.innerHTML)f.innerHTML=filtrosHtml();
-  document.getElementById('sync').textContent=unidades.length?`Conectado · ${unidades.length} unidades`:'Sem conexão com a API';
-});
+/* quem está logado define o perfil; sem login, vai pra tela de entrada */
+function iniciar(){
+  segs();
+  /* as telas (compras.js etc.) carregam depois: desenha só quando todas registraram */
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',render);else render();
+  /* filtros vêm da API: unidades e marcas reais */
+  Promise.all([
+    fetch('/api/unidades').then(r=>r.json()).catch(()=>({})),
+    fetch('/api/marcas').then(r=>r.json()).catch(()=>({}))
+  ]).then(([u,d])=>{
+    unidades=u.unidades||[]; marcas=d.marcas||[];
+    if(filtros.unidade!=='todas'&&!unidades.includes(filtros.unidade))filtros.unidade='todas';
+    if(filtros.marca!=='todas'&&!marcas.includes(filtros.marca))filtros.marca='todas';
+    const f=document.getElementById('filters');if(f.innerHTML)f.innerHTML=filtrosHtml();
+    document.getElementById('sync').textContent=unidades.length?`Conectado · ${unidades.length} unidades`:'Sem conexão com a API';
+  });
+}
+fetch('/api/eu').then(r=>{if(r.status===401){location.href='/login?next='+encodeURIComponent(location.pathname+location.hash);throw 0}return r.json()}).then(d=>{
+  perfil=d.perfil||'socio';
+  role=perfil==='socio'?lsGet('m2-role','socio'):perfil;
+  if(!ROLES.some(r=>r[0]===role))role='socio';
+  iniciar();
+}).catch(e=>{if(e!==0)document.getElementById('sync').textContent='Sem conexão com a API'});
 })();

@@ -80,6 +80,16 @@ def consultar(sql, params):
             return cur.fetchall()
 
 
+from auth import instalar_auth  # noqa: E402  (login por perfil; precisa de consultar/executar)
+instalar_auth(app, consultar, executar)
+
+
+@app.get("/api/marcas")
+def listar_marcas():
+    return {"marcas": [r["marca"] for r in consultar(
+        "SELECT DISTINCT marca FROM pedidos WHERE marca IS NOT NULL ORDER BY 1", {})]}
+
+
 @app.get("/")
 def pagina():
     return FileResponse(os.path.join(os.path.dirname(__file__), "index.html"))
