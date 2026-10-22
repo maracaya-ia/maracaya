@@ -96,7 +96,7 @@ async function gerente(){
   const horas=Object.keys(hs).map(Number).sort((a,b)=>a-b),mx=Math.max(...Object.values(hs),1),hp=horas.find(h=>hs[h]===mx);
   const NT={delivery:'Delivery',takeout:'Balcão/Retirada',onsite:'No local',closed_table:'Mesa'};
   return `<div class="g">
-  ${kpi(`Previsão pra hoje (${DIAS[dow]})`,dw?`${N(dw.media)} pedidos`:'—',dw?`média das ${DIAS[dow]}s · pico às ${dw.pico_inicio}h`:'')}
+  ${kpi(`Previsão pra hoje (${DIAS[dow]})`,dw?`${Math.round(dw.media)} pedidos`:'—',dw?`média das ${DIAS[dow]}s · pico às ${dw.pico_inicio}h`:'')}
   ${kpi(`Ticket das ${DIAS[dow]}s`,dw?R(dw.ticket):'—','60 dias')}
   ${kpi('Meta da noite',meta&&meta.meta!=null?R0(meta.necessario_por_dia):'—','pra manter o mês no trilho')}
   <div class="card s7" id="abertura"><h3>Checklist de abertura</h3><p class="hint" id="ck-ab-t">Carregando…</p><div id="ck-ab"></div></div>
@@ -127,8 +127,8 @@ async function cozinha(){
   const after=async()=>{const [sug,est]=await Promise.all([J('/api/sugestao_compra?cobertura_dias=30&seguranca_pct=20').catch(()=>null),J('/api/estoque_plano?cobertura_dias=30&seguranca_pct=20').catch(()=>null)]);const b=document.getElementById('coz-pesado');if(b)b.innerHTML=pesado(sug,est,fator,dw)};
   return {after,html:`<div class="g">
   <div class="card s12" style="background:var(--side-bg);color:var(--side-fg);border-color:var(--side-bg)"><div class="lbl" style="color:var(--side-dim)">${DIAS[dow][0].toUpperCase()+DIAS[dow].slice(1)}, ${hoje.getDate()} de ${MESN[hoje.getMonth()]}</div>
-   <div style="font-family:var(--f-display);font-weight:800;font-size:28px;margin-top:4px">Previsão: ${dw?N(dw.media):'—'} pedidos</div>
-   <div style="color:var(--side-dim);font-size:13px">${dw?`Pico às ${dw.pico_inicio}h.`:''} ${da?`${DIAS[amanha][0].toUpperCase()+DIAS[amanha].slice(1)} pede ${N(da.media)}${+da.media>+dw.media*1.3?', então dá pra adiantar porcionamento hoje':''}.`:''}</div></div>
+   <div style="font-family:var(--f-display);font-weight:800;font-size:28px;margin-top:4px">Previsão: ${dw?Math.round(dw.media):'—'} pedidos</div>
+   <div style="color:var(--side-dim);font-size:13px">${dw?`Pico às ${dw.pico_inicio}h.`:''} ${da?`${DIAS[amanha][0].toUpperCase()+DIAS[amanha].slice(1)} pede ${Math.round(da.media)}${+da.media>+dw.media*1.3?', então dá pra adiantar porcionamento hoje':''}.`:''}</div></div>
   <div id="coz-pesado" style="display:contents"><div class="card s12"><p class="hint" style="margin:0">Carregando entregas, produção e hortifrúti…</p></div></div>
   <div class="card s12"><h3>Checklist da cozinha</h3><p class="hint" id="ck-co-t">Carregando…</p><div id="ck-co"></div></div></div>`};
 }
