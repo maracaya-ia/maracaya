@@ -73,22 +73,40 @@ async function socio(){
 }
 
 /* ---------- gerente ---------- */
+const CANAL={ifood:'iFood',site:'Site próprio',portal:'Portal (balcão)',catalog:'Catálogo/Link',whatsapp:'WhatsApp',chatbot:'Chatbot',app:'App',food99:'99Food','99food':'99Food',rappi:'Rappi',aiqfome:'Aiqfome',keeta:'Keeta'};
+function barrasV(itens,destaque){const mx=Math.max(...itens.map(i=>i.v),1);
+  return `<div class="vbars">${itens.map(i=>`<div class="vb${i.k===destaque?' hl':''}" title="${esc(i.k)}: ${N(i.v)} pedidos"><span class="num">${N(i.v)}</span><i style="height:${Math.max(3,Math.round(120*i.v/mx))}px"></i><small>${esc(i.k)}</small></div>`).join('')}</div>`}
 async function gerente(){
-  const dow=new Date().getDay();
-  const [op,meta]=await Promise.all([J('/api/operacao?marca=todas&unidade=todas&periodo=60').catch(()=>null),J('/api/meta').catch(()=>null)]);
+  const dow=new Date().getDay(),f=window.V2.filtros;
+  const [op,meta,rs]=await Promise.all([
+    J(`/api/operacao?marca=${encodeURIComponent(f.marca)}&unidade=${encodeURIComponent(f.unidade)}&periodo=60`).catch(()=>null),
+    J('/api/meta').catch(()=>null),J('/api/resumo_operacao?'+window.V2.qs()).catch(()=>null)]);
   if(!ativoAgora())return;
-  const dw=op&&op.dias_semana.find(x=>+x.dow===dow),hs={};
-  if(op)op.heatmap.forEach(x=>{hs[+x.hora]=(hs[+x.hora]||0)+(+x.pedidos)});
-  const horas=Object.keys(hs).map(Number).sort((a,b)=>a-b),mx=Math.max(...Object.values(hs),1),hp=horas.find(h=>hs[h]===mx);
-  const NT={delivery:'Delivery',takeout:'Balcão/Retirada',onsite:'No local',closed_table:'Mesa'};
+  const dw=op&&op.dias_semana.find(x=>+x.dow===dow),NT={delivery:'Delivery',takeout:'Balcão/Retirada',onsite:'No local',closed_table:'Mesa'};
+  const per=document.querySelector('#filters #f-per option:checked')?.textContent||'período';
+  const k=rs&&rs.kpis,tx=k&&k.total_geral>0?(100*k.cancelados/k.total_geral).toFixed(1):0;
+  const horasMap={};if(rs)rs.por_hora.forEach(x=>{horasMap[+x.hora]=+x.pedidos});
+  const hs=Object.keys(horasMap).map(Number).sort((a,b)=>a-b),hmx=Math.max(...Object.values(horasMap),1),hp=hs.find(h=>horasMap[h]===hmx);
+  const totC=rs?rs.canais.reduce((a,c)=>a+(+c.pedidos),0):0;
+  const maxP=rs&&rs.top_produtos.length?Math.max(...rs.top_produtos.map(p=>+p.qtd)):1;
+  const dias=rs?rs.por_dia.map(x=>({k:x.dia.slice(8,10)+'/'+x.dia.slice(5,7),v:+x.pedidos})):[];
+  const nomeUn=f.unidade==='todas'?'todas as unidades':f.unidade,nomeMc=f.marca==='todas'?'todas as marcas':f.marca;
   return `<div class="g">
+  <div class="s12" style="font-size:12.5px;color:var(--ink-2)">Operação · <b style="color:var(--ink)">${esc(per)}</b> · ${esc(nomeUn)} · ${esc(nomeMc)}</div>
+  ${kpi('Pedidos',k?N(k.pedidos):'—',k&&dias.length>1?`média de ${N1(k.pedidos/dias.length)}/dia`:'','s3')}
+  ${kpi('Faturamento',k?R0(k.faturamento):'—',k&&dias.length>1?`média de ${R0(k.faturamento/dias.length)}/dia`:'','s3')}
+  ${kpi('Ticket médio',k?R(k.ticket):'—','','s3')}
+  ${kpi('Cancelamentos',k?N(k.cancelados):'—',k?`${tx}% dos pedidos`:'','s3')}
   ${kpi(`Previsão pra hoje (${DIAS[dow]})`,dw?`${Math.round(dw.media)} pedidos`:'—',dw?`média das ${DIAS[dow]}s · pico às ${dw.pico_inicio}h`:'')}
   ${kpi(`Ticket das ${DIAS[dow]}s`,dw?R(dw.ticket):'—','60 dias')}
   ${kpi('Meta da noite',meta&&meta.meta!=null?R0(meta.necessario_por_dia):'—','pra manter o mês no trilho')}
-  <div class="card s12" id="tempos"><h3>Tempos de atendimento</h3><p class="hint">Do pedido entrar até a conclusão · 60 dias</p>${op&&op.tempos_canal.length?tbl(['Tipo','Mediana','Pior 10%','Pedidos'],op.tempos_canal.map(t=>[NT[t.tipo]??t.tipo,t.mediana+' min',+t.p90>90?`<span class="pill p-bad">${t.p90} min</span>`:t.p90+' min',N(t.pedidos)]),[1,2,3]):'<p class="hint">Sem dados.</p>'}
+  <div class="card s6"><h3>Pedidos por hora</h3><p class="hint">${esc(per)} · pra planejar a montagem antes do pico</p>${hs.length?barrasV(hs.map(h=>({k:h+'h',v:horasMap[h]})),hp+'h'):'<p class="hint">Sem pedidos no período.</p>'}</div>
+  <div class="card s6"><h3>Campeões de venda</h3><p class="hint">${esc(per)}</p>${rs&&rs.top_produtos.length?rs.top_produtos.slice(0,8).map(p=>`<div class="hbar" style="grid-template-columns:minmax(0,1fr) 80px 40px"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(p.nome)}">${esc(p.nome)}</span><span class="hb"><i style="width:${Math.max(3,100*p.qtd/maxP)}%"></i></span><b>${N(p.qtd)}</b></div>`).join(''):'<p class="hint">Sem vendas no período.</p>'}</div>
+  <div class="card s6"><h3>Pedidos por canal</h3><p class="hint">${esc(per)}</p>${rs&&rs.canais.length?tbl(['Canal','Pedidos','%','Bruto'],rs.canais.map(c=>[esc(CANAL[c.origem]??c.origem),N(c.pedidos),totC?(100*c.pedidos/totC).toFixed(0)+'%':'—',R0(c.bruto)]),[1,2,3]):'<p class="hint">Sem pedidos no período.</p>'}</div>
+  <div class="card s6" id="tempos"><h3>Tempos de atendimento</h3><p class="hint">Do pedido entrar até a conclusão · 60 dias</p>${op&&op.tempos_canal.length?tbl(['Tipo','Mediana','Pior 10%','Pedidos'],op.tempos_canal.map(t=>[NT[t.tipo]??t.tipo,t.mediana+' min',+t.p90>90?`<span class="pill p-bad">${t.p90} min</span>`:t.p90+' min',N(t.pedidos)]),[1,2,3]):'<p class="hint">Sem dados.</p>'}
    ${op?`<p class="hint" style="margin:10px 0 0">Cobertura: ${op.cobertura.total>0?Math.round(100*op.cobertura.mediveis/op.cobertura.total):0}% dos pedidos concluídos no portal. Concluir na hora melhora essa métrica.</p>`:''}</div>
-  <div class="card s12"><h3>Pedidos por hora</h3><p class="hint">Total em 60 dias · pra planejar a montagem antes do pico</p>
-   <div class="vbars">${horas.map(h=>`<div class="vb${h===hp?' hl':''}" title="${h}h: ${N(hs[h])} pedidos"><span class="num">${N(hs[h])}</span><i style="height:${Math.max(3,Math.round(120*hs[h]/mx))}px"></i><small>${h}h</small></div>`).join('')}</div></div></div>`;
+  ${dias.length>1?`<div class="card s12"><h3>Pedidos por dia</h3><p class="hint">${esc(per)}</p>${barrasV(dias)}</div>`:''}
+  </div>`;
 }
 
 /* ---------- cozinha ---------- */
@@ -126,5 +144,5 @@ async function render(c){
   const html=typeof res==='string'?res:res.html,r=document.getElementById('h-root');if(!r)return;r.innerHTML=html;
   if(res&&res.after)res.after().catch(()=>{});
 }
-window.V2.screens.hoje={render(c){clearInterval(timer);render(c);timer=setInterval(()=>{if(ativoAgora())render(el);else clearInterval(timer)},5*60*1000)},onFiltros(){}};
+window.V2.screens.hoje={onFiltros(){if(window.V2.role()==='gerente'&&el)render(el)},render(c){clearInterval(timer);render(c);timer=setInterval(()=>{if(ativoAgora())render(el);else clearInterval(timer)},5*60*1000)}};
 })();

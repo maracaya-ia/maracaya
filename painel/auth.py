@@ -24,7 +24,7 @@ ITER = 200_000
 _COZINHA = ("/api/eu", "/api/logout", "/api/unidades", "/api/marcas", "/api/estoque", "/api/insumo", "/api/fornecedor",
             "/api/compras", "/api/sugestao_compra", "/api/config_troca", "/api/nota",
             "/api/operacao", "/api/previsao")
-_GERENTE = _COZINHA + ("/api/clientes", "/api/retencao", "/api/bairros", "/api/meta", "/api/zap/pergunta_painel")
+_GERENTE = _COZINHA + ("/api/clientes", "/api/retencao", "/api/bairros", "/api/meta", "/api/zap/pergunta_painel", "/api/resumo_operacao")
 PERMITIDO = {"cozinha": _COZINHA, "gerente": _GERENTE}
 
 PUBLICO = ("/login", "/api/login", "/static/", "/favicon.ico", "/v2/assets/login")

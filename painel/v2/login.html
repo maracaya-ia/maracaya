@@ -5,16 +5,18 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Entrar · Painel Maracayá</title>
 <meta name="theme-color" content="#1E1B18">
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,800&family=Figtree:wght@400;600;700&display=swap">
 <style>
-:root{--bg:#F1EFEB;--surface:#fff;--surface-2:#E8E5DF;--ink:#1E1B18;--ink-2:#605A53;--line:#DCD7CF;--brasa:#D4511C;--bad:#B8342A;--bad-soft:#F7DAD6;color-scheme:light}
-@media (prefers-color-scheme:dark){:root{--bg:#141210;--surface:#1D1A17;--surface-2:#292521;--ink:#F2ECE5;--ink-2:#A69D93;--line:#35302B;--brasa:#F0743E;--bad:#EE6B5F;--bad-soft:#3D1E1B;color-scheme:dark}}
+:root{--logo:url(/static/logo-clara.png);--bg:#F1EFEB;--surface:#fff;--surface-2:#E8E5DF;--ink:#1E1B18;--ink-2:#605A53;--line:#DCD7CF;--brasa:#D4511C;--bad:#B8342A;--bad-soft:#F7DAD6;color-scheme:light}
+@media (prefers-color-scheme:dark){:root{--logo:url(/static/logo-escura.png);--bg:#141210;--surface:#1D1A17;--surface-2:#292521;--ink:#F2ECE5;--ink-2:#A69D93;--line:#35302B;--brasa:#F0743E;--bad:#EE6B5F;--bad-soft:#3D1E1B;color-scheme:dark}}
 *{box-sizing:border-box}html,body{height:100%;margin:0}
 body{background:var(--bg);color:var(--ink);font-family:Figtree,system-ui,sans-serif;display:grid;place-items:center;padding:16px}
 .box{width:100%;max-width:380px;background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:26px 24px}
-.brand{display:flex;gap:12px;align-items:center;margin-bottom:20px}
-.mark{width:42px;height:42px;border-radius:12px;background:var(--brasa);color:#fff;display:grid;place-items:center;font:800 22px "Bricolage Grotesque",sans-serif}
-h1{font:800 20px "Bricolage Grotesque",sans-serif;margin:0;letter-spacing:.02em}.sub{color:var(--ink-2);font-size:12.5px}
+.brand{margin-bottom:6px;text-align:center}
+.logo{background:var(--logo) no-repeat center 49.5%/100% auto;aspect-ratio:2.7/1;width:230px;max-width:100%;margin:0 auto}
+.sub{color:var(--ink-2);font-size:12.5px;margin-top:2px}
 .lbl{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-2);font-weight:600;margin:14px 0 6px}
 .seg{display:grid;grid-template-columns:repeat(3,1fr);background:var(--surface-2);border-radius:10px;padding:3px;gap:2px}
 .seg button{border:0;background:transparent;padding:9px 4px;border-radius:8px;font:600 13.5px Figtree,sans-serif;color:var(--ink-2);cursor:pointer}
@@ -28,7 +30,7 @@ input:focus,button:focus-visible{outline:2px solid var(--brasa);outline-offset:2
 </head>
 <body>
 <form class="box" id="f" autocomplete="on">
-  <div class="brand"><div class="mark">M</div><div><h1>MARACAYÁ</h1><div class="sub">Painel do grupo</div></div></div>
+  <div class="brand"><div class="logo" role="img" aria-label="Maracayá"></div><div class="sub">Painel do grupo</div></div>
   <div class="lbl">Perfil</div>
   <div class="seg" id="seg" role="group" aria-label="Perfil"><button type="button" data-p="socio" aria-pressed="true">Sócio</button><button type="button" data-p="gerente" aria-pressed="false">Gerente</button><button type="button" data-p="cozinha" aria-pressed="false">Cozinha</button></div>
   <div class="lbl"><label for="s">Senha</label></div>

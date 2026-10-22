@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Painel Maracayá 2.0</title>
 <meta name="theme-color" content="#1E1B18">
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="icon" href="/static/favicon-32.png" type="image/png" sizes="32x32">
+<link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Figtree:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap">
 <style>[hidden]{display:none!important}body{margin:0}
@@ -13,7 +16,7 @@
   --brasa:#D4511C; --brasa-ink:#B8410F; --brasa-soft:#FADFD1;
   --side-bg:#1E1B18; --side-fg:#EDE7DF; --side-dim:#9C948A; --side-hi:#2E2A26;
   --ok:#2E7A4C; --ok-soft:#DCEFE3; --warn:#A86A10; --warn-soft:#F8EBCF; --bad:#B8342A; --bad-soft:#F7DAD6;
-  --c-gc:#D4511C; --c-sob:#E6A23C; --c-chomp:#5B6B7A;
+  --c-gc:#D4511C; --c-sob:#E6A23C; --c-chomp:#5B6B7A; --logo:url(/static/logo-clara.png);
   --f-display:"Bricolage Grotesque","Arial Narrow",system-ui,sans-serif;
   --f-body:"Figtree",system-ui,-apple-system,"Segoe UI",sans-serif;
   --f-mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
@@ -23,13 +26,13 @@
   --brasa:#F0743E; --brasa-ink:#F59266; --brasa-soft:#3B2218;
   --side-bg:#0E0C0B; --side-fg:#EDE7DF; --side-dim:#8A8279; --side-hi:#221F1C;
   --ok:#5DBB83; --ok-soft:#1D3326; --warn:#E3A84A; --warn-soft:#3A2D14; --bad:#EE6B5F; --bad-soft:#3D1E1B;
-  --c-gc:#F0743E; --c-sob:#E9B45A; --c-chomp:#8EA0B2; color-scheme:dark}}
+  --c-gc:#F0743E; --c-sob:#E9B45A; --c-chomp:#8EA0B2; --logo:url(/static/logo-escura.png); color-scheme:dark}}
 :root[data-theme="dark"]{
   --bg:#141210; --surface:#1D1A17; --surface-2:#292521; --ink:#F2ECE5; --ink-2:#A69D93; --line:#35302B;
   --brasa:#F0743E; --brasa-ink:#F59266; --brasa-soft:#3B2218;
   --side-bg:#0E0C0B; --side-fg:#EDE7DF; --side-dim:#8A8279; --side-hi:#221F1C;
   --ok:#5DBB83; --ok-soft:#1D3326; --warn:#E3A84A; --warn-soft:#3A2D14; --bad:#EE6B5F; --bad-soft:#3D1E1B;
-  --c-gc:#F0743E; --c-sob:#E9B45A; --c-chomp:#8EA0B2; color-scheme:dark}
+  --c-gc:#F0743E; --c-sob:#E9B45A; --c-chomp:#8EA0B2; --logo:url(/static/logo-escura.png); color-scheme:dark}
 html,body{height:100%}
 body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:14px;line-height:1.45}
 *{box-sizing:border-box}
@@ -352,6 +355,11 @@ tr.clk{cursor:pointer}tr.clk:hover td{background:var(--surface-2)}tr.det>td{back
 .trio{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
 .check{display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-bottom:1px solid var(--line);font-size:13.5px;cursor:pointer}.check input{width:20px;height:20px;accent-color:var(--brasa);flex:none;margin-top:1px}
 .vbars{display:flex;align-items:flex-end;gap:8px;height:170px;overflow-x:auto;padding-top:6px}.vb{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:4px;min-width:34px;font-size:11px}.vb i{display:block;width:100%;background:var(--c-sob);border-radius:4px 4px 0 0}.vb.hl i{background:var(--brasa)}.vb .num{font-family:var(--f-mono);font-size:10.5px}.vb small{color:var(--ink-2)}
+.logo{background:var(--logo) no-repeat center 49.5%/100% auto;aspect-ratio:2.7/1}
+.logo.side{--logo:url(/static/logo-escura.png);width:100%;max-width:208px}
+.brand{flex-direction:column;align-items:flex-start;gap:0;padding:0 4px 12px}.brand span{padding-left:6px}
+.m-logo{display:none}
+@container dev (max-width:760px){.m-logo{display:block;flex-basis:100%;width:108px;margin:-4px 0 -2px -4px}}
 @media (max-width:760px){.top{position:sticky}.h-big{font-size:40px}.h-time{margin-left:0}}
 </style>
 </head>
@@ -359,7 +367,7 @@ tr.clk{cursor:pointer}tr.clk:hover td{background:var(--surface-2)}tr.det>td{back
 <div class="device">
   <div class="app" id="app">
     <aside class="side">
-      <div class="brand"><div class="brand-mark">M</div><div><b>MARACAYÁ</b><span>Grupo · 3 operações</span></div></div>
+      <div class="brand"><div class="logo side" role="img" aria-label="Maracayá"></div><span>Grupo · 3 operações</span></div>
       <nav class="nav" id="nav"></nav>
       <div class="side-foot">
         <div class="lbl2">Tema</div>
@@ -370,14 +378,14 @@ tr.clk{cursor:pointer}tr.clk:hover td{background:var(--surface-2)}tr.det>td{back
       </div>
     </aside>
     <main class="main" id="main">
-      <div class="top"><div><h2 id="ttl"></h2><div class="sub" id="sub"></div></div><div class="filters" id="filters"></div></div>
+      <div class="top"><div class="m-logo logo" role="img" aria-label="Maracayá"></div><div><h2 id="ttl"></h2><div class="sub" id="sub"></div></div><div class="filters" id="filters"></div></div>
       <nav class="jump" id="jump" aria-label="Seções desta tela" hidden></nav>
       <div class="content" id="content"></div>
     </main>
     <nav class="bnav" id="bnav"></nav>
   </div>
 </div>
-<script src="/v2/assets/casca.js?v=17"></script>
+<script src="/v2/assets/casca.js?v=18"></script>
 <script src="/v2/assets/compras.js?v=4"></script>
 <script src="/v2/assets/nota.js?v=1"></script>
 <script src="/v2/assets/vendas.js?v=2"></script>
@@ -387,7 +395,7 @@ tr.clk{cursor:pointer}tr.clk:hover td{background:var(--surface-2)}tr.det>td{back
 <script src="/v2/assets/bairros.js?v=1"></script>
 <script src="/v2/assets/operacao.js?v=5"></script>
 <script src="/v2/assets/unidades.js?v=1"></script>
-<script src="/v2/assets/hoje.js?v=5"></script>
+<script src="/v2/assets/hoje.js?v=6"></script>
 <script src="/v2/assets/ze.js?v=2"></script>
 </body>
 </html>

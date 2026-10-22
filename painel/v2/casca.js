@@ -23,6 +23,7 @@ const ROLES=[['socio','Sócio'],['gerente','Gerente'],['cozinha','Cozinha']];
 const TEMAS=[['auto','Auto'],['light','Claro'],['dark','Escuro']];
 const PERIODOS=[['1','Hoje'],['ontem','Ontem'],['7','7 dias'],['30','30 dias'],['90','90 dias'],['semana_atual','Semana'],['mes_atual','Este mês'],['mes_passado','Mês passado']];
 
+const saudacao=()=>{const h=new Date().getHours();return h<12?'Bom dia':h<18?'Boa tarde':'Boa noite'};
 const lsGet=(k,d)=>{try{return localStorage.getItem(k)||d}catch(_){return d}};
 const lsSet=(k,v)=>{try{localStorage.setItem(k,v)}catch(_){}};
 const svg=k=>`<svg viewBox="0 0 24 24" aria-hidden="true">${I[k]||''}</svg>`;
@@ -78,10 +79,10 @@ function render(){
   document.getElementById('bnav').style.gridTemplateColumns=`repeat(${BOTTOM[role].length},1fr)`;
   document.getElementById('bnav').innerHTML=BOTTOM[role].map(k=>{const lab=k==='mais'?'Mais':k==='ze'?'MIA':S[k].t.split(' ')[0];const cur=(k===screen||(k==='mais'&&sheetOpen))?'aria-current="page"':'';
     return k==='ze'?`<a href="#ze" data-go="ze" class="ze-btn" ${cur}><span class="z">${svg('ze')}</span>${lab}</a>`:`<a href="#${k}" data-go="${k}" ${cur}>${svg(k)}${lab}</a>`}).join('');
-  document.getElementById('ttl').textContent=screen==='hoje'?({socio:'Bom dia, Álvaro',gerente:'Turno de hoje',cozinha:'Cozinha'})[role]:S[screen].t;
+  document.getElementById('ttl').textContent=screen==='hoje'?({socio:saudacao()+', Álvaro',gerente:'Turno de hoje',cozinha:'Cozinha'})[role]:S[screen].t;
   document.getElementById('sub').textContent=SUBS[screen]||'';
   document.title=S[screen].t+' · Painel Maracayá 2.0';
-  document.getElementById('filters').innerHTML=FILTRO.includes(screen)?filtrosHtml():'';
+  document.getElementById('filters').innerHTML=(FILTRO.includes(screen)||(screen==='hoje'&&role==='gerente'))?filtrosHtml():'';
   const jn=document.getElementById('jump');jn.innerHTML='';jn.hidden=true;
   const el=document.getElementById('content'),impl=window.V2.screens[screen];
   if(impl)impl.render(el);else el.innerHTML=soon(screen);
@@ -140,6 +141,7 @@ function iniciar(){
 }
 fetch('/api/eu').then(r=>{if(r.status===401){location.href='/login?next='+encodeURIComponent(location.pathname+location.hash);throw 0}return r.json()}).then(d=>{
   perfil=d.perfil||'socio';
+  if(perfil!=='socio'&&!lsGet('m2-per',''))filtros.periodo='1';
   role=perfil==='socio'?lsGet('m2-role','socio'):perfil;
   if(!ROLES.some(r=>r[0]===role))role='socio';
   iniciar();
