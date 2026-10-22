@@ -36,6 +36,8 @@ services:
     image: metabase/metabase:latest
     container_name: dados_metabase
     restart: unless-stopped
+    # opcional: so sobe com `docker compose --profile metabase up -d metabase` (servidor pequeno, ~900 MB)
+    profiles: ["metabase"]
     environment:
       MB_DB_TYPE: postgres
       MB_DB_DBNAME: metabase_app
