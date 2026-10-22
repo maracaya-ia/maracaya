@@ -91,6 +91,7 @@ function render(){
     return k==='ze'?`<a href="#ze" data-go="ze" class="ze-btn" ${cur}><span class="z">${svg('ze')}</span>${lab}</a>`:`<a href="#${k}" data-go="${k}" ${cur}>${svg(k)}${lab}</a>`}).join('');
   document.getElementById('ttl').textContent=screen==='hoje'?({socio:saudacao()+', Álvaro',gerente:'Turno de hoje',cozinha:'Cozinha'})[role]:S[screen].t;
   document.getElementById('sub').textContent=SUBS[screen]||'';
+  const ba=document.getElementById('btnApresentar');if(ba)ba.hidden=perfil!=='socio';
   document.title=S[screen].t+' · Painel Maracayá 2.0';
   document.getElementById('filters').innerHTML=(FILTRO.includes(screen)||(screen==='hoje'&&role==='gerente'))?filtrosHtml():'';
   const jn=document.getElementById('jump');jn.innerHTML='';jn.hidden=true;
@@ -116,6 +117,7 @@ document.addEventListener('click',e=>{
   const jp=e.target.closest('[data-jump]');if(jp){e.preventDefault();const t=document.getElementById(jp.dataset.jump);if(t)t.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'start'});return}
   const go=e.target.closest('[data-go]');
   if(go){e.preventDefault();const k=go.dataset.go;if(k==='mais'){sheetOpen=!sheetOpen;render()}else irPara(k);return}
+  if(e.target.closest('[data-apresentar]')){if(window.V2.apresentar)window.V2.apresentar();return}
   if(e.target.closest('[data-sair]')){fetch('/api/logout',{method:'POST'}).finally(()=>{location.href='/login'});return}
   const t=e.target.closest('[data-tema]');if(t){tema=t.dataset.tema;lsSet('m2-tema',tema);aplicarTema();segs();return}
   const r=e.target.closest('[data-role]');if(r){role=r.dataset.role;lsSet('m2-role',role);screen='hoje';sheetOpen=false;try{history.replaceState(null,'','#hoje')}catch(_){}render();return}
