@@ -1,4 +1,4 @@
-/* Painel 2.0 — tela Hoje, por perfil: sócio (meta, ações, ontem, semana), gerente (previsão, checklist, tempos) e cozinha (produção, entregas, checklist) */
+/* Painel 2.0 — tela Hoje, por perfil: sócio (meta, ações, ontem, semana), gerente (previsão, tempos, pedidos por hora) e cozinha (produção, entregas, hortifrúti) */
 (function(){
 const R=v=>(+(v??0)).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
 const R0=v=>(+(v??0)).toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0});
@@ -28,20 +28,6 @@ function metaCard(m){
 function sentCard(s){
   if(!s)return '';const hora=new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
   return `<div class="sent ${s.status}">${s.status==='ok'?`<div>🟢 <b>Sentinela</b>: operação dentro do normal · verificada às ${hora}</div>`:s.alertas.map(a=>`<div>${a.icone} ${a.texto}</div>${a.dica?`<div class="dica">💡 ${a.dica}</div>`:''}`).join('')}</div>`;
-}
-let nomeEquipe=()=>{try{return localStorage.getItem('m2-nome')||''}catch(_){return ''}};
-function checklistHtml(turno,d){
-  return d.itens.map(i=>`<label class="check"><input type="checkbox" data-ck="${i.id}" ${i.feito?'checked':''}><span>${esc(i.texto)}${i.feito?` <small class="mut">· ${esc(i.quem||'—')}, ${i.hora}</small>`:''}</span></label>`).join('')||'<p class="hint">Nenhum item cadastrado.</p>';
-}
-async function carregarChecklist(turno,box){
-  const d=await J('/api/checklist?turno='+turno);const b=document.getElementById(box);if(!b)return;
-  b.dataset.turno=turno;b.innerHTML=checklistHtml(turno,d);
-  const t=document.getElementById(box+'-t');if(t)t.textContent=`${d.feitos} de ${d.total} feitos hoje`;
-}
-function pedirNome(){
-  let n=nomeEquipe();if(n)return n;
-  n=(prompt('Seu nome (fica registrado quem marcou e a que horas):')||'').trim().slice(0,40);
-  if(n){try{localStorage.setItem('m2-nome',n)}catch(_){}}return n;
 }
 
 function montarAcoes({meta,cli,enc,sug,est}){
@@ -99,12 +85,10 @@ async function gerente(){
   ${kpi(`Previsão pra hoje (${DIAS[dow]})`,dw?`${Math.round(dw.media)} pedidos`:'—',dw?`média das ${DIAS[dow]}s · pico às ${dw.pico_inicio}h`:'')}
   ${kpi(`Ticket das ${DIAS[dow]}s`,dw?R(dw.ticket):'—','60 dias')}
   ${kpi('Meta da noite',meta&&meta.meta!=null?R0(meta.necessario_por_dia):'—','pra manter o mês no trilho')}
-  <div class="card s7" id="abertura"><h3>Checklist de abertura</h3><p class="hint" id="ck-ab-t">Carregando…</p><div id="ck-ab"></div></div>
-  <div class="card s5" id="tempos"><h3>Tempos de atendimento</h3><p class="hint">Do pedido entrar até a conclusão · 60 dias</p>${op&&op.tempos_canal.length?tbl(['Tipo','Mediana','Pior 10%','Pedidos'],op.tempos_canal.map(t=>[NT[t.tipo]??t.tipo,t.mediana+' min',+t.p90>90?`<span class="pill p-bad">${t.p90} min</span>`:t.p90+' min',N(t.pedidos)]),[1,2,3]):'<p class="hint">Sem dados.</p>'}
+  <div class="card s12" id="tempos"><h3>Tempos de atendimento</h3><p class="hint">Do pedido entrar até a conclusão · 60 dias</p>${op&&op.tempos_canal.length?tbl(['Tipo','Mediana','Pior 10%','Pedidos'],op.tempos_canal.map(t=>[NT[t.tipo]??t.tipo,t.mediana+' min',+t.p90>90?`<span class="pill p-bad">${t.p90} min</span>`:t.p90+' min',N(t.pedidos)]),[1,2,3]):'<p class="hint">Sem dados.</p>'}
    ${op?`<p class="hint" style="margin:10px 0 0">Cobertura: ${op.cobertura.total>0?Math.round(100*op.cobertura.mediveis/op.cobertura.total):0}% dos pedidos concluídos no portal. Concluir na hora melhora essa métrica.</p>`:''}</div>
   <div class="card s12"><h3>Pedidos por hora</h3><p class="hint">Total em 60 dias · pra planejar a montagem antes do pico</p>
-   <div class="vbars">${horas.map(h=>`<div class="vb${h===hp?' hl':''}" title="${h}h: ${N(hs[h])} pedidos"><span class="num">${N(hs[h])}</span><i style="height:${Math.max(3,Math.round(120*hs[h]/mx))}px"></i><small>${h}h</small></div>`).join('')}</div></div>
-  <p class="hint s12" style="margin:0">Quem marcou e a que horas fica registrado. Cada marcação guarda o nome de quem fez.</p></div>`;
+   <div class="vbars">${horas.map(h=>`<div class="vb${h===hp?' hl':''}" title="${h}h: ${N(hs[h])} pedidos"><span class="num">${N(hs[h])}</span><i style="height:${Math.max(3,Math.round(120*hs[h]/mx))}px"></i><small>${h}h</small></div>`).join('')}</div></div></div>`;
 }
 
 /* ---------- cozinha ---------- */
@@ -130,7 +114,7 @@ async function cozinha(){
    <div style="font-family:var(--f-display);font-weight:800;font-size:28px;margin-top:4px">Previsão: ${dw?Math.round(dw.media):'—'} pedidos</div>
    <div style="color:var(--side-dim);font-size:13px">${dw?`Pico às ${dw.pico_inicio}h.`:''} ${da?`${DIAS[amanha][0].toUpperCase()+DIAS[amanha].slice(1)} pede ${Math.round(da.media)}${+da.media>+dw.media*1.3?', então dá pra adiantar porcionamento hoje':''}.`:''}</div></div>
   <div id="coz-pesado" style="display:contents"><div class="card s12"><p class="hint" style="margin:0">Carregando entregas, produção e hortifrúti…</p></div></div>
-  <div class="card s12"><h3>Checklist da cozinha</h3><p class="hint" id="ck-co-t">Carregando…</p><div id="ck-co"></div></div></div>`};
+  </div>`};
 }
 
 async function render(c){
@@ -141,15 +125,6 @@ async function render(c){
   if(res===null)res='<div class="card"><h3>Não foi possível carregar</h3><p class="hint">Tente de novo em instantes.</p></div>';
   const html=typeof res==='string'?res:res.html,r=document.getElementById('h-root');if(!r)return;r.innerHTML=html;
   if(res&&res.after)res.after().catch(()=>{});
-  if(role==='gerente')carregarChecklist('abertura','ck-ab');
-  if(role==='cozinha')carregarChecklist('cozinha','ck-co');
 }
-function ligar(){
-  document.addEventListener('change',async e=>{const t=e.target;if(!ativoAgora()||!t.dataset.ck)return;
-    let nome='';if(t.checked){nome=pedirNome();if(!nome){t.checked=false;return}}
-    const r=await post('/api/checklist_marcar',{item_id:+t.dataset.ck,marcado:t.checked,quem:nome});
-    if(!r.ok){window.V2.toast(r.erro||'Não foi possível salvar');t.checked=!t.checked;return}
-    const b=t.closest('[data-turno]');if(b)carregarChecklist(b.dataset.turno,b.id)});
-}
-window.V2.screens.hoje={render(c){if(!ligado){ligar();ligado=true}clearInterval(timer);render(c);timer=setInterval(()=>{if(ativoAgora())render(el);else clearInterval(timer)},5*60*1000)},onFiltros(){}};
+window.V2.screens.hoje={render(c){clearInterval(timer);render(c);timer=setInterval(()=>{if(ativoAgora())render(el);else clearInterval(timer)},5*60*1000)},onFiltros(){}};
 })();
