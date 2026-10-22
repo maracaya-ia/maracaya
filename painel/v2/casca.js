@@ -1,19 +1,4 @@
 const I={hoje:'<path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/>',vendas:'<path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-7"/><path d="M22 20H2"/>',resultado:'<path d="M4 4h16v16H4z"/><path d="M8 9h8M8 13h8M8 17h5"/>',ze:'<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/><path d="M9 11h.01M12 11h.01M15 11h.01"/>',clientes:'<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7"/><path d="M18 14.5a6.5 6.5 0 0 1 3.5 5.5"/>',cardapio:'<path d="M4 10h16"/><path d="M5 10a7 5 0 0 1 14 0"/><path d="M4 14h16"/><path d="M5 17h14a1 1 0 0 1-1 2H6a1 1 0 0 1-1-2z"/>',bairros:'<path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/>',operacao:'<circle cx="12" cy="13" r="8"/><path d="M12 9v4l3 2"/><path d="M9 2h6"/>',unidades:'<path d="M3 21V9l6-4 6 4v12"/><path d="M15 21V12l6 3v6"/><path d="M7 13h4M7 17h4"/>',equipe:'<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8l1.5 1.5L12 7"/><path d="M14 8h3M8 14l1.5 1.5L12 13"/><path d="M14 14h3"/>',compras:'<path d="M3 4h2l2.4 11.2a2 2 0 0 0 2 1.6h7.7a2 2 0 0 0 2-1.5L21 8H6"/><circle cx="10" cy="20" r="1"/><circle cx="17" cy="20" r="1"/>',nota:'<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/>',proposta:'<path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5"/><path d="M9 13h7M9 17h5"/>',mais:'<circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/>'};
-const S={
-  hoje:{t:'Hoje',grp:'Dia a dia',roles:['socio','gerente','cozinha']},
-  ze:{t:'Pergunte ao Zé',grp:'Dia a dia',roles:['socio','gerente'],nw:1},
-  equipe:{t:'Equipe e checklists',grp:'Dia a dia',roles:['socio','gerente','cozinha'],nw:1},
-  vendas:{t:'Vendas',grp:'Dinheiro',roles:['socio']},
-  resultado:{t:'Resultado (DRE)',grp:'Dinheiro',roles:['socio']},
-  unidades:{t:'Comparar unidades',grp:'Dinheiro',roles:['socio'],nw:1},
-  clientes:{t:'Clientes',grp:'Clientes e cardápio',roles:['socio','gerente']},
-  cardapio:{t:'Cardápio',grp:'Clientes e cardápio',roles:['socio']},
-  bairros:{t:'Bairros',grp:'Clientes e cardápio',roles:['socio','gerente']},
-  operacao:{t:'Operação',grp:'Cozinha e estoque',roles:['socio','gerente']},
-  compras:{t:'Compras e estoque',grp:'Cozinha e estoque',roles:['socio','gerente','cozinha']},
-  nota:{t:'Lançar nota',grp:'Cozinha e estoque',roles:['socio','gerente','cozinha']},
-  proposta:{t:'Proposta 2.0',grp:'Sobre',roles:['socio','gerente','cozinha']}
-
 /* Painel Maracayá 2.0 — casca: navegação, tema, perfil e filtros.
    As telas entram em SCREENS[chave] = {render(el), onFiltros()} uma de cada vez. */
 (function(){
