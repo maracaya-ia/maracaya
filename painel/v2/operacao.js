@@ -65,6 +65,7 @@ function pintar(){
   const hs=[...new Set(d.heatmap.map(x=>+x.hora))].sort((a,b)=>a-b),hi=Math.max(Math.min(...hs)-1,0),hf=Math.min(Math.max(...hs)+1,23),horas=[];for(let h=hi;h<=hf;h++)horas.push(h);
   const mc=Math.max(...Object.values(hm),1),box=document.getElementById('o-heat');box.style.gridTemplateColumns=`44px repeat(${horas.length},minmax(22px,1fr))`;
   box.innerHTML='<div></div>'+horas.map(h=>`<div class="hl">${h}h</div>`).join('')+ordem.map(dw=>`<div class="hd">${DC[dw]}</div>`+horas.map(h=>{const v=hm[`${dw}-${h}`]??0;return `<div class="cel" style="background:${calor(v,mc)}" title="${DC[dw]} ${h}h — ${N(v)} pedidos"></div>`}).join('')).join('');
+  {const soma=horas.map(h=>ordem.reduce((a,dw)=>a+(hm[`${dw}-${h}`]??0),0)),ip=soma.indexOf(Math.max(...soma));requestAnimationFrame(()=>{const c=box.querySelector('.hl');if(c&&box.scrollWidth>box.clientWidth)box.scrollLeft=Math.max(0,(ip-1)*(c.offsetWidth+3))})}
   document.getElementById('o-atual').innerHTML='<span class="dot" style="display:inline-block;margin-right:6px"></span>Atualizado às '+new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})+' · recalculado conforme o período selecionado';
 }
 async function carregar(){
