@@ -2612,7 +2612,7 @@ def zap_pergunta(payload: dict = Body(...),
         """Perguntas de item vendido, em varias formas: 'quantos X foram vendidos', 'quantas vendas tiveram de X',
         'quanto vendeu de X', 'quantos X saíram'... [+ data]. Sem data = total geral.
         None quando nao e isso (ex: 'quantos pedidos foram vendidos', 'quantas vendas tivemos hoje')."""
-        if not re.search(r"\bquant(o|os|as)\b", q_sa):
+        if not re.search(r"\bquant(o|os|as)\b", q_sa) or re.search(r"\b(mais|menos)\s+vendid", q_sa):
             return None
         fortes = re.search(r"\b(vendid\w*|vendeu|venderam|vendemos|saiu|sairam)\b", q_sa)
         fracos = re.search(r"\b(vendas?|teve|tiveram|tivemos|houve|saidas?|pedid\w*)\b", q_sa)
@@ -2649,8 +2649,75 @@ def zap_pergunta(payload: dict = Body(...),
         explicito = bool(re.search(r"\b(hoje|ontem|semana|mes)\b", limpo) or _mes_citado(limpo) or _dia_semana_match(limpo))
         return {"termos": termos, "datas": datas, "ultimos": ultimos, "explicito": explicito}
 
+    def _consulta_cardapio(q_sa):
+        """Perguntas sobre o cardapio: classes do quadrante magico (burro de carga, abacaxi, estrela,
+        quebra-cabeca), resumo do quadrante e ranking de mais/menos vendidos."""
+        n = re.search(r"\b(\d{1,2})\s+(produtos|itens|lanches|mais|menos)\b", q_sa)
+        n = int(n.group(1)) if n else 10
+        n = max(1, min(n, 25))
+        if re.search(r"\bmenos\s+vendid\w*|\bpior(es)?\s+(vendas|produtos|itens)\b|\bque\s+menos\s+(vende|vendem|sai|saem)\b", q_sa):
+            return {"tipo": "menos", "n": n}
+        if re.search(r"\bmais\s+vendid\w*|\bcampe\w*\s+de\s+venda|\bque\s+mais\s+(vende|vendem|sai|saem)\b", q_sa):
+            return {"tipo": "mais", "n": n}
+        for pad, cl in ((r"\bburro\w*", "B"), (r"\babacaxi\w*", "A"), (r"\bestrela\w*", "E"), (r"quebra\W?cabeca\w*", "Q")):
+            if re.search(pad, q_sa):
+                return {"tipo": "classe", "classe": cl, "n": n}
+        if "quadrante" in q_sa or ("cardapio" in q_sa and re.search(r"(como esta|analise|classific|resumo|situacao|panorama|como anda)", q_sa)):
+            return {"tipo": "quadrante", "n": 3}
+        return None
+
+    def _janela_consulta(q_sa, hoje_d):
+        """(inicio, fim, rotulo) pedido na frase, ou None (usa o padrao de 90 dias)."""
+        pares = []
+        for dd, mm in re.findall(r"\b([0-3]?\d)/([01]?\d)\b", q_sa):
+            try:
+                d0 = date(hoje_d.year, int(mm), int(dd))
+            except ValueError:
+                continue
+            pares.append(d0 if d0 <= hoje_d else date(hoje_d.year - 1, int(mm), int(dd)))
+        if len(pares) >= 2:
+            a_, b_ = sorted(pares[:2])
+            return a_, b_, f"de {a_:%d/%m} a {b_:%d/%m}"
+        if len(pares) == 1:
+            return pares[0], pares[0], f"em {pares[0]:%d/%m/%Y}"
+        ult = re.search(r"\bultim\w*\s+(\d{1,3})\s+dias\b", q_sa)
+        if ult:
+            n_d = max(1, min(int(ult.group(1)), 365))
+            return hoje_d - timedelta(days=n_d - 1), hoje_d, f"nos últimos {n_d} dias"
+        retr, pass_ = "retrasad" in q_sa, "passad" in q_sa
+        if re.search(r"\bhoje\b", q_sa):
+            return hoje_d, hoje_d, "hoje"
+        if re.search(r"\bontem\b", q_sa):
+            d1 = hoje_d - timedelta(days=1)
+            return d1, d1, "ontem"
+        seg = hoje_d - timedelta(days=hoje_d.isoweekday() - 1)
+        if "semana" in q_sa:
+            if retr:
+                return seg - timedelta(days=14), seg - timedelta(days=8), "na semana retrasada"
+            if pass_:
+                return seg - timedelta(days=7), seg - timedelta(days=1), "na semana passada"
+            return seg, hoje_d, "nesta semana"
+        mc = _mes_citado(q_sa)
+        if mc:
+            nome_m, num_m = mc
+            ano_m = hoje_d.year if num_m <= hoje_d.month else hoje_d.year - 1
+            ini_m = date(ano_m, num_m, 1)
+            fim_m = (date(ano_m + (num_m == 12), (num_m % 12) + 1, 1)) - timedelta(days=1)
+            return ini_m, min(fim_m, hoje_d), f"em {nome_m.capitalize()}/{ano_m}"
+        if re.search(r"\bmes\b", q_sa):
+            ini_m = hoje_d.replace(day=1)
+            if retr or pass_:
+                fim_p = ini_m - timedelta(days=1)
+                if retr:
+                    fim_p = fim_p.replace(day=1) - timedelta(days=1)
+                return fim_p.replace(day=1), fim_p, "no mês retrasado" if retr else "no mês passado"
+            return ini_m, hoje_d, "neste mês"
+        return None
+
     q_sem_acento = _sem_acento(q)
     item_venda = _consulta_item_vendido(q_sem_acento)
+    cardapio_q = _consulta_cardapio(q_sem_acento) if item_venda is None else None
+    consulta_nova = item_venda is not None or cardapio_q is not None   # pergunta completa: nao herda periodo/marca/intencao da anterior
 
     # ----- memoria curta (continuacao de pergunta, ate 20min, por grupo) -----
     # Se a mensagem nova nao traz marca/unidade, periodo ou intencao reconheciveis,
@@ -2668,11 +2735,11 @@ def zap_pergunta(payload: dict = Body(...),
         tem_marca_unidade = (
             any(_sem_acento(u) in q_sem_acento for u in unidades_disp)
             or any(_sem_acento(m.split()[0]) in q_sem_acento for m in marcas_disp))
-        tem_periodo = item_venda is not None or bool(
+        tem_periodo = consulta_nova or bool(
             "hoje" in q_sem_acento or "ontem" in q_sem_acento or "semana" in q_sem_acento
             or "mes" in q_sem_acento or _mes_citado(q_sem_acento)
             or _dia_semana_match(q_sem_acento))
-        tem_intent = item_venda is not None or bool(
+        tem_intent = consulta_nova or bool(
             "compar" in q_sem_acento
             or re.search(r"\bsumid\w*\b", q_sem_acento) or "resgate" in q_sem_acento
             or ("client" in q_sem_acento and any(
@@ -2687,7 +2754,7 @@ def zap_pergunta(payload: dict = Body(...),
             or any(p in q_sem_acento for p in ("estoque", "insumo", "posicao")))
 
         reforco = []
-        if item_venda is None and not tem_marca_unidade and (ctx["marca"] or ctx["unidade"]):   # pergunta de item vendido e completa: nao herda filtro da anterior
+        if not consulta_nova and not tem_marca_unidade and (ctx["marca"] or ctx["unidade"]):   # pergunta de item vendido e completa: nao herda filtro da anterior
             if ctx["marca"]:
                 reforco.append(_sem_acento(ctx["marca"].split()[0]))
             if ctx["unidade"]:
@@ -2884,6 +2951,65 @@ def zap_pergunta(payload: dict = Body(...),
             resposta = (f"🍔 *Itens vendidos* — {titulo} {rot_i}{filtro_txt}\n"
                         f"Total: *{mil(total_q)} unidade(s)* · {brl(total_r)}\n\n"
                         + (detalhe + mais if len(linhas) > 1 else f"Produto: {linhas[0]['nome']}"))
+    elif cardapio_q is not None:
+        # ---- cardapio: quadrante magico (burro de carga, abacaxi...) e mais/menos vendidos ----
+        hoje_d = consultar(f"SELECT {agora}::date AS d", {})[0]["d"]
+        jan = _janela_consulta(q_sem_acento, hoje_d)
+        if jan:
+            ini_c, fim_c, rot_c = jan
+            dias_c = max(1, min((fim_c - ini_c).days + 1, 365))
+            card = analise_cardapio(marca=marca_d or "todas", unidade=unidade_d or "todas", dias=dias_c,
+                                    inicio=ini_c.isoformat(), fim=fim_c.isoformat())
+        else:
+            rot_c = "nos últimos 90 dias"
+            card = analise_cardapio(marca=marca_d or "todas", unidade=unidade_d or "todas", dias=90, inicio=None, fim=None)
+        mil = lambda n: f"{int(n):,}".replace(",", ".")
+        prods = [{"nome": x["nome"], "qtd": int(x["qtd"] or 0), "preco": float(x["preco_medio"] or 0),
+                  "custo": None if x["custo"] is None else float(x["custo"])} for x in card["produtos"]]
+        tp = cardapio_q["tipo"]
+        if not prods:
+            resposta = f"🤔 Não encontrei vendas no cardápio {rot_c}{filtro_txt}."
+        elif tp in ("menos", "mais"):
+            ordem = sorted(prods, key=lambda x: x["qtd"], reverse=(tp == "mais"))[:cardapio_q["n"]]
+            titulo = "🏆 *Mais vendidos*" if tp == "mais" else "🐢 *Menos vendidos*"
+            linhas_c = []
+            for k, x in enumerate(ordem, 1):
+                extra = f" · margem {100 * (x['preco'] - x['custo']) / x['preco']:.0f}%" if x["custo"] is not None and x["preco"] > 0 else ""
+                linhas_c.append(f"{k}. {x['nome']}: {mil(x['qtd'])} un{extra}")
+            resposta = (f"{titulo} — {rot_c}{filtro_txt}\n" + "\n".join(linhas_c)
+                        + ("\n\n_Só entram produtos com pelo menos 1 venda no período._" if tp == "menos" else ""))
+        else:
+            com = [dict(x, margem=x["preco"] - x["custo"]) for x in prods if x["custo"] is not None]
+            for x in com:
+                x["pct"] = 100 * x["margem"] / x["preco"] if x["preco"] > 0 else 0
+                x["lucro"] = x["margem"] * x["qtd"]
+            if len(com) < 2:
+                resposta = f"🤔 Preciso de pelo menos 2 produtos com custo cadastrado pra classificar o cardápio {rot_c}{filtro_txt}."
+            else:
+                import statistics
+                med_q = statistics.median(x["qtd"] for x in com)
+                med_m = statistics.median(x["margem"] for x in com)
+                for x in com:
+                    pop, mg = x["qtd"] >= med_q, x["margem"] >= med_m
+                    x["cl"] = "E" if pop and mg else "B" if pop else "Q" if mg else "A"
+                CL = {"E": ("⭐ *Estrelas*", "vendem muito e deixam boa margem: mantenha e destaque"),
+                      "B": ("🐴 *Burros de carga*", "vendem muito, mas deixam pouca margem: vale subir o preço ou baixar o custo"),
+                      "Q": ("🧩 *Quebra-cabeças*", "têm boa margem, mas vendem pouco: vale divulgar e dar destaque"),
+                      "A": ("🍍 *Abacaxis*", "vendem pouco e deixam pouca margem: candidatos a sair ou reformular")}
+                ORD = {"E": lambda x: -x["lucro"], "B": lambda x: -((med_m - x["margem"]) * x["qtd"]),
+                       "Q": lambda x: -x["margem"], "A": lambda x: x["qtd"]}
+                def _bloco(cl, n):
+                    itens = sorted((x for x in com if x["cl"] == cl), key=ORD[cl])
+                    linhas_b = [f"• {x['nome']}: {mil(x['qtd'])} un · margem {x['pct']:.0f}% ({brl(x['margem'])}/un)" for x in itens[:n]]
+                    mais_b = f"\n… e mais {len(itens) - n}" if len(itens) > n else ""
+                    return f"{CL[cl][0]} ({len(itens)}) — _{CL[cl][1]}_\n" + ("\n".join(linhas_b) or "—") + mais_b
+                rodape = (f"\n\n_Mediana: {mil(med_q)} un vendidas e {brl(med_m)} de margem por unidade._"
+                          + (f" {len(prods) - len(com)} produto(s) sem custo ficaram de fora." if len(prods) > len(com) else ""))
+                if tp == "classe":
+                    resposta = f"{_bloco(cardapio_q['classe'], cardapio_q['n'])}\n\n_{rot_c}{filtro_txt}_" + rodape
+                else:
+                    resposta = (f"🧭 *Quadrante mágico do cardápio* — {rot_c}{filtro_txt}\n\n"
+                                + "\n\n".join(_bloco(c, 3) for c in ("E", "B", "Q", "A")) + rodape)
     elif any(p in q_sem_acento for p in ("preciso comprar", "o que comprar", "que comprar", "sugestao de compra",
                                          "o que pedir", "lista de compra", "o que devo comprar",
                                          "o que precisa comprar", "o que tenho que comprar")):
@@ -3212,7 +3338,7 @@ def zap_pergunta(payload: dict = Body(...),
                 resposta = "\n\n".join(partes)
         resposta += aviso_filtro
     else:
-        resposta = ("🤖 *Oi, aqui é a MIA!* Sei responder sobre: pedidos, itens vendidos (_quantas ferinhas foram vendidas?_), faturamento, "
+        resposta = ("🤖 *Oi, aqui é a MIA!* Sei responder sobre: pedidos, itens vendidos (_quantas ferinhas foram vendidas?_), cardápio (_quais os burros de carga? / produtos menos vendidos?_), faturamento, "
                     "ticket, cancelamentos, meta, clientes sumidos, clientes com/sem telefone, consumo médio de insumos por dia da semana, estoque e tempo de "
                     "entrega — com períodos hoje / ontem / segunda a domingo (com \"passada\" "
                     "ou \"retrasada\") / semana (atual, passada, retrasada) / mês (atual, "
