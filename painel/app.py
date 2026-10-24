@@ -2609,11 +2609,14 @@ def zap_pergunta(payload: dict = Body(...),
         "SELECT DISTINCT marca FROM pedidos WHERE marca IS NOT NULL ORDER BY 1", {})]
 
     def _consulta_item_vendido(q_sa):
-        """'quantos <item> foram vendidos [data]?' -> dict com o item procurado e o periodo pedido.
-        Sem data = total geral. None quando a frase nao e esse tipo de pergunta
-        (ex: 'quantos pedidos...' continua indo para a intencao de pedidos)."""
-        if not (re.search(r"\bquant(os|as)\b", q_sa)
-                and re.search(r"\b(vendid\w*|vendeu|venderam|vendemos|saiu|sairam)\b", q_sa)):
+        """Perguntas de item vendido, em varias formas: 'quantos X foram vendidos', 'quantas vendas tiveram de X',
+        'quanto vendeu de X', 'quantos X saíram'... [+ data]. Sem data = total geral.
+        None quando nao e isso (ex: 'quantos pedidos foram vendidos', 'quantas vendas tivemos hoje')."""
+        if not re.search(r"\bquant(o|os|as)\b", q_sa):
+            return None
+        fortes = re.search(r"\b(vendid\w*|vendeu|venderam|vendemos|saiu|sairam)\b", q_sa)
+        fracos = re.search(r"\b(vendas?|teve|tiveram|tivemos|houve|saidas?|pedid\w*)\b", q_sa)
+        if not (fortes or fracos):
             return None
         limpo = re.sub(r"@\S+", " ", q_sa)
         datas = []
@@ -2626,16 +2629,22 @@ def zap_pergunta(payload: dict = Body(...),
         ult = re.search(r"\bultim\w*\s+(\d{1,3})\s+dias\b", limpo)
         ultimos = int(ult.group(1)) if ult else None
         palavras = re.findall(r"[a-z0-9]+", limpo)
-        if "pedido" in " ".join(palavras) and not any(w in ("item", "itens", "produto", "produtos", "unidade", "unidades") for w in palavras):
-            return None
+        generico = any(w in ("item", "itens", "produto", "produtos", "unidade", "unidades") for w in palavras)
+        tem_pedido = any(w.startswith("pedid") for w in palavras)
         parada = set("""quantos quantas quanto itens item unidades unidade produtos produto foram foi vendido vendidos vendida
-            vendidas vendeu venderam vendemos saiu sairam de do da dos das o a os as um uma no na nos nas em pelo pela por pra para
-            que ja ate agora desde total geral sempre historico todo toda todos todas dia dias ultimo ultimos ultima ultimas hoje
-            ontem semana mes passado passada retrasado retrasada atual essa esse nesta neste e ou com sem mia chomp maracaya
-            burger colorado sobradinho gc entre lanche lanches vez vezes""".split())
+            vendidas vendeu venderam vendemos saiu sairam saida saidas venda vendas teve tiveram tivemos houve tem temos
+            de do da dos das o a os as um uma no na nos nas em pelo pela por pra para que ja ate agora desde total geral sempre
+            historico todo toda todos todas dia dias ultimo ultimos ultima ultimas hoje ontem semana mes passado passada
+            retrasado retrasada atual essa esse nesta neste e ou com sem mia chomp maracaya burger colorado sobradinho gc
+            entre lanche lanches vez vezes q8 quantidade""".split())
         parada |= {n for n, _ in _MESES_PT} | {a for al, _, _, _ in _DIAS_SEMANA_MIA for a in al}
-        termos = [w for w in palavras if w not in parada and not w.isdigit() and len(w) >= 2]
+        termos = [w for w in palavras if w not in parada and not w.startswith("pedid") and not w.isdigit() and len(w) >= 2]
         termos = [t[:-1] if t.endswith("s") and len(t) > 3 else t for t in termos]
+        if not termos:
+            # sem item especifico: so vale se o usuario falou de itens/unidades/produtos ("quantos itens foram vendidos?")
+            # ou usou o verbo "vendidos" sem falar em pedidos. "quantas vendas tivemos hoje?" segue pro faturamento.
+            if not (generico or (fortes and not tem_pedido)):
+                return None
         explicito = bool(re.search(r"\b(hoje|ontem|semana|mes)\b", limpo) or _mes_citado(limpo) or _dia_semana_match(limpo))
         return {"termos": termos, "datas": datas, "ultimos": ultimos, "explicito": explicito}
 
