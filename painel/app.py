@@ -2639,11 +2639,12 @@ def zap_pergunta(payload: dict = Body(...),
             entre lanche lanches vez vezes q8 quantidade""".split())
         parada |= {n for n, _ in _MESES_PT} | {a for al, _, _, _ in _DIAS_SEMANA_MIA for a in al}
         termos = [w for w in palavras if w not in parada and not w.startswith("pedid") and not w.isdigit() and len(w) >= 2]
-        termos = [t[:-1] if t.endswith("s") and len(t) > 3 else t for t in termos]
+        termos = [t[:-2] + "m" if t.endswith("ns") and len(t) > 3 else (t[:-1] if t.endswith("s") and len(t) > 3 else t) for t in termos]
         if not termos:
             # sem item especifico: so vale se o usuario falou de itens/unidades/produtos ("quantos itens foram vendidos?")
             # ou usou o verbo "vendidos" sem falar em pedidos. "quantas vendas tivemos hoje?" segue pro faturamento.
-            if not (generico or (fortes and not tem_pedido)):
+            so_singular = not re.search(r"\\bquant(os|as)\\b", q_sa)      # "quanto a Maracayá vendeu hoje?" = faturamento
+            if so_singular or not (generico or (fortes and not tem_pedido)):
                 return None
         explicito = bool(re.search(r"\b(hoje|ontem|semana|mes)\b", limpo) or _mes_citado(limpo) or _dia_semana_match(limpo))
         return {"termos": termos, "datas": datas, "ultimos": ultimos, "explicito": explicito}
