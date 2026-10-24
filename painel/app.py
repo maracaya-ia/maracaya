@@ -2677,7 +2677,7 @@ def zap_pergunta(payload: dict = Body(...),
             or any(p in q_sem_acento for p in ("estoque", "insumo", "posicao")))
 
         reforco = []
-        if not tem_marca_unidade and (ctx["marca"] or ctx["unidade"]):
+        if item_venda is None and not tem_marca_unidade and (ctx["marca"] or ctx["unidade"]):   # pergunta de item vendido e completa: nao herda filtro da anterior
             if ctx["marca"]:
                 reforco.append(_sem_acento(ctx["marca"].split()[0]))
             if ctx["unidade"]:
