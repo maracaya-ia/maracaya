@@ -2643,7 +2643,7 @@ def zap_pergunta(payload: dict = Body(...),
         if not termos:
             # sem item especifico: so vale se o usuario falou de itens/unidades/produtos ("quantos itens foram vendidos?")
             # ou usou o verbo "vendidos" sem falar em pedidos. "quantas vendas tivemos hoje?" segue pro faturamento.
-            so_singular = not re.search(r"\\bquant(os|as)\\b", q_sa)      # "quanto a Maracayá vendeu hoje?" = faturamento
+            so_singular = not re.search(r"\bquant(os|as)\b", q_sa)      # "quanto a Maracayá vendeu hoje?" = faturamento
             if so_singular or not (generico or (fortes and not tem_pedido)):
                 return None
         explicito = bool(re.search(r"\b(hoje|ontem|semana|mes)\b", limpo) or _mes_citado(limpo) or _dia_semana_match(limpo))
