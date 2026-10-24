@@ -2963,7 +2963,7 @@ def zap_pergunta(payload: dict = Body(...),
             rot_c, args_c = "nos últimos 90 dias", dict(dias=90, inicio=None, fim=None)
         mil = lambda n: f"{int(n):,}".replace(",", ".")
         tp = cardapio_q["tipo"]
-        alvo = [marca_d] if marca_d else list(marcas_disp)
+        alvo = [marca_d] if marca_d else sorted(marcas_disp, key=lambda m: (not m.startswith("Maracay"), m))   # Maracayá primeiro
         CL = {"E": ("⭐ *Estrelas*", "vendem muito e deixam boa margem: mantenha e destaque"),
               "B": ("🐴 *Burros de carga*", "vendem muito, mas deixam pouca margem: vale subir o preço ou baixar o custo"),
               "Q": ("🧩 *Quebra-cabeças*", "têm boa margem, mas vendem pouco: vale divulgar e dar destaque"),
