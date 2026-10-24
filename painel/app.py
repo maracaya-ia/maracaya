@@ -2952,64 +2952,75 @@ def zap_pergunta(payload: dict = Body(...),
                         f"Total: *{mil(total_q)} unidade(s)* · {brl(total_r)}\n\n"
                         + (detalhe + mais if len(linhas) > 1 else f"Produto: {linhas[0]['nome']}"))
     elif cardapio_q is not None:
-        # ---- cardapio: quadrante magico (burro de carga, abacaxi...) e mais/menos vendidos ----
+        # ---- cardapio: quadrante magico (burro de carga, abacaxi...) e mais/menos vendidos, SEPARADO POR MARCA ----
+        import statistics
         hoje_d = consultar(f"SELECT {agora}::date AS d", {})[0]["d"]
         jan = _janela_consulta(q_sem_acento, hoje_d)
         if jan:
             ini_c, fim_c, rot_c = jan
-            dias_c = max(1, min((fim_c - ini_c).days + 1, 365))
-            card = analise_cardapio(marca=marca_d or "todas", unidade=unidade_d or "todas", dias=dias_c,
-                                    inicio=ini_c.isoformat(), fim=fim_c.isoformat())
+            args_c = dict(dias=max(1, min((fim_c - ini_c).days + 1, 365)), inicio=ini_c.isoformat(), fim=fim_c.isoformat())
         else:
-            rot_c = "nos últimos 90 dias"
-            card = analise_cardapio(marca=marca_d or "todas", unidade=unidade_d or "todas", dias=90, inicio=None, fim=None)
+            rot_c, args_c = "nos últimos 90 dias", dict(dias=90, inicio=None, fim=None)
         mil = lambda n: f"{int(n):,}".replace(",", ".")
-        prods = [{"nome": x["nome"], "qtd": int(x["qtd"] or 0), "preco": float(x["preco_medio"] or 0),
-                  "custo": None if x["custo"] is None else float(x["custo"])} for x in card["produtos"]]
         tp = cardapio_q["tipo"]
-        if not prods:
-            resposta = f"🤔 Não encontrei vendas no cardápio {rot_c}{filtro_txt}."
-        elif tp in ("menos", "mais"):
-            ordem = sorted(prods, key=lambda x: x["qtd"], reverse=(tp == "mais"))[:cardapio_q["n"]]
-            titulo = "🏆 *Mais vendidos*" if tp == "mais" else "🐢 *Menos vendidos*"
-            linhas_c = []
-            for k, x in enumerate(ordem, 1):
-                extra = f" · margem {100 * (x['preco'] - x['custo']) / x['preco']:.0f}%" if x["custo"] is not None and x["preco"] > 0 else ""
-                linhas_c.append(f"{k}. {x['nome']}: {mil(x['qtd'])} un{extra}")
-            resposta = (f"{titulo} — {rot_c}{filtro_txt}\n" + "\n".join(linhas_c)
-                        + ("\n\n_Só entram produtos com pelo menos 1 venda no período._" if tp == "menos" else ""))
-        else:
+        alvo = [marca_d] if marca_d else list(marcas_disp)
+        CL = {"E": ("⭐ *Estrelas*", "vendem muito e deixam boa margem: mantenha e destaque"),
+              "B": ("🐴 *Burros de carga*", "vendem muito, mas deixam pouca margem: vale subir o preço ou baixar o custo"),
+              "Q": ("🧩 *Quebra-cabeças*", "têm boa margem, mas vendem pouco: vale divulgar e dar destaque"),
+              "A": ("🍍 *Abacaxis*", "vendem pouco e deixam pouca margem: candidatos a sair ou reformular")}
+
+        def _marca(mc):
+            """Texto do cardapio de UMA marca; None quando ela nao tem venda no periodo."""
+            card = analise_cardapio(marca=mc, unidade=unidade_d or "todas", **args_c)
+            prods = [{"nome": x["nome"], "qtd": int(x["qtd"] or 0), "preco": float(x["preco_medio"] or 0),
+                      "custo": None if x["custo"] is None else float(x["custo"])} for x in card["produtos"]]
+            if not prods:
+                return None
+            if tp in ("menos", "mais"):
+                ordem = sorted(prods, key=lambda x: x["qtd"], reverse=(tp == "mais"))[:cardapio_q["n"]]
+                out = []
+                for k, x in enumerate(ordem, 1):
+                    extra = f" · margem {100 * (x['preco'] - x['custo']) / x['preco']:.0f}%" if x["custo"] is not None and x["preco"] > 0 else ""
+                    out.append(f"{k}. {x['nome']}: {mil(x['qtd'])} un{extra}")
+                return "\n".join(out)
             com = [dict(x, margem=x["preco"] - x["custo"]) for x in prods if x["custo"] is not None]
+            if len(com) < 2:
+                return "Poucos produtos com custo cadastrado pra classificar."
             for x in com:
                 x["pct"] = 100 * x["margem"] / x["preco"] if x["preco"] > 0 else 0
                 x["lucro"] = x["margem"] * x["qtd"]
-            if len(com) < 2:
-                resposta = f"🤔 Preciso de pelo menos 2 produtos com custo cadastrado pra classificar o cardápio {rot_c}{filtro_txt}."
-            else:
-                import statistics
-                med_q = statistics.median(x["qtd"] for x in com)
-                med_m = statistics.median(x["margem"] for x in com)
-                for x in com:
-                    pop, mg = x["qtd"] >= med_q, x["margem"] >= med_m
-                    x["cl"] = "E" if pop and mg else "B" if pop else "Q" if mg else "A"
-                CL = {"E": ("⭐ *Estrelas*", "vendem muito e deixam boa margem: mantenha e destaque"),
-                      "B": ("🐴 *Burros de carga*", "vendem muito, mas deixam pouca margem: vale subir o preço ou baixar o custo"),
-                      "Q": ("🧩 *Quebra-cabeças*", "têm boa margem, mas vendem pouco: vale divulgar e dar destaque"),
-                      "A": ("🍍 *Abacaxis*", "vendem pouco e deixam pouca margem: candidatos a sair ou reformular")}
-                ORD = {"E": lambda x: -x["lucro"], "B": lambda x: -((med_m - x["margem"]) * x["qtd"]),
-                       "Q": lambda x: -x["margem"], "A": lambda x: x["qtd"]}
-                def _bloco(cl, n):
-                    itens = sorted((x for x in com if x["cl"] == cl), key=ORD[cl])
-                    linhas_b = [f"• {x['nome']}: {mil(x['qtd'])} un · margem {x['pct']:.0f}% ({brl(x['margem'])}/un)" for x in itens[:n]]
-                    mais_b = f"\n… e mais {len(itens) - n}" if len(itens) > n else ""
-                    return f"{CL[cl][0]} ({len(itens)}) — _{CL[cl][1]}_\n" + ("\n".join(linhas_b) or "—") + mais_b
-                rodape = (f"\n\n_Mediana: {mil(med_q)} un vendidas e {brl(med_m)} de margem por unidade._"
-                          + (f" {len(prods) - len(com)} produto(s) sem custo ficaram de fora." if len(prods) > len(com) else ""))
-                if tp == "classe":
-                    resposta = f"{_bloco(cardapio_q['classe'], cardapio_q['n'])}\n\n_{rot_c}{filtro_txt}_" + rodape
-                else:
-                    resposta = (f"🧭 *Quadrante mágico do cardápio* — {rot_c}{filtro_txt}\n\n"
-                                + "\n\n".join(_bloco(c, 3) for c in ("E", "B", "Q", "A")) + rodape)
+            med_q = statistics.median(x["qtd"] for x in com)
+            med_m = statistics.median(x["margem"] for x in com)
+            for x in com:
+                pop, mg = x["qtd"] >= med_q, x["margem"] >= med_m
+                x["cl"] = "E" if pop and mg else "B" if pop else "Q" if mg else "A"
+            ORD = {"E": lambda x: -x["lucro"], "B": lambda x: -((med_m - x["margem"]) * x["qtd"]),
+                   "Q": lambda x: -x["margem"], "A": lambda x: x["qtd"]}
+            def _bloco(cl, n):
+                itens = sorted((x for x in com if x["cl"] == cl), key=ORD[cl])
+                lin = [f"• {x['nome']}: {mil(x['qtd'])} un · margem {x['pct']:.0f}% ({brl(x['margem'])}/un)" for x in itens[:n]]
+                resto = f"\n… e mais {len(itens) - n}" if len(itens) > n else ""
+                return f"{CL[cl][0]} ({len(itens)}) — _{CL[cl][1]}_\n" + ("\n".join(lin) or "—") + resto
+            rodape = (f"\n_Mediana: {mil(med_q)} un vendidas e {brl(med_m)} de margem por unidade."
+                      + (f" {len(prods) - len(com)} produto(s) sem custo ficaram de fora." if len(prods) > len(com) else "") + "_")
+            if tp == "classe":
+                return _bloco(cardapio_q["classe"], cardapio_q["n"]) + rodape
+            n_res = 3 if len(alvo) == 1 else 2
+            return "\n\n".join(_bloco(c, n_res) for c in ("E", "B", "Q", "A")) + rodape
+
+        titulos = {"menos": "🐢 *Menos vendidos*", "mais": "🏆 *Mais vendidos*", "classe": "🧭 *Cardápio por grupo*",
+                   "quadrante": "🧭 *Quadrante mágico do cardápio*"}
+        blocos = [(mc, _marca(mc)) for mc in alvo]
+        blocos = [(mc, t) for mc, t in blocos if t]
+        cab = f"{titulos[tp]} — {rot_c}" + (f" _({unidade_d})_" if unidade_d else "")
+        if not blocos:
+            resposta = f"🤔 Não encontrei vendas no cardápio {rot_c}{filtro_txt}."
+        elif len(blocos) == 1 and marca_d:
+            resposta = f"{cab} _({blocos[0][0]})_\n\n{blocos[0][1]}"
+        else:
+            resposta = cab + "\n\n" + "\n\n".join(f"━━ 🏷️ *{mc}* ━━\n{t}" for mc, t in blocos)
+            if tp in ("menos", "mais"):
+                resposta += "\n\n_Só entram produtos com pelo menos 1 venda no período._"
     elif any(p in q_sem_acento for p in ("preciso comprar", "o que comprar", "que comprar", "sugestao de compra",
                                          "o que pedir", "lista de compra", "o que devo comprar",
                                          "o que precisa comprar", "o que tenho que comprar")):
