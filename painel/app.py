@@ -2626,7 +2626,7 @@ def zap_pergunta(payload: dict = Body(...),
             except ValueError:
                 pass
         limpo = re.sub(r"\b[0-3]?\d/[01]?\d\b", " ", limpo)
-        ult = re.search(r"\bultim\w*\s+(\d{1,3})\s+dias\b", limpo)
+        ult = re.search(r"\b(\d{1,3})\s+dias?\b", limpo)      # "ultimos 90 dias", "utlimos 90 dias", "nos 90 dias"
         ultimos = int(ult.group(1)) if ult else None
         palavras = re.findall(r"[a-z0-9]+", limpo)
         generico = any(w in ("item", "itens", "produto", "produtos", "unidade", "unidades") for w in palavras)
@@ -2638,7 +2638,11 @@ def zap_pergunta(payload: dict = Body(...),
             retrasado retrasada atual essa esse nesta neste e ou com sem mia chomp maracaya burger colorado sobradinho gc
             entre lanche lanches vez vezes q8 quantidade""".split())
         parada |= {n for n, _ in _MESES_PT} | {a for al, _, _, _ in _DIAS_SEMANA_MIA for a in al}
-        termos = [w for w in palavras if w not in parada and not w.startswith("pedid") and not w.isdigit() and len(w) >= 2]
+        import difflib
+        _periodo_palavras = ["ultimos", "ultimo", "ultimas", "ultima", "semana", "passado", "passada", "retrasado", "retrasada", "ontem"]
+        def _eh_periodo(w):      # "utlimos", "ultmos", "ontm"... = erro de digitacao de palavra de periodo
+            return len(w) >= 5 and bool(difflib.get_close_matches(w, _periodo_palavras, n=1, cutoff=0.8))
+        termos = [w for w in palavras if w not in parada and not _eh_periodo(w) and not w.startswith("pedid") and not w.isdigit() and len(w) >= 2]
         termos = [t[:-2] + "m" if t.endswith("ns") and len(t) > 3 else (t[:-1] if t.endswith("s") and len(t) > 3 else t) for t in termos]
         if not termos:
             # sem item especifico: so vale se o usuario falou de itens/unidades/produtos ("quantos itens foram vendidos?")
@@ -2680,7 +2684,7 @@ def zap_pergunta(payload: dict = Body(...),
             return a_, b_, f"de {a_:%d/%m} a {b_:%d/%m}"
         if len(pares) == 1:
             return pares[0], pares[0], f"em {pares[0]:%d/%m/%Y}"
-        ult = re.search(r"\bultim\w*\s+(\d{1,3})\s+dias\b", q_sa)
+        ult = re.search(r"\b(\d{1,3})\s+dias?\b", q_sa)
         if ult:
             n_d = max(1, min(int(ult.group(1)), 365))
             return hoje_d - timedelta(days=n_d - 1), hoje_d, f"nos últimos {n_d} dias"
