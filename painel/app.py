@@ -2608,7 +2608,39 @@ def zap_pergunta(payload: dict = Body(...),
     marcas_disp = [row["marca"] for row in consultar(
         "SELECT DISTINCT marca FROM pedidos WHERE marca IS NOT NULL ORDER BY 1", {})]
 
+    def _consulta_item_vendido(q_sa):
+        """'quantos <item> foram vendidos [data]?' -> dict com o item procurado e o periodo pedido.
+        Sem data = total geral. None quando a frase nao e esse tipo de pergunta
+        (ex: 'quantos pedidos...' continua indo para a intencao de pedidos)."""
+        if not (re.search(r"\bquant(os|as)\b", q_sa)
+                and re.search(r"\b(vendid\w*|vendeu|venderam|vendemos|saiu|sairam)\b", q_sa)):
+            return None
+        limpo = re.sub(r"@\S+", " ", q_sa)
+        datas = []
+        for dd, mm in re.findall(r"\b([0-3]?\d)/([01]?\d)\b", limpo):
+            try:
+                datas.append((int(dd), int(mm)))
+            except ValueError:
+                pass
+        limpo = re.sub(r"\b[0-3]?\d/[01]?\d\b", " ", limpo)
+        ult = re.search(r"\bultim\w*\s+(\d{1,3})\s+dias\b", limpo)
+        ultimos = int(ult.group(1)) if ult else None
+        palavras = re.findall(r"[a-z0-9]+", limpo)
+        if "pedido" in " ".join(palavras) and not any(w in ("item", "itens", "produto", "produtos", "unidade", "unidades") for w in palavras):
+            return None
+        parada = set("""quantos quantas quanto itens item unidades unidade produtos produto foram foi vendido vendidos vendida
+            vendidas vendeu venderam vendemos saiu sairam de do da dos das o a os as um uma no na nos nas em pelo pela por pra para
+            que ja ate agora desde total geral sempre historico todo toda todos todas dia dias ultimo ultimos ultima ultimas hoje
+            ontem semana mes passado passada retrasado retrasada atual essa esse nesta neste e ou com sem mia chomp maracaya
+            burger colorado sobradinho gc entre lanche lanches vez vezes""".split())
+        parada |= {n for n, _ in _MESES_PT} | {a for al, _, _, _ in _DIAS_SEMANA_MIA for a in al}
+        termos = [w for w in palavras if w not in parada and not w.isdigit() and len(w) >= 2]
+        termos = [t[:-1] if t.endswith("s") and len(t) > 3 else t for t in termos]
+        explicito = bool(re.search(r"\b(hoje|ontem|semana|mes)\b", limpo) or _mes_citado(limpo) or _dia_semana_match(limpo))
+        return {"termos": termos, "datas": datas, "ultimos": ultimos, "explicito": explicito}
+
     q_sem_acento = _sem_acento(q)
+    item_venda = _consulta_item_vendido(q_sem_acento)
 
     # ----- memoria curta (continuacao de pergunta, ate 20min, por grupo) -----
     # Se a mensagem nova nao traz marca/unidade, periodo ou intencao reconheciveis,
@@ -2626,11 +2658,11 @@ def zap_pergunta(payload: dict = Body(...),
         tem_marca_unidade = (
             any(_sem_acento(u) in q_sem_acento for u in unidades_disp)
             or any(_sem_acento(m.split()[0]) in q_sem_acento for m in marcas_disp))
-        tem_periodo = bool(
+        tem_periodo = item_venda is not None or bool(
             "hoje" in q_sem_acento or "ontem" in q_sem_acento or "semana" in q_sem_acento
             or "mes" in q_sem_acento or _mes_citado(q_sem_acento)
             or _dia_semana_match(q_sem_acento))
-        tem_intent = bool(
+        tem_intent = item_venda is not None or bool(
             "compar" in q_sem_acento
             or re.search(r"\bsumid\w*\b", q_sem_acento) or "resgate" in q_sem_acento
             or ("client" in q_sem_acento and any(
@@ -2779,6 +2811,69 @@ def zap_pergunta(payload: dict = Body(...),
                         f"{data_b.strftime('%d/%m')}: {brl(fat_b)} · {int(mb['pedidos'])} pedidos\n\n"
                         f"{seta} {abs(delta):.0f}% "
                         f"{'a mais' if fat_b >= fat_a else 'a menos'} em {data_b.strftime('%d/%m')}")
+    elif item_venda is not None:
+        # ---- quantos <item> foram vendidos (com data, intervalo, ultimos N dias ou total) ----
+        hoje_d = consultar(f"SELECT {agora}::date AS d", {})[0]["d"]
+        prm = dict(params_extra)
+        def _data(dd, mm):
+            try:
+                d0 = date(hoje_d.year, mm, dd)
+            except ValueError:
+                return None
+            return d0 if d0 <= hoje_d else date(hoje_d.year - 1, mm, dd)
+        datas = [x for x in (_data(dd, mm) for dd, mm in item_venda["datas"]) if x]
+        if len(datas) >= 2:
+            ini, fim = sorted(datas[:2])
+            cond_i, rot_i = f"{dia} BETWEEN %(di)s AND %(df)s", f"de {ini:%d/%m} a {fim:%d/%m}"
+            prm.update(di=ini, df=fim)
+        elif len(datas) == 1:
+            cond_i, rot_i = f"{dia} = %(di)s", f"em {datas[0]:%d/%m/%Y}"
+            prm.update(di=datas[0])
+        elif item_venda["ultimos"]:
+            n_d = max(1, min(item_venda["ultimos"], 365))
+            cond_i, rot_i = f"{dia} > {agora}::date - {n_d}", f"nos últimos {n_d} dias"
+        elif item_venda["explicito"]:
+            cond_i, rot_i = cond, rotulo
+        else:
+            primeiro = consultar(f"SELECT min({dia}) AS d FROM pedidos p WHERE p.status <> 'canceled' {filtro_extra}", params_extra)[0]["d"]
+            cond_i, rot_i = "true", "no total" + (f" (desde {primeiro:%d/%m/%Y})" if primeiro else "")
+        termos = item_venda["termos"]
+        norm = "translate(lower(i.nome), 'áàâãäéèêëíìîïóòôõöúùûüç', 'aaaaaeeeeiiiiooooouuuuc')"
+        filtro_item = ""
+        for k, t in enumerate(termos):
+            filtro_item += f" AND {norm} LIKE %(t{k})s"
+            prm[f"t{k}"] = f"%{t}%"
+        linhas = consultar(f"""
+            SELECT coalesce(a.canonico, lower(trim(i.nome))) AS chave, max(i.nome) AS nome,
+                   sum(i.quantidade) AS qtd, coalesce(sum(i.total), 0) AS receita
+            FROM pedido_itens i JOIN pedidos p ON p.id = i.pedido_id
+            LEFT JOIN produto_alias a ON a.alias = lower(trim(i.nome))
+            WHERE p.status <> 'canceled' AND {cond_i} {filtro_extra} {filtro_item}
+            GROUP BY 1 ORDER BY 3 DESC
+        """, prm)
+        mil = lambda n: f"{int(n):,}".replace(",", ".")
+        total_q = sum(int(l["qtd"] or 0) for l in linhas)
+        total_r = sum(float(l["receita"] or 0) for l in linhas)
+        quem = " ".join(termos)
+        if not linhas or total_q == 0:
+            top = consultar(f"""
+                SELECT max(i.nome) AS nome, sum(i.quantidade) AS qtd
+                FROM pedido_itens i JOIN pedidos p ON p.id = i.pedido_id
+                LEFT JOIN produto_alias a ON a.alias = lower(trim(i.nome))
+                WHERE p.status <> 'canceled' AND {cond_i} {filtro_extra}
+                GROUP BY coalesce(a.canonico, lower(trim(i.nome))) ORDER BY 2 DESC LIMIT 3
+            """, {k: v for k, v in prm.items() if not k.startswith("t")})
+            sug = "; ".join(f"{t['nome']} ({mil(t['qtd'])})" for t in top)
+            resposta = (f"🤔 Não achei venda de *{quem or 'itens'}* {rot_i}{filtro_txt}.\n"
+                        "Use o nome como está no cardápio, ex: _quantas ferinhas foram vendidas?_"
+                        + (f"\nMais vendidos no período: {sug}." if sug else ""))
+        else:
+            titulo = f"*{quem}*" if quem else "*todos os itens*"
+            detalhe = "\n".join(f"• {l['nome']}: {mil(l['qtd'])}" for l in linhas[:6])
+            mais = f"\n… e mais {len(linhas) - 6} produto(s)" if len(linhas) > 6 else ""
+            resposta = (f"🍔 *Itens vendidos* — {titulo} {rot_i}{filtro_txt}\n"
+                        f"Total: *{mil(total_q)} unidade(s)* · {brl(total_r)}\n\n"
+                        + (detalhe + mais if len(linhas) > 1 else f"Produto: {linhas[0]['nome']}"))
     elif any(p in q_sem_acento for p in ("preciso comprar", "o que comprar", "que comprar", "sugestao de compra",
                                          "o que pedir", "lista de compra", "o que devo comprar",
                                          "o que precisa comprar", "o que tenho que comprar")):
@@ -3107,7 +3202,7 @@ def zap_pergunta(payload: dict = Body(...),
                 resposta = "\n\n".join(partes)
         resposta += aviso_filtro
     else:
-        resposta = ("🤖 *Oi, aqui é a MIA!* Sei responder sobre: pedidos, faturamento, "
+        resposta = ("🤖 *Oi, aqui é a MIA!* Sei responder sobre: pedidos, itens vendidos (_quantas ferinhas foram vendidas?_), faturamento, "
                     "ticket, cancelamentos, meta, clientes sumidos, clientes com/sem telefone, consumo médio de insumos por dia da semana, estoque e tempo de "
                     "entrega — com períodos hoje / ontem / segunda a domingo (com \"passada\" "
                     "ou \"retrasada\") / semana (atual, passada, retrasada) / mês (atual, "
