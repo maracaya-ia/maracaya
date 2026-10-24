@@ -3,7 +3,11 @@
 const esc=t=>String(t??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 /* texto do WhatsApp -> HTML: *negrito*, _itálico_, quebras de linha */
 const zap=t=>esc(t).replace(/\*([^*\n]+)\*/g,'<b>$1</b>').replace(/(^|[\s(])_([^_\n]+)_(?=[\s).,!?]|$)/g,'$1<i>$2</i>').replace(/\n/g,'<br>');
-const SUG=['Quanto falta pra meta?','Faturamento de ontem','Quantos pedidos hoje?','Como está o estoque?','Quantos clientes estão sumidos?','Faturamento de setembro','Quantas carnes uso no domingo?','Tempo de entrega hoje'];
+const GRUPOS=[
+  ['🍔 Cardápio',['Quais os produtos menos vendidos?','Quais os produtos mais vendidos?','Quais os burros de carga?','Quais os abacaxis do cardápio?','Me mostra as estrelas','Quebra-cabeças do cardápio','Como está o cardápio?']],
+  ['🧾 Itens vendidos',['Quantas ferinhas foram vendidas?','Quantas vendas tiveram de pudim?','Quantos itens foram vendidos ontem?','Quantos itens foram vendidos em setembro?']],
+  ['💰 Faturamento e meta',['Quanto falta pra meta?','Faturamento de ontem','Faturamento de setembro','Quantos pedidos hoje?']],
+  ['📦 Estoque, clientes e operação',['Como está o estoque?','Quantos clientes estão sumidos?','Quantas carnes uso no domingo?','Tempo de entrega hoje']]];
 const BOAS=`Oi, Álvaro, aqui é a MIA. Pergunte o que quiser sobre vendas, clientes, cardápio ou estoque. Eu respondo com os números do painel. Dá pra filtrar por unidade (Colorado, Sobradinho) ou marca (Chomp, Maracayá) e por período (hoje, ontem, semana, mês ou um mês pelo nome).`;
 let conversa=[],ocupado=false,ligado=false;
 const ativoAgora=()=>!!document.getElementById('z-chat');
@@ -29,7 +33,8 @@ function ligar(){
 }
 window.V2.screens.ze={render(c){if(!ligado){ligar();ligado=true}
   c.innerHTML=`<div class="chat" id="z-chat"></div>
-  <div class="filters" style="max-width:760px">${SUG.map(q=>`<button class="chip" data-q="${esc(q)}">${esc(q)}</button>`).join('')}</div>
+  <div class="atalhos" style="max-width:760px">${GRUPOS.map(([t,l])=>`<div class="ag"><div class="lbl">${t}</div><div class="filters">${l.map(q=>`<button class="chip" data-q="${esc(q)}">${esc(q)}</button>`).join('')}</div></div>`).join('')}
+   <p class="hint" style="margin:0">Dica: some um período (<i>ontem, em setembro, 15/10, últimos 15 dias</i>) ou uma marca/unidade (<i>Chomp, Sobradinho</i>) à pergunta. Sem período, o cardápio usa 90 dias e "quantos itens" mostra o total.</p></div>
   <form class="ask" id="z-form"><input id="z-in" maxlength="300" placeholder="Pergunte sobre vendas, clientes, estoque…" aria-label="Pergunta" autocomplete="off"><button class="btn brasa">Enviar</button></form>
   <p class="hint" style="max-width:760px;margin:0">É a mesma MIA do grupo do WhatsApp. <button class="btn ghost" id="z-limpar" style="padding:2px 10px">Limpar conversa</button></p>`;
   bolhas()},onFiltros(){}};
