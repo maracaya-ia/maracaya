@@ -62,7 +62,7 @@ function dlgBaixaItem(x0){
   openModal(`${mhead('Baixa manual',x0?x0.insumo:'Dar baixa no estoque')}<p class="hint" id="bHint"></p>
   <form class="mform" id="fBaixa">
    ${x0?'':`<label>Item<select id="bIns">${lista.map(i=>`<option value="${esc(i.insumo)}">${esc(i.insumo)}</option>`).join('')}</select></label>`}
-   <label>Quantidade a baixar <span id="bUn"></span><input id="bQtd" type="number" min="0" step="any" inputmode="decimal" placeholder="0" required></label>
+   <label>Quantidade a baixar <small id="bUn"></small><input id="bQtd" type="number" min="0" step="any" inputmode="decimal" placeholder="0" required></label>
    <label>Motivo<select id="bMot"><option>Perda / estragou</option><option>Uso interno</option><option>Brinde / cortesia</option><option>Outro</option></select></label>
    <label>Observação (opcional)<input id="bObs" maxlength="100" placeholder="ex: caixa caiu"></label>
    <div class="m-prev" id="bPrev"></div>
