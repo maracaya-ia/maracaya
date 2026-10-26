@@ -1280,7 +1280,8 @@ _CASE_REFRI = """CASE
     WHEN co.nome ILIKE '%%guaran%%' AND co.nome ILIKE '%%zero%%' THEN 'Guaraná Zero'
     WHEN co.nome ILIKE '%%guaran%%' THEN 'Guaraná Normal'
     WHEN co.nome ILIKE '%%fanta%%' THEN 'Fanta Laranja'
-    WHEN co.nome ILIKE '%%sprite%%' THEN 'Sprite'
+    WHEN co.nome ILIKE '%%sprite%%' AND co.nome ILIKE '%%zero%%' THEN 'Sprite Zero'
+            WHEN co.nome ILIKE '%%sprite%%' THEN 'Sprite'
     WHEN co.nome ILIKE '%%heineken%%' THEN 'Heineken'
     WHEN co.nome ILIKE '%%stella%%' THEN 'Stella Artois'
     WHEN co.nome ILIKE '%%suco%%' AND co.nome ILIKE '%%uva%%' THEN 'Suco Del Valle Uva'
@@ -1307,7 +1308,7 @@ _CASE_MOLHO = """CASE
     WHEN co.nome ILIKE '%%parmes%%' THEN 'Molho Parmesão'
     WHEN co.nome ILIKE '%%barbecue%%' THEN 'Molho Barbecue'
 END"""
-_SODAS = ("'Coca Zero','Coca Normal','Guaraná Normal','Guaraná Zero','Fanta Laranja','Sprite',"
+_SODAS = ("'Coca Zero','Coca Normal','Guaraná Normal','Guaraná Zero','Fanta Laranja','Sprite','Sprite Zero',"
           "'Heineken','Stella Artois','Suco Del Valle Uva','Suco Del Valle Maracujá',"
           "'Suco (genérico)','Água com Gás','Água Normal','Cerveja (genérica)',"
           "'Refrigerante (genérico)'")

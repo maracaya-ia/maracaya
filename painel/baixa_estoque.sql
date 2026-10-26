@@ -40,7 +40,7 @@ BEGIN
     receita AS (
         SELECT f.insumo AS ins,
                (CASE WHEN (b.produto ILIKE 'combo%' OR b.produto IN ('refrigerantes', 'sucos', 'cervejas'))
-                          AND f.insumo IN ('Coca Zero','Coca Normal','Guaraná Normal','Guaraná Zero','Fanta Laranja','Sprite',
+                          AND f.insumo IN ('Coca Zero','Coca Normal','Guaraná Normal','Guaraná Zero','Fanta Laranja','Sprite','Sprite Zero',
                               'Heineken','Stella Artois','Suco Del Valle Uva','Suco Del Valle Maracujá',
                               'Suco (genérico)','Água com Gás','Água Normal','Cerveja (genérica)',
                               'Refrigerante (genérico)')
@@ -52,6 +52,7 @@ BEGIN
             WHEN co.nome ILIKE '%guaran%' AND co.nome ILIKE '%zero%' THEN 'Guaraná Zero'
             WHEN co.nome ILIKE '%guaran%' THEN 'Guaraná Normal'
             WHEN co.nome ILIKE '%fanta%' THEN 'Fanta Laranja'
+            WHEN co.nome ILIKE '%sprite%' AND co.nome ILIKE '%zero%' THEN 'Sprite Zero'
             WHEN co.nome ILIKE '%sprite%' THEN 'Sprite'
             WHEN co.nome ILIKE '%heineken%' THEN 'Heineken'
             WHEN co.nome ILIKE '%stella%' THEN 'Stella Artois'
@@ -73,6 +74,7 @@ BEGIN
             WHEN co.nome ILIKE '%guaran%' AND co.nome ILIKE '%zero%' THEN 'Guaraná Zero'
             WHEN co.nome ILIKE '%guaran%' THEN 'Guaraná Normal'
             WHEN co.nome ILIKE '%fanta%' THEN 'Fanta Laranja'
+            WHEN co.nome ILIKE '%sprite%' AND co.nome ILIKE '%zero%' THEN 'Sprite Zero'
             WHEN co.nome ILIKE '%sprite%' THEN 'Sprite'
             WHEN co.nome ILIKE '%heineken%' THEN 'Heineken'
             WHEN co.nome ILIKE '%stella%' THEN 'Stella Artois'
@@ -92,7 +94,8 @@ BEGIN
                     WHEN co.nome ILIKE '%guaran%' AND co.nome ILIKE '%zero%' THEN 'Guaraná Zero'
                     WHEN co.nome ILIKE '%guaran%' THEN 'Guaraná Normal'
                     WHEN co.nome ILIKE '%fanta%' THEN 'Fanta Laranja'
-                    WHEN co.nome ILIKE '%sprite%' THEN 'Sprite'
+                    WHEN co.nome ILIKE '%sprite%' AND co.nome ILIKE '%zero%' THEN 'Sprite Zero'
+            WHEN co.nome ILIKE '%sprite%' THEN 'Sprite'
                     WHEN co.nome ILIKE '%heineken%' THEN 'Heineken'
                     WHEN co.nome ILIKE '%stella%' THEN 'Stella Artois'
                     WHEN co.nome ILIKE '%suco%' AND co.nome ILIKE '%uva%' THEN 'Suco Del Valle Uva'
