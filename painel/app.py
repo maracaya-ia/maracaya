@@ -4330,6 +4330,34 @@ def entrada_estoque(dados: dict = Body(...)):
     return {"ok": True, "saldo": saldo}
 
 
+@app.post("/api/estoque_baixa")
+def baixa_manual_estoque(dados: dict = Body(...)):
+    """Baixa manual (perda, uso interno, ajuste): subtrai do estoque, sem passar de zero."""
+    insumo = str(dados.get("insumo", "")).strip()
+    if not insumo:
+        return {"ok": False, "erro": "insumo vazio"}
+    try:
+        qtd = float(dados.get("quantidade"))
+    except (TypeError, ValueError):
+        return {"ok": False, "erro": "quantidade inválida"}
+    if qtd <= 0:
+        return {"ok": False, "erro": "a quantidade precisa ser maior que zero"}
+    atual = consultar("SELECT estoque_atual FROM insumo_estoque WHERE insumo = %(i)s", {"i": insumo})
+    if not atual:
+        return {"ok": False, "erro": "item sem estoque cadastrado"}
+    antes = float(atual[0]["estoque_atual"])
+    saldo = max(antes - qtd, 0.0)
+    motivo = str(dados.get("motivo", "") or "").strip()[:40]
+    obs = str(dados.get("obs", "") or "").strip()[:100]
+    texto = "baixa manual" + (f" ({motivo})" if motivo else "") + (f": {obs}" if obs else "")
+    executar("UPDATE insumo_estoque SET estoque_atual = %(s)s, atualizado_em = now() WHERE insumo = %(i)s",
+             {"s": saldo, "i": insumo})
+    executar("""INSERT INTO estoque_movimento (insumo, tipo, delta, saldo_apos, obs)
+                VALUES (%(i)s, 'baixa', %(d)s, %(s)s, %(o)s)""",
+             {"i": insumo, "d": saldo - antes, "s": saldo, "o": texto})
+    return {"ok": True, "saldo": saldo}
+
+
 @app.post("/api/estoque_entrega")
 def entrega_estoque(dados: dict = Body(...)):
     """Recebimento por fornecedor: varios itens de uma vez, cada um vira uma entrada no historico.

@@ -16,7 +16,7 @@ let st={ancora:'seg',seguranca:20,cobertura:30,busca:''};
 let plano=null,estq=null,sug=null,itens=[],forns={},el=null,modal=null;
 const tbl=(head,rows,right=[],hide=[])=>`<div class="tw"><table><thead><tr>${head.map((h,i)=>`<th class="${right.includes(i)?'r':''}${hide.includes(i)?' hide-m':''}">${h}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr${r.attr||''}>${(r.cells||r).map((c,i)=>`<td class="${right.includes(i)?'r':''}${hide.includes(i)?' hide-m':''}">${c}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
 const kpi=(l,v,s,extra='')=>`<div class="card kpi s3"><div class="k-l">${l}</div><div class="k-v ${extra}">${v}</div>${s?`<div class="k-s">${s}</div>`:''}</div>`;
-const SI={in:'<path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M4 17v3h16v-3"/>',clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',box:'<path d="M3 7l9-4 9 4-9 4z"/><path d="M3 7v10l9 4 9-4V7"/><path d="M12 11v10"/>',count:'<path d="M9 5H5v14h14v-4"/><path d="M9 12l3 3 8-8"/>',edit:'<path d="M4 20h4L19 9l-4-4L4 16z"/>'};
+const SI={in:'<path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M4 17v3h16v-3"/>',out:'<path d="M12 15V3"/><path d="M7 8l5-5 5 5"/><path d="M4 17v3h16v-3"/>',clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',box:'<path d="M3 7l9-4 9 4-9 4z"/><path d="M3 7v10l9 4 9-4V7"/><path d="M12 11v10"/>',count:'<path d="M9 5H5v14h14v-4"/><path d="M9 12l3 3 8-8"/>',edit:'<path d="M4 20h4L19 9l-4-4L4 16z"/>'};
 const ic=k=>`<svg viewBox="0 0 24 24" aria-hidden="true">${SI[k]}</svg>`;
 
 /* unidade de quem confere: embalagem > kg (itens em g) > unidade própria */
@@ -56,6 +56,23 @@ function dlgReceberItem(x){
     if(!r.ok){toast(r.erro||'Não foi possível registrar');return}closeModal();toast(`+${fmtG(q,x.unidade)} de ${x.insumo} somados ao estoque`);carregar()});
 }
 
+function dlgBaixaItem(x){
+  openModal(`${mhead('Baixa manual',x.insumo)}<p class="hint">Estoque atual: <strong>${fmtG(x.estoque??0,x.unidade)}</strong> · use para perda, uso interno ou item que não passou pela ficha técnica.</p>
+  <form class="mform" id="fBaixa">
+   <label>Quantidade a baixar (${x.unidade})<input id="bQtd" type="number" min="0" step="any" inputmode="decimal" placeholder="0" required></label>
+   <label>Motivo<select id="bMot"><option>Perda / estragou</option><option>Uso interno</option><option>Brinde / cortesia</option><option>Outro</option></select></label>
+   <label>Observação (opcional)<input id="bObs" maxlength="100" placeholder="ex: caixa caiu"></label>
+   <div class="m-prev" id="bPrev"></div>
+   <div class="m-foot"><button type="button" class="btn ghost" data-cx="fechar">Cancelar</button><button class="btn brasa">Dar baixa</button></div></form>`);
+  const prev=()=>{const q=parseFloat(document.getElementById('bQtd').value),a=x.estoque??0;
+    document.getElementById('bPrev').innerHTML=isNaN(q)||q<=0?`Estoque atual: <strong>${fmtG(a,x.unidade)}</strong>`:`Estoque: ${fmtG(a,x.unidade)} → <strong class="down">${fmtG(Math.max(a-q,0),x.unidade)}</strong> (−${fmtG(q,x.unidade)})`};
+  prev();document.getElementById('bQtd').addEventListener('input',prev);
+  document.getElementById('fBaixa').addEventListener('submit',async ev=>{ev.preventDefault();
+    const q=parseFloat(document.getElementById('bQtd').value);if(isNaN(q)||q<=0){toast('Informe a quantidade');return}
+    const r=await post('/api/estoque_baixa',{insumo:x.insumo,quantidade:q,motivo:document.getElementById('bMot').value,obs:document.getElementById('bObs').value});
+    if(!r.ok){toast(r.erro||'Não foi possível registrar');return}closeModal();toast(`−${fmtG(q,x.unidade)} de ${x.insumo} baixados do estoque`);carregar()});
+}
+
 async function dlgHist(x){
   openModal(`${mhead('Histórico',x.insumo)}<p class="hint">Carregando…</p>`);
   const d=await fetch('/api/estoque_historico?insumo='+encodeURIComponent(x.insumo)).then(r=>r.json());
@@ -64,7 +81,8 @@ async function dlgHist(x){
   const dias=d.por_dia.slice(0,5).map(p=>`<div><b>${fmtDia(p.dia)}</b><span class="down">−${q(p.baixas)}</span>${p.entradas?`<small>+${q(p.entradas)}</small>`:''}${p.ajustes?`<small class="mut">✏️ ${p.ajustes>0?'+':''}${q(p.ajustes)}</small>`:''}</div>`).join('');
   const rows=d.movimentos.map(m=>{const quando=new Date(m.criado_em).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
     const orig=m.pedido_id?` <span class="mut">#${m.numero_curto??m.pedido_id}</span>`:(m.obs&&!['entrega recebida','contagem manual','primeira contagem','cadastro do item'].some(p=>m.obs.startsWith(p))?` <span class="mut">${esc(m.obs)}</span>`:'');
-    return [quando,(TIPO[m.tipo]||m.tipo)+orig,`<strong class="${m.delta>=0?'up':'down'}">${m.delta>=0?'+':''}${q(m.delta)}</strong>`,m.saldo_apos==null?'—':q(m.saldo_apos)]});
+    const man=m.tipo==='baixa'&&!m.pedido_id&&(m.obs||'').startsWith('baixa manual');
+    return [quando,(man?'➖ Baixa manual':(TIPO[m.tipo]||m.tipo))+(man?` <span class="mut">${esc(m.obs.slice(12).replace(/^[ (]+|\)?$/g,''))}</span>`:orig),`<strong class="${m.delta>=0?'up':'down'}">${m.delta>=0?'+':''}${q(m.delta)}</strong>`,m.saldo_apos==null?'—':q(m.saldo_apos)]});
   document.querySelector('.modal').innerHTML=`${mhead('Histórico',x.insumo)}<p class="hint">Estoque atual: <strong>${d.estoque==null?'—':fmtG(d.estoque,x.unidade)}</strong></p>
    ${dias?`<div class="hist-days">${dias}</div>`:''}
    ${rows.length?tbl(['Quando','Movimento','Qtd','Saldo'],rows,[2,3]):'<p class="hint">Sem movimentos registrados ainda.</p>'}
@@ -207,7 +225,7 @@ function desenhar(){
       `<strong class="${x.comprar>0?'down':'up'}">${x.comprar>0?fmtQ(x.comprar,x.unidade):'✓ ok'}</strong>${x.ciclo?'<br><small class="mut">p/ o ciclo até a próxima troca</small>':''}${x.comprar>0&&x.embalagem_qtd?`<br><small class="mut">≈ ${x.comprar_embalagens} ${esc(x.embalagem_nome)}(s) de ${N(x.embalagem_qtd)} ${x.unidade}</small>`:''}`,
       `<span class="mut">R$</span> <input class="cin" data-custo="${q}" type="number" step="any" min="0" value="${x.custo_unitario??''}" placeholder="0,00" aria-label="Custo de ${q}">`,
       `<span class="mut">${x.custo_dia!=null?R(x.custo_dia):'—'}</span>`,
-      `<span class="row-act"><button class="ib" data-rec="${q}" title="Receber entrega (soma ao estoque)" aria-label="Receber entrega de ${q}">${ic('in')}</button><button class="ib" data-hist="${q}" title="Ver baixas, entregas e contagens" aria-label="Histórico de ${q}">${ic('clock')}</button><button class="ib" data-edit="${q}" title="Editar fornecedor, estoque, mínimo e custo" aria-label="Editar ${q}">${ic('edit')}</button></span>`]}});
+      `<span class="row-act"><button class="ib" data-rec="${q}" title="Receber entrega (soma ao estoque)" aria-label="Receber entrega de ${q}">${ic('in')}</button><button class="ib" data-baixa="${q}" title="Dar baixa manual (perda, uso interno)" aria-label="Baixa manual de ${q}">${ic('out')}</button><button class="ib" data-hist="${q}" title="Ver baixas, entregas e contagens" aria-label="Histórico de ${q}">${ic('clock')}</button><button class="ib" data-edit="${q}" title="Editar fornecedor, estoque, mínimo e custo" aria-label="Editar ${q}">${ic('edit')}</button></span>`]}});
   const fRows=d.itens.map(it=>({cells:[`<strong>${esc(it.nome)}</strong>`,`<span class="pill ${it.categoria==='perecivel'?'p-warn':'p-n'}">${it.categoria==='perecivel'?'Perecível':'Seco'}</span>`,it.dias_entrega==='todos'?'Todo dia':it.dias_entrega,`${it.antecedencia} dia(s)`,`${it.cobertura} dias`,`${it.prazo} dias`,
     `<input class="cin" data-forn="${esc(it.nome)}" type="number" step="10" min="0" value="${(+it.valor).toFixed(2)}" aria-label="Valor mensal de ${esc(it.nome)}">`,
     `<span class="${(it.real_mes||0)>it.valor?'down':(it.real_mes>0?'up':'mut')}">${(it.real_mes||0)>0?R(it.real_mes)+(it.real_mes>it.valor?' ⚠️':''):'—'}</span>`,
@@ -268,6 +286,7 @@ function ligar(){
     const g=a=>e.target.closest(a);let b;
     if(b=g('[data-do]')){const t=b.dataset.do;if(t==='entrega')dlgReceberEntrega();else if(t==='contagem')dlgContagem();else if(t==='novoItem')dlgInsumo(null);else if(t==='novoForn')dlgFornecedor(null);return}
     if(b=g('[data-rec]')){const x=itens.find(i=>i.insumo===b.dataset.rec);if(x)dlgReceberItem(x);return}
+    if(b=g('[data-baixa]')){const x=itens.find(i=>i.insumo===b.dataset.baixa);if(x)dlgBaixaItem(x);return}
     if(b=g('[data-hist]')){const x=itens.find(i=>i.insumo===b.dataset.hist);if(x)dlgHist(x);return}
     if(b=g('[data-edit]')){dlgInsumo(b.dataset.edit);return}
     if(b=g('[data-editf]')){dlgFornecedor(b.dataset.editf);return}
