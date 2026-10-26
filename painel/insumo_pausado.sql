@@ -1,0 +1,1 @@
+CREATE TABLE IF NOT EXISTS insumo_pausado (insumo TEXT PRIMARY KEY, desde TIMESTAMPTZ DEFAULT now());

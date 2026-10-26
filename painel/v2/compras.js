@@ -157,6 +157,7 @@ function dlgInsumo(nome){
    <label>Estoque atual${novo?'':` (${x.unidade})`}<input id="iEst" type="number" step="any" min="0" placeholder="—" value="${x.estoque??''}"></label>
    <label>Estoque mínimo <small>${novo?'':`(automático: ${Math.ceil(x.minimo_auto)})`}</small><input id="iMin" type="number" step="any" min="0" placeholder="vazio = automático" value="${!novo&&x.minimo_manual?x.minimo:''}"></label>
    <label class="chk"><input id="iCiclo" type="checkbox" ${!novo&&x.ciclo?'checked':''}> Controlar por troca (sem contagem de estoque, hortifrúti)</label>
+   ${novo?'':`<label class="chk"><input id="iPausa" type="checkbox" ${x.pausado?'checked':''}> Pausar item (sem alertas nem sugestão de compra enquanto não usar)</label>`}
    <label>Embalagem de compra <small>nome e quantidade na unidade do item</small><span style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><input id="iEmbN" maxlength="30" placeholder="caixa, bolsa, fardo…" value="${esc(!novo&&x.embalagem_nome||'')}"><input id="iEmbQ" type="number" step="any" min="0" placeholder="qtd por embalagem" value="${!novo&&x.embalagem_qtd||''}"></span></label>
    <label>Custo unitário (R$)<input id="iCusto" type="number" step="any" min="0" placeholder="0,00" value="${x.custo_unitario??''}"></label>
    <div class="m-foot"><button type="button" class="btn ghost" data-cx="fechar">Cancelar</button><button class="btn brasa">Salvar</button></div></form>`);
@@ -172,6 +173,7 @@ function dlgInsumo(nome){
     if(!isNaN(est)&&est>=0&&est!==x.estoque)tarefas.push(post('/api/estoque',{insumo:x.insumo,estoque:est}));
     if(!isNaN(custo)&&custo>=0&&custo!==x.custo_unitario)tarefas.push(post('/api/insumo_custo',{insumo:x.insumo,custo_unitario:custo}));
     const ciclo=g('iCiclo').checked;if(ciclo!==!!x.ciclo)tarefas.push(post('/api/insumo_ciclo',{insumo:x.insumo,ativo:ciclo}));
+    if(!novo&&g('iPausa').checked!==!!x.pausado)tarefas.push(post('/api/insumo_pausado',{insumo:x.insumo,ativo:g('iPausa').checked}));
     const en=g('iEmbN').value.trim(),eq=g('iEmbQ').value.trim();
     if(en!==(x.embalagem_nome||'')||(eq===''?null:parseFloat(eq))!==(x.embalagem_qtd||null)){const r=await post('/api/insumo_embalagem',{insumo:x.insumo,nome:en,qtd:eq});if(!r.ok){toast(r.erro||'Embalagem inválida');return}}
     const mt=g('iMin').value.trim(),mn=mt===''?null:parseFloat(mt),ma=x.minimo_manual?x.minimo:null;
@@ -187,7 +189,7 @@ function desenhar(){
   const d=plano,es=estq;if(!d||!es)return;
   const nHoje=sug?sug.pedidos.filter(p=>p.pedir_hoje).length:0;
   const abaixo=itens.filter(x=>x.abaixo_minimo).length;
-  const sem=itens.filter(x=>x.estoque==null&&!x.ciclo&&!x.generico).length;
+  const sem=itens.filter(x=>x.estoque==null&&!x.ciclo&&!x.generico&&!x.pausado).length;
   const maxVal=Math.max(...d.concentracao.map(c=>c.valor),1);
   const aviso=d.pico&&d.pico.qtd>=2
     ?`<div class="card s12 aviso warn">⚠️ No dia <strong>${d.pico.dia}</strong> vencem <strong>${d.pico.qtd} boletos</strong> juntos (${R(d.pico.valor)}): ${d.pico.forns.join(', ')}. Se apertar o caixa, adie o pedido de um fornecedor "todo dia" pra empurrar o vencimento.</div>`
@@ -195,7 +197,7 @@ function desenhar(){
   const ordenados=[...itens].sort((a,b)=>a.insumo.localeCompare(b.insumo,'pt-BR',{sensitivity:'base'}));
   const linhas=ordenados.map(x=>{const q=esc(x.insumo);
     return {attr:` data-busca="${esc(semAcento(x.insumo+' '+x.fornecedor))}"`,cells:[
-      `<strong>${q}</strong>${x.estoque===0&&!x.ciclo?' <span class="pill p-bad">zerado</span>':x.abaixo_minimo?' <span class="pill p-warn">abaixo</span>':''}`,
+      `<strong>${q}</strong>${x.pausado?' <span class="pill">⏸ pausado</span>':x.estoque===0&&!x.ciclo?' <span class="pill p-bad">zerado</span>':x.abaixo_minimo?' <span class="pill p-warn">abaixo</span>':''}`,
       `<span class="mut">${esc(x.fornecedor)}</span>`,
       `<span class="mut">${fmtQ(x.consumo_dia,x.unidade)}</span>`,
       fmtQ(x.necessidade,x.unidade),

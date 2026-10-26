@@ -2296,7 +2296,7 @@ def _posicao_estoque():
     ep = estoque_plano(cobertura_dias=30, seguranca_pct=20)
     negativos, zerados, criticos, sem_registro = [], [], [], []
     for i in ep["itens"]:
-        if i["ciclo"]:
+        if i["ciclo"] or i["pausado"]:
             continue
         if i["estoque"] is None:
             if i["insumo"] not in _SEM_SKU_ESTOQUE:
@@ -3758,13 +3758,15 @@ def estoque_plano(cobertura_dias: int = Query(30, ge=7, le=60),
                fe.estoque_atual,
                ic.custo_unitario,
                fo.dias_entrega, fo.antecedencia_dias, fo.categoria, fo.cobertura_dias AS cobertura_forn, im.minimo AS minimo_manual,
-               em.nome AS emb_nome, em.qtd AS emb_qtd, (cc.insumo IS NOT NULL) AS ciclo
+               em.nome AS emb_nome, em.qtd AS emb_qtd, (cc.insumo IS NOT NULL) AS ciclo,
+               (ip.insumo IS NOT NULL) AS pausado
         FROM vendas v
         LEFT JOIN insumo_fornecedor fi ON fi.insumo = v.insumo
         LEFT JOIN fornecedores fo ON fo.nome = fi.fornecedor
         LEFT JOIN insumo_minimo im ON im.insumo = v.insumo
         LEFT JOIN insumo_embalagem em ON em.insumo = v.insumo
         LEFT JOIN insumo_ciclo cc ON cc.insumo = v.insumo
+        LEFT JOIN insumo_pausado ip ON ip.insumo = v.insumo
         LEFT JOIN insumo_estoque fe ON fe.insumo = v.insumo
         LEFT JOIN insumo_custo ic ON ic.insumo = v.insumo
         ORDER BY (v.unidade = 'kg') DESC, 3 DESC
@@ -3795,8 +3797,13 @@ def estoque_plano(cobertura_dias: int = Query(30, ge=7, le=60),
             rota.update({"minimo": 0, "minimo_auto": 0, "minimo_manual": False, "abaixo_minimo": False,
                          "pedir_ate": None, "dias_sem_produto": 0, "pedir_hoje": False})
             ciclo.update({"proxima_troca": troca.isoformat(), "dias_ciclo": dias_ciclo})
+        pausado = bool(i["pausado"])
+        if pausado:   # pausado: sem alerta, sem sugestao de compra
+            necessidade = comprar = 0.0
+            rota.update({"abaixo_minimo": False, "pedir_ate": None, "dias_sem_produto": 0, "pedir_hoje": False})
         emb_qtd = float(i["emb_qtd"]) if i["emb_qtd"] is not None else None
         itens.append({
+            "pausado": pausado,
             **rota, **ciclo,
             "embalagem_nome": i["emb_nome"], "embalagem_qtd": emb_qtd,
             "comprar_embalagens": (-(-comprar // emb_qtd) if emb_qtd else None),
@@ -3873,6 +3880,8 @@ def sugestao_compra(cobertura_dias=30, seguranca_pct=20, janela_dias=21):
     grupos = defaultdict(lambda: {"itens": []})
     sem_estoque, hortifruti, em_dia = [], [], 0
     for i in ep["itens"]:
+        if i["pausado"]:
+            continue
         if i["ciclo"]:
             if i["consumo_dia"] > 0:
                 hortifruti.append({"insumo": i["insumo"], "unidade": i["unidade"],
@@ -4704,6 +4713,20 @@ def salvar_config_troca(dados: dict = Body(...)):
         dias = ",".join(_DIAS_VALIDOS)
     executar("""INSERT INTO config_estoque (chave, valor) VALUES ('troca_dias', %(v)s)
                 ON CONFLICT (chave) DO UPDATE SET valor = EXCLUDED.valor""", {"v": dias})
+    return {"ok": True}
+
+
+@app.post("/api/insumo_pausado")
+def salvar_insumo_pausado(dados: dict = Body(...)):
+    """Pausa/retoma um insumo: pausado nao gera alerta nem sugestao de compra."""
+    insumo = str(dados.get("insumo", "")).strip()
+    if not insumo:
+        return {"ok": False, "erro": "insumo vazio"}
+    executar("CREATE TABLE IF NOT EXISTS insumo_pausado (insumo TEXT PRIMARY KEY, desde TIMESTAMPTZ DEFAULT now())", {})
+    if dados.get("ativo"):
+        executar("INSERT INTO insumo_pausado (insumo) VALUES (%(i)s) ON CONFLICT DO NOTHING", {"i": insumo})
+    else:
+        executar("DELETE FROM insumo_pausado WHERE insumo = %(i)s", {"i": insumo})
     return {"ok": True}
 
 
