@@ -56,17 +56,23 @@ function dlgReceberItem(x){
     if(!r.ok){toast(r.erro||'Não foi possível registrar');return}closeModal();toast(`+${fmtG(q,x.unidade)} de ${x.insumo} somados ao estoque`);carregar()});
 }
 
-function dlgBaixaItem(x){
-  openModal(`${mhead('Baixa manual',x.insumo)}<p class="hint">Estoque atual: <strong>${fmtG(x.estoque??0,x.unidade)}</strong> · use para perda, uso interno ou item que não passou pela ficha técnica.</p>
+function dlgBaixaItem(x0){
+  const lista=[...itens].filter(i=>!i.ciclo&&i.estoque!=null).sort((a,b)=>a.insumo.localeCompare(b.insumo,'pt-BR',{sensitivity:'base'}));
+  let x=x0||lista[0];if(!x){toast('Nenhum item com estoque cadastrado');return}
+  openModal(`${mhead('Baixa manual',x0?x0.insumo:'Dar baixa no estoque')}<p class="hint" id="bHint"></p>
   <form class="mform" id="fBaixa">
-   <label>Quantidade a baixar (${x.unidade})<input id="bQtd" type="number" min="0" step="any" inputmode="decimal" placeholder="0" required></label>
+   ${x0?'':`<label>Item<select id="bIns">${lista.map(i=>`<option value="${esc(i.insumo)}">${esc(i.insumo)}</option>`).join('')}</select></label>`}
+   <label>Quantidade a baixar <span id="bUn"></span><input id="bQtd" type="number" min="0" step="any" inputmode="decimal" placeholder="0" required></label>
    <label>Motivo<select id="bMot"><option>Perda / estragou</option><option>Uso interno</option><option>Brinde / cortesia</option><option>Outro</option></select></label>
    <label>Observação (opcional)<input id="bObs" maxlength="100" placeholder="ex: caixa caiu"></label>
    <div class="m-prev" id="bPrev"></div>
    <div class="m-foot"><button type="button" class="btn ghost" data-cx="fechar">Cancelar</button><button class="btn brasa">Dar baixa</button></div></form>`);
   const prev=()=>{const q=parseFloat(document.getElementById('bQtd').value),a=x.estoque??0;
+    document.getElementById('bHint').innerHTML=`Estoque atual: <strong>${fmtG(a,x.unidade)}</strong> · use para perda, uso interno ou item que não passou pela ficha técnica.`;
+    document.getElementById('bUn').textContent='('+x.unidade+')';
     document.getElementById('bPrev').innerHTML=isNaN(q)||q<=0?`Estoque atual: <strong>${fmtG(a,x.unidade)}</strong>`:`Estoque: ${fmtG(a,x.unidade)} → <strong class="down">${fmtG(Math.max(a-q,0),x.unidade)}</strong> (−${fmtG(q,x.unidade)})`};
   prev();document.getElementById('bQtd').addEventListener('input',prev);
+  const s=document.getElementById('bIns');if(s)s.addEventListener('change',()=>{x=lista.find(i=>i.insumo===s.value);prev()});
   document.getElementById('fBaixa').addEventListener('submit',async ev=>{ev.preventDefault();
     const q=parseFloat(document.getElementById('bQtd').value);if(isNaN(q)||q<=0){toast('Informe a quantidade');return}
     const r=await post('/api/estoque_baixa',{insumo:x.insumo,quantidade:q,motivo:document.getElementById('bMot').value,obs:document.getElementById('bObs').value});
@@ -239,8 +245,8 @@ function desenhar(){
     ${sug.proximos.length?`<p class="hint" style="margin-top:10px">📅 <strong style="color:var(--ink)">Próximas rotas</strong> (sem pedido esta semana):${sug.proximos.map(p=>`<br>• <strong style="color:var(--ink)">${esc(p.fornecedor)}</strong> — rotas ${rotas(p.rotas)} · próxima entrega ${fmtDia(p.entrega)}`).join('')}</p>`:''}
     ${sug.hortifruti.length?`<p class="hint">🥬 <strong style="color:var(--ink)">Hortifrúti</strong> — próxima troca ${fmtDia(sug.hortifruti[0].proxima_troca)} (ciclo de ${sug.hortifruti[0].dias_ciclo} dia(s)): ${sug.hortifruti.map(x=>`${esc(x.insumo)} ~${Math.ceil(x.qtd)} ${x.unidade}`).join(' · ')}</p>`:''}`:'<p class="hint">Não foi possível calcular a sugestão agora.</p>';
   el.innerHTML=`<div class="g">
-  <div class="card s12 stock-bar"><div><h3>Movimentar estoque</h3><p class="hint" style="margin:0">Os pedidos dão baixa sozinhos pela ficha técnica. Entrada e contagem são com você.</p></div>
-   <div class="stock-acts"><button class="sa" data-do="entrega">${ic('box')}<span><b>Receber entrega</b><small>conferir o que chegou</small></span></button><button class="sa" data-do="contagem">${ic('count')}<span><b>Fazer contagem</b><small>acertar o estoque real</small></span></button></div></div>
+  <div class="card s12 stock-bar"><div><h3>Movimentar estoque</h3><p class="hint" style="margin:0">Os pedidos dão baixa sozinhos pela ficha técnica. Entrada, contagem e baixa manual são com você.</p></div>
+   <div class="stock-acts"><button class="sa" data-do="entrega">${ic('box')}<span><b>Receber entrega</b><small>conferir o que chegou</small></span></button><button class="sa" data-do="contagem">${ic('count')}<span><b>Fazer contagem</b><small>acertar o estoque real</small></span></button><button class="sa" data-do="baixa">${ic('out')}<span><b>Dar baixa</b><small>perda, uso interno</small></span></button></div></div>
   ${kpi('Pedir hoje',nHoje+' pedido(s)',sug?`${sug.pedidos.length} até o fim da semana`:'')}
   ${kpi('Abaixo do mínimo',abaixo+' insumo(s)',sem?`${sem} sem estoque preenchido`:'todos com estoque preenchido',abaixo?'down':'')}
   ${kpi('Custo de insumos/dia',R(es.custo_dia_total),es.sem_custo>0?`${es.sem_custo} insumo(s) sem custo`:'todos com custo cadastrado')}
@@ -284,7 +290,7 @@ function ligar(){
     if(e.target.classList&&e.target.classList.contains('modal-bg')){closeModal();return}
     if(!e.target.closest('#content'))return;
     const g=a=>e.target.closest(a);let b;
-    if(b=g('[data-do]')){const t=b.dataset.do;if(t==='entrega')dlgReceberEntrega();else if(t==='contagem')dlgContagem();else if(t==='novoItem')dlgInsumo(null);else if(t==='novoForn')dlgFornecedor(null);return}
+    if(b=g('[data-do]')){const t=b.dataset.do;if(t==='entrega')dlgReceberEntrega();else if(t==='contagem')dlgContagem();else if(t==='baixa')dlgBaixaItem(null);else if(t==='novoItem')dlgInsumo(null);else if(t==='novoForn')dlgFornecedor(null);return}
     if(b=g('[data-rec]')){const x=itens.find(i=>i.insumo===b.dataset.rec);if(x)dlgReceberItem(x);return}
     if(b=g('[data-baixa]')){const x=itens.find(i=>i.insumo===b.dataset.baixa);if(x)dlgBaixaItem(x);return}
     if(b=g('[data-hist]')){const x=itens.find(i=>i.insumo===b.dataset.hist);if(x)dlgHist(x);return}
