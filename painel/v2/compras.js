@@ -52,6 +52,7 @@ function dlgReceberItem(x){
   const e=document.getElementById('rEmb');if(e)e.addEventListener('input',()=>{const n=parseFloat(e.value);if(!isNaN(n))document.getElementById('rQtd').value=+(n*u.f).toFixed(3);prev()});
   document.getElementById('fRecItem').addEventListener('submit',async ev=>{ev.preventDefault();
     const q=parseFloat(document.getElementById('rQtd').value);if(isNaN(q)||q<=0){toast('Informe a quantidade recebida');return}
+    if(x.consumo_dia>0&&q>x.consumo_dia*120&&!confirm(`${fmtG(q,x.unidade)} de ${x.insumo} é muito acima do normal. Confirmar mesmo assim?`))return;
     const r=await post('/api/estoque_entrada',{insumo:x.insumo,quantidade:q,obs:document.getElementById('rObs').value});
     if(!r.ok){toast(r.erro||'Não foi possível registrar');return}closeModal();toast(`+${fmtG(q,x.unidade)} de ${x.insumo} somados ao estoque`);carregar()});
 }
@@ -122,6 +123,8 @@ function dlgReceberEntrega(){
   document.getElementById('fRecEnt').addEventListener('submit',async ev=>{ev.preventDefault();
     const its=[...document.querySelectorAll('#fRecEnt [data-ins]')].filter(i=>i.value!==''&&+i.value>0).map(i=>({insumo:i.dataset.ins,quantidade:Math.round(+i.value*+i.dataset.f*1000)/1000,pedido:Math.round(+i.dataset.ped*+i.dataset.f*1000)/1000}));
     if(!its.length){toast('Preencha pelo menos um item que chegou');return}
+    const grande=its.filter(i=>{const x=itens.find(z=>z.insumo===i.insumo);return x&&((i.pedido>0&&i.quantidade>3*i.pedido)||(x.unidade==='g'&&i.quantidade>200000)||(x.consumo_dia>0&&i.quantidade>x.consumo_dia*120))});
+    if(grande.length&&!confirm('Quantidade muito acima do normal:\n'+grande.map(i=>{const x=itens.find(z=>z.insumo===i.insumo);return '• '+i.insumo+': '+fmtG(i.quantidade,x.unidade)}).join('\n')+'\n\nConfirmar mesmo assim?'))return;
     const r=await post('/api/estoque_entrega',{fornecedor:recForn,itens:its,obs:document.getElementById('recObs').value});
     if(!r.ok){toast(r.erro||'Não foi possível salvar');return}closeModal();
     toast(`Entrada de ${recForn} salva · ${r.itens} ${r.itens>1?'itens':'item'}${r.faltas.length?` · ${r.faltas.length} com falta registrada`:''}`);carregar()});
