@@ -27,3 +27,10 @@ INSERT INTO gastos_fornecedor (fornecedor, mes, valor, quantidade, origem, obs) 
  ('Guiguiba','2026-04-01',2500,500,'estimado','300 em 02/04 e 200 em 23/04, R$ 5,00'),
  ('Guiguiba','2026-05-01',1250,250,'estimado','250 discos, R$ 5,00')
 ON CONFLICT (fornecedor, mes, categoria) DO NOTHING;
+
+INSERT INTO gastos_fornecedor (fornecedor, mes, categoria, valor, origem, obs) VALUES
+ ('Delly''s','2026-07-01','Insumos secos',2444.18,'nota','duplicatas 1152768 (R$ 1.744,38, venc 14/08) e 1156550 (R$ 699,80, venc 20/08)'),
+ ('Delly''s','2026-08-01','Insumos secos',3324.03,'nota','NF 1158639 (R$ 1.838,67, venc 25/08) e duplicata 1167426 (R$ 1.485,36, venc 09/09); pedido de 17/08 teve R$ 3.174,16, o restante não está nos documentos'),
+ ('Delly''s','2026-09-01','Insumos secos',2106.34,'nota','duplicatas 1177230 (R$ 946,96, venc 24/09) e 1179052 (R$ 1.159,38, venc 29/09); pagos em 30/09 com juros e multa de R$ 95,69'),
+ ('Delly''s','2026-10-01','Insumos secos',2336.48,'nota','boleto do DDA (Oesa) com vencimento em 30/10')
+ON CONFLICT (fornecedor, mes, categoria) DO NOTHING;

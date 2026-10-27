@@ -9,7 +9,7 @@ const toast=t=>window.V2.toast(t);
 const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 const MES_AB=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
 const ORIGEM={estimado:['p-warn','estimado'],nota:['p-ok','nota fiscal'],pago:['p-ok','pago']};
-let el=null,ligado=false,dados=null,ano=null,charts={},modal=null;
+let el=null,ligado=false,dados=null,ano=null,cat='todas',charts={},modal=null;
 const kpi=(l,v,s,x='')=>`<div class="card kpi s3"><div class="k-l">${l}</div><div class="k-v ${x}">${v}</div>${s?`<div class="k-s">${s}</div>`:''}</div>`;
 const mesIdx=iso=>+iso.slice(5,7)-1;
 
@@ -17,7 +17,7 @@ function carregarChart(){if(window.Chart)return Promise.resolve();return new Pro
 function desenhar(id,cfg){const c=document.getElementById(id);if(!c)return;if(charts[id])charts[id].destroy();charts[id]=new Chart(c,cfg)}
 
 function modelo(){
-  const ls=dados.linhas,forns=[...new Set(ls.map(l=>l.fornecedor))];
+  const ls=dados.linhas.filter(l=>cat==='todas'||l.categoria===cat),forns=[...new Set(ls.map(l=>l.fornecedor))];
   const meses=[...new Set(ls.map(l=>mesIdx(l.mes)))].sort((a,b)=>a-b);
   const idx={};ls.forEach(l=>{(idx[l.fornecedor+'|'+mesIdx(l.mes)]=idx[l.fornecedor+'|'+mesIdx(l.mes)]||[]).push(l)});
   const val=(f,m)=>(idx[f+'|'+m]||[]).reduce((a,l)=>a+l.valor,0);
@@ -27,7 +27,8 @@ function modelo(){
   const total=totMes.reduce((a,b)=>a+b,0),qtdTot=qtdMes.reduce((a,b)=>a+b,0);
   /* preço por unidade de cada fornecedor mês a mês (só onde há quantidade) */
   const preco=f=>meses.map(m=>qtd(f,m)>0?val(f,m)/qtd(f,m):null);
-  return {ls,forns,meses,val,qtd,totMes,qtdMes,total,qtdTot,preco};
+  const temQtd=ls.length>0&&ls.every(l=>l.quantidade>0);
+  return {temQtd,ls,forns,meses,val,qtd,totMes,qtdMes,total,qtdTot,preco};
 }
 
 function atencao(M){
@@ -54,19 +55,21 @@ function html(){
     const ls=M.ls.filter(l=>mesIdx(l.mes)===m),origs=[...new Set(ls.map(l=>l.origem))];
     const pill=origs.length===1&&origs[0]!=='estimado'?`<span class="pill ${ORIGEM[origs[0]][0]}">${ORIGEM[origs[0]][1]}</span>`:origs.every(o=>o==='estimado')?'<span class="pill p-warn">estimado</span>':'<span class="pill p-n">misto</span>';
     const preco=M.qtdMes[i]>0?'R$ '+(M.totMes[i]/M.qtdMes[i]).toFixed(2).replace('.',','):'—';
-    return `<tr><td><b>${MES_AB[m]}/${dados.ano}</b></td><td class="r">${M.qtdMes[i]?N(Math.round(M.qtdMes[i])):'—'}</td>${M.forns.map(f=>`<td class="r">${M.val(f,m)?R(M.val(f,m)):'<span class="mut">—</span>'}</td>`).join('')}<td class="r"><b>${R(M.totMes[i])}</b></td><td class="r hide-m">${preco}</td><td>${pill}</td><td class="r"><button class="ib" data-mes="${m}" title="Ver e editar lançamentos do mês" aria-label="Editar ${MES_AB[m]}">✎</button></td></tr>`}).join('');
+    return `<tr><td><b>${MES_AB[m]}/${dados.ano}</b></td>${M.temQtd?`<td class="r">${M.qtdMes[i]?N(Math.round(M.qtdMes[i])):'—'}</td>`:''}${M.forns.map(f=>`<td class="r">${M.val(f,m)?R(M.val(f,m)):'<span class="mut">—</span>'}</td>`).join('')}<td class="r"><b>${R(M.totMes[i])}</b></td>${M.temQtd?`<td class="r hide-m">${preco}</td>`:''}<td>${pill}</td><td class="r"><button class="ib" data-mes="${m}" title="Ver e editar lançamentos do mês" aria-label="Editar ${MES_AB[m]}">✎</button></td></tr>`}).join('');
+  const cats=[...new Set(dados.linhas.map(l=>l.categoria))];
+  const catSel=cats.length>1?`<select id="gCatSel" class="busca" style="width:auto"><option value="todas"${cat==='todas'?' selected':''}>Todas as categorias</option>${cats.map(c=>`<option value="${esc(c)}"${c===cat?' selected':''}>${esc(c)}</option>`).join('')}</select>`:'';
   const anos=dados.anos.length>1?`<select id="gAno" class="busca" style="width:auto">${dados.anos.map(a=>`<option ${a===dados.ano?'selected':''}>${a}</option>`).join('')}</select>`:'';
   return `<div class="grid">
-  <div class="card s12" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div><h3 style="margin:0">Discos de hambúrguer</h3><p class="hint" style="margin:0">Quanto cada fornecedor custou por mês. Valores "estimado" vêm das conversas com os fornecedores; troque pelo real quando tiver a nota ou o comprovante.</p></div><div style="display:flex;gap:8px;align-items:center">${anos}<button class="btn brasa" data-do="novo">➕ Lançar gasto</button></div></div>
+  <div class="card s12" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div><h3 style="margin:0">${cat==='todas'?'Todos os gastos':esc(cat)}</h3><p class="hint" style="margin:0">Quanto cada fornecedor custou por mês. Valores "estimado" vêm das conversas com os fornecedores; troque pelo real quando tiver a nota ou o comprovante.</p></div><div style="display:flex;gap:8px;align-items:center">${catSel}${anos}<button class="btn brasa" data-do="novo">➕ Lançar gasto</button></div></div>
   ${kpi('Gasto no ano',R(M.total),M.meses.length?`${MES_AB[M.meses[0]].toLowerCase()} a ${MES_AB[M.meses[M.meses.length-1]].toLowerCase()}`:'')}
   ${kpi('Média mensal',R(media),M.meses.length+' mês(es)')}
-  ${kpi('Discos comprados',M.qtdTot?'~'+N(Math.round(M.qtdTot)):'—',M.qtdTot?'custo médio '+R2(M.total/M.qtdTot):'')}
+  ${M.temQtd?kpi('Discos comprados','~'+N(Math.round(M.qtdTot)),'custo médio '+R2(M.total/M.qtdTot)):kpi('Fornecedores',M.forns.length,M.forns.map(esc).join(' · '))}
   ${kpi('Maior mês',mx>=0?MES_AB[M.meses[mx]]+' · '+R(M.totMes[mx]):'—',mx>0?(M.totMes[mx]>=M.totMes[mx-1]?'+':'')+Math.round((M.totMes[mx]/M.totMes[mx-1]-1)*100)+'% vs '+MES_AB[M.meses[mx-1]].toLowerCase():'',mx>0?'down':'')}
   <div class="card s12"><h3>Gasto por mês e fornecedor</h3><div style="position:relative;height:280px"><canvas id="gF"></canvas></div></div>
-  <div class="card s6"><h3>Preço por disco</h3><p class="hint" style="margin:0 0 8px">Valor ÷ quantidade, por fornecedor</p><div style="position:relative;height:220px"><canvas id="gP"></canvas></div></div>
-  <div class="card s6"><h3>Pontos de atenção</h3><div style="display:grid;gap:10px;margin-top:8px">${atencao(M)}</div></div>
-  <div class="card s12"><h3>Mês a mês</h3><div class="tw"><table><thead><tr><th>Mês</th><th class="r">Discos</th>${M.forns.map(f=>`<th class="r">${esc(f)}</th>`).join('')}<th class="r">Total</th><th class="r hide-m">Preço</th><th>Origem</th><th></th></tr></thead><tbody>${linhas||`<tr><td colspan="${M.forns.length+6}" class="mut">Nenhum lançamento neste ano.</td></tr>`}</tbody>
-   <tfoot><tr><td><b>Total</b></td><td class="r"><b>${M.qtdTot?N(Math.round(M.qtdTot)):'—'}</b></td>${M.forns.map(f=>`<td class="r"><b>${R(M.meses.reduce((a,m)=>a+M.val(f,m),0))}</b></td>`).join('')}<td class="r"><b>${R(M.total)}</b></td><td></td><td></td><td></td></tr></tfoot></table></div></div>
+  ${M.temQtd?'<div class="card s6"><h3>Preço por disco</h3><p class="hint" style="margin:0 0 8px">Valor ÷ quantidade, por fornecedor</p><div style="position:relative;height:220px"><canvas id="gP"></canvas></div></div>':''}
+  <div class="card ${M.temQtd?'s6':'s12'}"><h3>Pontos de atenção</h3><div style="display:grid;gap:10px;margin-top:8px">${atencao(M)}</div></div>
+  <div class="card s12"><h3>Mês a mês</h3><div class="tw"><table><thead><tr><th>Mês</th>${M.temQtd?'<th class="r">Discos</th>':''}${M.forns.map(f=>`<th class="r">${esc(f)}</th>`).join('')}<th class="r">Total</th>${M.temQtd?'<th class="r hide-m">Preço</th>':''}<th>Origem</th><th></th></tr></thead><tbody>${linhas||`<tr><td colspan="${M.forns.length+(M.temQtd?6:4)}" class="mut">Nenhum lançamento neste ano.</td></tr>`}</tbody>
+   <tfoot><tr><td><b>Total</b></td>${M.temQtd?`<td class="r"><b>${N(Math.round(M.qtdTot))}</b></td>`:''}${M.forns.map(f=>`<td class="r"><b>${R(M.meses.reduce((a,m)=>a+M.val(f,m),0))}</b></td>`).join('')}<td class="r"><b>${R(M.total)}</b></td>${M.temQtd?'<td></td>':''}<td></td><td></td></tr></tfoot></table></div></div>
   </div>`;
 }
 
@@ -77,6 +80,7 @@ function graf(){
   desenhar('gF',{type:'bar',data:{labels,datasets:M.forns.map((f,i)=>({label:f,data:M.meses.map(m=>M.val(f,m)),backgroundColor:pal[i%pal.length],borderRadius:5,maxBarThickness:34}))},
     options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{boxWidth:10,boxHeight:10,usePointStyle:true}},tooltip:{callbacks:{label:c=>c.dataset.label+': '+R(c.parsed.y),footer:i=>'Total: '+R(i.reduce((a,b)=>a+b.parsed.y,0))}}},
     scales:{x:{stacked:true,grid:{display:false}},y:{stacked:true,grid:{color:line},ticks:{callback:v=>R(v)}}}}});
+  if(!M.temQtd)return;
   const ds=M.forns.map((f,i)=>({label:f,data:M.preco(f),stepped:true,spanGaps:false,borderColor:pal[i%pal.length],backgroundColor:pal[i%pal.length],borderWidth:2.5,pointRadius:4})).filter(d=>d.data.some(v=>v!=null));
   desenhar('gP',{type:'line',data:{labels,datasets:ds},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{boxWidth:10,boxHeight:10,usePointStyle:true}},tooltip:{callbacks:{label:c=>c.dataset.label+': R$ '+(c.parsed.y??0).toFixed(2).replace('.',',')}}},
     scales:{x:{grid:{display:false}},y:{grid:{color:line},ticks:{callback:v=>'R$ '+v.toFixed(2).replace('.',',')}}}}});
@@ -121,7 +125,7 @@ function ligar(){
   document.addEventListener('click',e=>{if(!el||!el.isConnected)return;
     const b=e.target.closest('[data-do="novo"]');if(b){dlgLancar(null);return}
     const m=e.target.closest('[data-mes]');if(m){dlgMes(+m.dataset.mes)}});
-  document.addEventListener('change',e=>{if(e.target.id==='gAno'){ano=+e.target.value;carregar()}});
+  document.addEventListener('change',e=>{if(e.target.id==='gAno'){ano=+e.target.value;carregar()}if(e.target.id==='gCatSel'){cat=e.target.value;desenharTela()}});
 }
 window.V2.screens.gastos={render(c){el=c;el.innerHTML='<div class="card"><p class="hint" style="margin:0">Carregando gastos…</p></div>';if(!ligado){ligar();ligado=true}carregar()},onFiltros(){}};
 })();
