@@ -10,7 +10,7 @@ const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim
 const MES_AB=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
 const ORIGEM={estimado:['p-warn','estimado'],nota:['p-ok','nota fiscal'],pago:['p-ok','pago']};
 let el=null,ligado=false,dados=null,itens=[],ano=null,forn='todos',charts={},modal=null;
-const kpi=(l,v,s,x='')=>`<div class="card kpi s3"><div class="k-l">${l}</div><div class="k-v ${x}">${v}</div>${s?`<div class="k-s">${s}</div>`:''}</div>`;
+const kpi=(l,v,s,x='')=>`<div class="card kpi"><div class="k-l">${l}</div><div class="k-v ${x}">${v}</div>${s?`<div class="k-s">${s}</div>`:''}</div>`;
 const mesIdx=iso=>+iso.slice(5,7)-1;
 
 function carregarChart(){if(window.Chart)return Promise.resolve();return new Promise((ok,err)=>{const s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js';s.onload=ok;s.onerror=err;document.head.appendChild(s)})}
@@ -117,15 +117,12 @@ function htmlGeral(M){
     const doc=lf.filter(l=>l.origem!=='estimado').reduce((a,l)=>a+l.valor,0);
     const serie=M.meses.map(m=>M.val(f,m)),u3=serie.slice(-3).reduce((a,b)=>a+b,0)/Math.max(serie.slice(-3).length,1),a3=serie.slice(-6,-3).reduce((a,b)=>a+b,0)/Math.max(serie.slice(-6,-3).length,1);
     const tend=a3>0?(u3/a3-1)*100:null,cor=corForn(f,M.forns);
-    return `<tr><td><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:${cor};margin-right:8px"></span><b>${esc(f)}</b><br><small class="mut">${esc(cats)}</small></td><td class="r"><b>${R(tot)}</b><br><small class="mut">${pct(tot,M.total)}</small></td><td class="r hide-m">${R(tot/Math.max(ativos,1))}<br><small class="mut">${ativos} mês(es)</small></td><td class="hide-m">${spark(serie,cor)}</td><td class="r hide-m">${tend==null?'<span class="mut">—</span>':`<span class="${tend>5?'down':tend<-5?'up':'mut'}">${tend>0?'+':''}${tend.toFixed(0)}%</span>`}</td><td>${doc/tot>=0.99?'<span class="pill p-ok">documentado</span>':doc/tot>0.01?`<span class="pill p-n">${Math.round(doc/tot*100)}% doc.</span>`:'<span class="pill p-warn">estimado</span>'}</td><td class="r"><button class="btn ghost" data-forn="${esc(f)}">Ver itens</button></td></tr>`}).join('');
-  return `<div class="grid">${topo(M)}
-  ${kpi('Gasto no ano',R(M.total),M.meses.length?`${MES_AB[M.meses[0]].toLowerCase()} a ${MES_AB[M.meses[M.meses.length-1]].toLowerCase()}`:'')}
-  ${kpi('Média mensal',R(media),M.meses.length+' mês(es)')}
-  ${kpi('Fornecedores',M.forns.length,'com gasto lançado')}
-  ${kpi('Maior fornecedor',top?esc(top):'—',top?`${R(topV)} · ${pct(topV,M.total)}`:'')}
-  <div class="card s12"><h3>Gasto por mês e fornecedor</h3><div style="position:relative;height:280px"><canvas id="gF"></canvas></div></div>
+    return `<tr><td><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:${cor};margin-right:8px"></span><b>${esc(f)}</b><br><small class="mut">${esc(cats)}</small></td><td class="r" style="min-width:150px"><b>${R(tot)}</b><br><small class="mut">${pct(tot,M.total)}</small><div style="height:5px;border-radius:3px;background:var(--surface-2,var(--line));margin-top:5px;overflow:hidden"><div style="height:100%;width:${Math.max(tot/M.total*100,2)}%;background:${cor}"></div></div></td><td class="r hide-m">${R(tot/Math.max(ativos,1))}<br><small class="mut">${ativos} mês(es)</small></td><td class="hide-m">${spark(serie,cor)}</td><td class="r hide-m">${tend==null?'<span class="mut">—</span>':`<span class="${tend>5?'down':tend<-5?'up':'mut'}">${tend>0?'+':''}${tend.toFixed(0)}%</span>`}</td><td>${doc/tot>=0.99?'<span class="pill p-ok">documentado</span>':doc/tot>0.01?`<span class="pill p-n">${Math.round(doc/tot*100)}% doc.</span>`:'<span class="pill p-warn">estimado</span>'}</td><td class="r"><button class="btn ghost" data-forn="${esc(f)}">Ver itens</button></td></tr>`}).join('');
+  return `<div class="g">${topo(M)}
+  <div class="s12 kpis5">${kpi('Gasto no ano',R(M.total),M.meses.length?`${MES_AB[M.meses[0]].toLowerCase()} a ${MES_AB[M.meses[M.meses.length-1]].toLowerCase()} de ${dados.ano}`:'')}${kpi('Média mensal',R(media),M.meses.length+' mês(es) com gasto')}${kpi('Fornecedores',M.forns.length,'com gasto lançado')}${kpi('Maior fornecedor',top?esc(top):'—',top?`${R(topV)} · ${pct(topV,M.total)} do gasto`:'','destaque')}</div>
+  <div class="card s8"><h3>Gasto por mês e fornecedor</h3><div style="position:relative;height:300px;margin-top:8px"><canvas id="gF"></canvas></div></div>
+  <div class="card s4"><h3>Pontos de atenção</h3><div style="display:grid;gap:12px;margin-top:10px;font-size:13.5px;line-height:1.45">${atencao(M)}</div></div>
   <div class="card s12"><h3>Fornecedores</h3><div class="tw"><table><thead><tr><th>Fornecedor</th><th class="r">Gasto no ano</th><th class="r hide-m">Média por mês</th><th class="hide-m">Evolução</th><th class="r hide-m">Últimos 3 meses</th><th>Origem</th><th></th></tr></thead><tbody>${linhas}</tbody></table></div><p class="hint" style="margin:8px 0 0">“Últimos 3 meses” compara com os 3 anteriores. Clique em <b>Ver itens</b> para o detalhe do que cada fornecedor vende.</p></div>
-  <div class="card s12"><h3>Pontos de atenção</h3><div style="display:grid;gap:10px;margin-top:8px">${atencao(M)}</div></div>
   ${tabelaMes(M)}</div>`;
 }
 function htmlForn(M){
@@ -141,18 +138,15 @@ function htmlForn(M){
     const eu=c.fs.find(x=>x.n===f),bar=c.fs[0],maisBarato=bar.n===f;
     return `<div style="padding:10px 0;border-top:1px solid var(--line)"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><b>${esc(c.item)}</b><span class="pill ${maisBarato?'p-ok':'p-bad'}">${maisBarato?'o mais barato':`${((eu.p/bar.p-1)*100).toFixed(0)}% mais caro`}</span></div><div class="hint" style="margin:4px 0 0">${c.fs.map(x=>`${esc(x.n)} <b>${R2p(x.p)}</b>/${esc(c.un||'un')}${x.det?` <span class="mut">(${esc(x.det)})</span>`:''}`).join(' · ')}</div>${maisBarato?'':`<div class="hint" style="margin:2px 0 0">Comprando o que ${esc(f)} vendeu no mais barato, a diferença seria de cerca de <b class="up">${R((eu.p-bar.p)*eu.q)}</b>.</div>`}</div>`}).join('');
   const nGr=Object.keys(I.grupos).length;
-  return `<div class="grid">${topo(M)}
-  ${kpi('Gasto no ano',R(M.total),`${part} do total geral`)}
-  ${kpi('Média mensal',R(media),M.meses.length+' mês(es)')}
-  ${qtds}
-  ${kpi('Último mês',M.totMes.length?R(M.totMes[M.totMes.length-1]):'—',M.meses.length?MES_AB[M.meses[M.meses.length-1]]+'/'+dados.ano:'')}
+  return `<div class="g">${topo(M)}
+  <div class="s12 kpis5">${kpi('Gasto no ano',R(M.total),`${part} do total geral`,'destaque')}${kpi('Média mensal',R(media),M.meses.length+' mês(es)')}${qtds}${kpi('Último mês',M.totMes.length?R(M.totMes[M.totMes.length-1]):'—',M.meses.length?MES_AB[M.meses[M.meses.length-1]]+'/'+dados.ano:'')}</div>
   <div class="card ${M.temQtd?'s6':'s12'}"><h3>Gasto por mês</h3><div style="position:relative;height:230px"><canvas id="gF"></canvas></div></div>
   ${M.temQtd?'<div class="card s6"><h3>Preço por unidade</h3><p class="hint" style="margin:0 0 8px">Valor ÷ quantidade, mês a mês</p><div style="position:relative;height:200px"><canvas id="gP"></canvas></div></div>':''}
   <div class="card s12"><h3>O que ${esc(f)} vende para a gente</h3><p class="hint" style="margin:0 0 8px">${detalhado>0?`${R(detalhado)} detalhados item a item (${pct(detalhado,M.total)} do gasto).`:'Sem detalhe por item nas conversas; mostrando o total do que foi lançado.'}${lista.some(l=>l.item==='Sem detalhe')?' Linhas “Sem detalhe” são notas que não estavam nas conversas.':''}</p>
    <div class="tw"><table><thead><tr><th>Item</th><th class="r">Quantidade</th><th class="r">Gasto</th><th class="r hide-m">% do fornecedor</th><th class="r">Preço médio</th><th class="r hide-m">Variação</th></tr></thead><tbody>${linhas}</tbody></table></div></div>
   ${nGr>1?`<div class="card s6"><h3>Gasto por grupo de item</h3><div style="position:relative;height:${Math.max(190,nGr*38)}px;margin-top:6px"><canvas id="gG"></canvas></div></div>`:''}
   <div class="card ${nGr>1?'s6':'s12'}"><h3>Comparação com outros fornecedores</h3><p class="hint" style="margin:0 0 4px">Itens de ${esc(f)} que também compramos em outro lugar</p>${comp||'<p class="hint">Nenhum item deste fornecedor foi comprado de outro.</p>'}</div>
-  <div class="card s12"><h3>Pontos de atenção</h3><div style="display:grid;gap:10px;margin-top:8px">${atencao(M)}</div></div>
+  <div class="card s12"><h3>Pontos de atenção</h3><div style="display:grid;gap:10px;margin-top:8px;font-size:13.5px">${atencao(M)}</div></div>
   ${tabelaMes(M)}</div>`;
 }
 function html(){const M=modelo();return forn==='todos'?htmlGeral(M):htmlForn(M)}
