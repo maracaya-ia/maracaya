@@ -34,3 +34,17 @@ INSERT INTO gastos_fornecedor (fornecedor, mes, categoria, valor, origem, obs) V
  ('Delly''s','2026-09-01','Insumos secos',2106.34,'nota','duplicatas 1177230 (R$ 946,96, venc 24/09) e 1179052 (R$ 1.159,38, venc 29/09); pagos em 30/09 com juros e multa de R$ 95,69'),
  ('Delly''s','2026-10-01','Insumos secos',2336.48,'nota','boleto do DDA (Oesa) com vencimento em 30/10')
 ON CONFLICT (fornecedor, mes, categoria) DO NOTHING;
+
+-- Brasal (bebidas): estimativa = pedidos das conversas x preços da tabela de 04/09 (Coca 15un R$ 42,73; Zero/Fanta/Sprite 6un ~R$ 17,1-17,3; suco R$ 21,86; Heineken R$ 34,92)
+INSERT INTO gastos_fornecedor (fornecedor, mes, categoria, valor, origem, obs) VALUES
+ ('Brasal','2026-01-01','Bebidas',335.01,'estimado','1 pedido (20/01): cocas, sucos e Heineken'),
+ ('Brasal','2026-02-01','Bebidas',940.21,'estimado','3 pedidos (03, 10 e 20/02); Pix de R$ 573,41 em 03/02'),
+ ('Brasal','2026-03-01','Bebidas',1795.61,'estimado','pedidos de 06/03 (18 Zero, 8 Coca, 5 sucos) e 31/03; Pix de R$ 470,22 em 03/03'),
+ ('Brasal','2026-04-01','Bebidas',1061.77,'estimado','pedidos de 07 e 21/04; boleto duplicado pago por engano em 22/04 e abatido depois'),
+ ('Brasal','2026-05-01','Bebidas',1978.61,'estimado','5 pedidos (05, 12, 15, 19 e 26/05); boleto de R$ 306,34 em atraso em 12/05'),
+ ('Brasal','2026-06-01','Bebidas',1752.21,'estimado','pedido grande de 08/06 (R$ 1,6 mil) e 22/06'),
+ ('Brasal','2026-07-01','Bebidas',2095.51,'estimado','pedidos de 13, 20 e 27/07; boletos conhecidos: R$ 780,79 (14/07) e R$ 1.341,36 (27/07)'),
+ ('Brasal','2026-08-01','Bebidas',2702.69,'estimado','pedidos de 10, 24 e 31/08 (o de 03/08 foi repetido em 10/08); boleto de R$ 699,37 pago em 24/08 com juros e multa'),
+ ('Brasal','2026-09-01','Bebidas',1920.66,'estimado','pedidos de 04/09 (R$ 1.307,61) e 14/09 (R$ 613,05); títulos conhecidos R$ 968,15 (21/09) e R$ 618,05 (28/09); o pedido de 28/09 para a outra unidade não entrou'),
+ ('Brasal','2026-10-01','Bebidas',1201.55,'nota','boleto do DDA com vencimento em 27/10; pedido de 13/10 feito pelo app')
+ON CONFLICT (fornecedor, mes, categoria) DO NOTHING;
