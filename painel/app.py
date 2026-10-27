@@ -117,7 +117,7 @@ def pagina_v2_prototipo():
 
 @app.get("/v2/assets/{nome}")
 def v2_asset(nome: str):
-    if nome not in ("casca.js", "compras.js", "nota.js", "vendas.js", "resultado.js", "clientes.js", "cardapio.js", "bairros.js", "operacao.js", "unidades.js", "hoje.js", "ze.js", "geral.js", "apresentacao.js"):
+    if nome not in ("casca.js", "compras.js", "nota.js", "vendas.js", "resultado.js", "clientes.js", "cardapio.js", "bairros.js", "operacao.js", "unidades.js", "hoje.js", "ze.js", "geral.js", "apresentacao.js", "gastos.js"):
         return JSONResponse({"erro": "nao encontrado"}, status_code=404)
     return FileResponse(os.path.join(os.path.dirname(__file__), "v2", nome),
                         media_type="application/javascript", headers={"Cache-Control": "no-cache"})
@@ -4459,6 +4459,62 @@ def apagar_despesa_fixa(dados: dict = Body(...)):
     except (TypeError, ValueError):
         return {"ok": False}
     executar("DELETE FROM despesas_fixas WHERE id = %(i)s", {"i": i})
+    return {"ok": True}
+
+
+@app.get("/api/gastos_fornecedor")
+def listar_gastos_fornecedor(ano: int = Query(None)):
+    """Gasto mensal por fornecedor (estimado ou documentado) para a tela Gastos por fornecedor."""
+    anos = [r["a"] for r in consultar(
+        "SELECT DISTINCT extract(year FROM mes)::int AS a FROM gastos_fornecedor ORDER BY a DESC", {})]
+    if ano is None:
+        ano = anos[0] if anos else date.today().year
+    linhas = consultar("""
+        SELECT id, fornecedor, to_char(mes, 'YYYY-MM-DD') AS mes, categoria,
+               valor, quantidade, origem, obs
+        FROM gastos_fornecedor WHERE extract(year FROM mes) = %(a)s
+        ORDER BY mes, fornecedor""", {"a": ano})
+    for l in linhas:
+        l["valor"] = float(l["valor"])
+        l["quantidade"] = float(l["quantidade"]) if l["quantidade"] is not None else None
+    forn = [r["nome"] for r in consultar("SELECT nome FROM fornecedores ORDER BY nome", {})]
+    return {"ok": True, "ano": ano, "anos": anos, "linhas": linhas, "fornecedores_cadastrados": forn}
+
+
+@app.post("/api/gastos_fornecedor")
+def salvar_gasto_fornecedor(dados: dict = Body(...)):
+    d = _mes_primeiro(dados.get("mes"))
+    forn = str(dados.get("fornecedor", "") or "").strip()[:60]
+    cat = str(dados.get("categoria", "") or "Discos de hambúrguer").strip()[:60]
+    origem = str(dados.get("origem", "estimado")).strip()
+    obs = (str(dados.get("obs", "") or "").strip()[:200]) or None
+    try:
+        valor = float(dados.get("valor"))
+    except (TypeError, ValueError):
+        return {"ok": False, "erro": "valor inválido"}
+    bruto = dados.get("quantidade")
+    try:
+        qtd = float(bruto) if bruto not in (None, "") else None
+    except (TypeError, ValueError):
+        return {"ok": False, "erro": "quantidade inválida"}
+    if not d or not forn or valor < 0 or origem not in ("estimado", "nota", "pago"):
+        return {"ok": False, "erro": "informe mês, fornecedor, valor e origem"}
+    executar("""INSERT INTO gastos_fornecedor (fornecedor, mes, categoria, valor, quantidade, origem, obs)
+                VALUES (%(f)s, %(m)s, %(c)s, %(v)s, %(q)s, %(o)s, %(b)s)
+                ON CONFLICT (fornecedor, mes, categoria) DO UPDATE
+                SET valor = EXCLUDED.valor, quantidade = EXCLUDED.quantidade, origem = EXCLUDED.origem,
+                    obs = EXCLUDED.obs, atualizado_em = now()""",
+             {"f": forn, "m": d, "c": cat, "v": valor, "q": qtd, "o": origem, "b": obs})
+    return {"ok": True}
+
+
+@app.post("/api/gastos_fornecedor_delete")
+def apagar_gasto_fornecedor(dados: dict = Body(...)):
+    try:
+        i = int(dados.get("id"))
+    except (TypeError, ValueError):
+        return {"ok": False}
+    executar("DELETE FROM gastos_fornecedor WHERE id = %(i)s", {"i": i})
     return {"ok": True}
 
 
