@@ -16,3 +16,13 @@ INSERT INTO gastos_fornecedor (fornecedor, mes, categoria, valor, quantidade, or
  ('Juju Batata','2025-10-01','Batata palha',1200,8,'estimado','8 caixas (08, 20 e 28/10); saldo em aberto de R$ 900 em 23/10'),
  ('Juju Batata','2025-12-01','Batata palha',300,2,'estimado','2 caixas entregues em 23/12; saldo em aberto de R$ 1.200 em 24/12; novembro sem registro de caixas')
 ON CONFLICT (fornecedor, mes, categoria) DO NOTHING;
+
+-- Pão e Roça 2025 (cenário A): pedidos confirmados por você ("temos sim, N") x preços dos acertos do Murilo (brioche R$ 2,70, australiano R$ 1,90, gergelim R$ 2,70 assumido)
+INSERT INTO gastos_fornecedor (fornecedor, mes, categoria, valor, quantidade, origem, obs) VALUES
+ ('Pão e Roça','2025-07-01','Pães',162.00,60,'estimado','1 pedido de 60 brioches em 30/07'),
+ ('Pão e Roça','2025-08-01','Pães',2242.80,852,'estimado','780 brioches e 72 australianos em 12 pedidos; brioche R$ 2,70 e australiano R$ 1,90'),
+ ('Pão e Roça','2025-09-01','Pães',3358.20,1258,'estimado','1.210 brioches e 48 australianos; pedidos de 150 desde 07/09'),
+ ('Pão e Roça','2025-10-01','Pães',2198.00,820,'estimado','800 brioches e 20 australianos; acertos semanais do Murilo de R$ 218,70 e R$ 265,20 sugerem valor menor'),
+ ('Pão e Roça','2025-11-01','Pães',3402.00,1260,'estimado','1.200 brioches e 60 de gergelim (gergelim a R$ 2,70, assumido)'),
+ ('Pão e Roça','2025-12-01','Pães',2748.20,1038,'estimado','970 brioches e 68 australianos; acertos semanais de R$ 324 a R$ 370 sugerem valor menor')
+ON CONFLICT (fornecedor, mes, categoria) DO NOTHING;
