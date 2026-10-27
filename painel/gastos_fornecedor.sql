@@ -95,3 +95,9 @@ INSERT INTO gastos_fornecedor (fornecedor, mes, categoria, valor, origem, obs) V
  ('Ambev','2026-09-01','Bebidas',203.22,'pago','fatura de R$ 203,22 (venc. 15/09); agosto sem fatura'),
  ('Ambev','2026-10-01','Bebidas',411.80,'pago','fatura de R$ 411,80 (venc. 06/10)')
 ON CONFLICT (fornecedor, mes, categoria) DO NOTHING;
+
+-- Ki Pudim no Copo (pudim): caixa com 24 por R$ 216,00 (R$ 9,00 cada), validade de 40 dias; 1º pedido em 29/09
+INSERT INTO gastos_fornecedor (fornecedor, mes, categoria, valor, quantidade, origem, obs) VALUES
+ ('Ki Pudim','2026-09-01','Pudim',216.00,24,'pago','1ª caixa (24 un), Pix de R$ 216,00 em 30/09'),
+ ('Ki Pudim','2026-10-01','Pudim',432.00,48,'nota','2 caixas: boleto de R$ 216,00 (venc. 16/10, pedido de 09/10) e Pix de R$ 216,00 em 19/10; sem confirmação de pagamento do boleto')
+ON CONFLICT (fornecedor, mes, categoria) DO NOTHING;
