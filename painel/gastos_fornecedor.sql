@@ -48,3 +48,13 @@ INSERT INTO gastos_fornecedor (fornecedor, mes, categoria, valor, origem, obs) V
  ('Brasal','2026-09-01','Bebidas',1920.66,'estimado','pedidos de 04/09 (R$ 1.307,61) e 14/09 (R$ 613,05); títulos conhecidos R$ 968,15 (21/09) e R$ 618,05 (28/09); o pedido de 28/09 para a outra unidade não entrou'),
  ('Brasal','2026-10-01','Bebidas',1201.55,'nota','boleto do DDA com vencimento em 27/10; pedido de 13/10 feito pelo app')
 ON CONFLICT (fornecedor, mes, categoria) DO NOTHING;
+
+-- Garra (insumos secos, descartáveis e molhos): mai a jul estimados pelos pedidos x preços das listas; ago a out dos espelhos/orçamentos aprovados
+INSERT INTO gastos_fornecedor (fornecedor, mes, categoria, valor, origem, obs) VALUES
+ ('Garra','2026-05-01','Insumos secos',382.50,'estimado','1º pedido em 26/05: 3 caixas de papel toalha + óleo de algodão Elogiata 15 L; boleto de 7 dias. O orçamento de 19/05 ficou parado por troca de endereço'),
+ ('Garra','2026-06-01','Insumos secos',1091.02,'estimado','03/06 (8 sachê de ketchup, 8 de mostarda, 1 grill), 15/06 (7 baconnaise em combo, ~R$ 270 mais grill) e 30/06 (R$ 350,10), prazo de 14 dias liberado em 30/06'),
+ ('Garra','2026-07-01','Insumos secos',717.00,'estimado','pedido de 21/07: 20 pacotes de papel toalha, saco de lixo, 5 caixas de ketchup e 5 de mostarda, 2 maioneses temperada e 2 molhos ranch Junior'),
+ ('Garra','2026-08-01','Insumos secos',2319.50,'nota','orçamentos aprovados: 18/08 R$ 1.301,50 (ketchup, mostarda, ranch, maionese grill) e 26/08 R$ 1.018,00 (baconnaise, óleo, batata, barbecue)'),
+ ('Garra','2026-09-01','Insumos secos',557.70,'nota','pedido de 09/09: R$ 375,70 de limpeza e papel toalha + R$ 182 de óleo; o pedido de 02/09 (R$ 543) não foi faturado por falta de limite'),
+ ('Garra','2026-10-01','Insumos secos',817.60,'nota','orçamento de 15/10 (boleto de 14 dias, vence em 30/10 no DDA); o pedido de 22/10 (R$ 399,10) ficou sem confirmação e não entrou')
+ON CONFLICT (fornecedor, mes, categoria) DO NOTHING;
