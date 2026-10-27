@@ -9,7 +9,7 @@ const toast=t=>window.V2.toast(t);
 const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 const MES_AB=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
 const ORIGEM={estimado:['p-warn','estimado'],nota:['p-ok','nota fiscal'],pago:['p-ok','pago']};
-let el=null,ligado=false,dados=null,ano=null,cat='todas',charts={},modal=null;
+let el=null,ligado=false,dados=null,itens=[],ano=null,cat='todas',charts={},modal=null;
 const kpi=(l,v,s,x='')=>`<div class="card kpi s3"><div class="k-l">${l}</div><div class="k-v ${x}">${v}</div>${s?`<div class="k-s">${s}</div>`:''}</div>`;
 const mesIdx=iso=>+iso.slice(5,7)-1;
 
@@ -48,6 +48,38 @@ function atencao(M){
   return out.join('')||'<p class="hint">Nada fora do normal.</p>';
 }
 
+const GRUPO_COR={'Molhos e sachês':'--brasa','Batata':'#d9a21b','Queijos':'#e0873a','Óleo':'#5b8def','Descartáveis e limpeza':'#2e9e6b','Proteínas':'#a855a7','Temperos':'#7c6f64','Embalagens':'#4a8f9a','Frete e ajustes':'#9a9a9a'};
+function itensModelo(){
+  const por={};
+  itens.forEach(l=>{const k=l.item;const o=por[k]=por[k]||{item:k,grupo:l.grupo,un:l.unidade,qtd:0,valor:0,compras:0,forn:{},ult:null};
+    o.qtd+=l.quantidade||0;o.valor+=l.valor;o.compras++;
+    const f=o.forn[l.fornecedor]=o.forn[l.fornecedor]||{qtd:0,valor:0,ult:null,det:new Set()};
+    f.qtd+=l.quantidade||0;f.valor+=l.valor;if(l.detalhe)f.det.add(l.detalhe);
+    if(l.preco_unit!=null&&(!f.ult||l.mes>=f.ult.mes))f.ult={mes:l.mes,p:l.preco_unit};
+    if(l.preco_unit!=null&&(!o.ult||l.mes>=o.ult.mes))o.ult={mes:l.mes,p:l.preco_unit,f:l.fornecedor}});
+  const lista=Object.values(por).sort((a,b)=>b.valor-a.valor);
+  const grupos={};itens.forEach(l=>{grupos[l.grupo||'Outros']=(grupos[l.grupo||'Outros']||0)+l.valor});
+  /* comparação: item comprado de 2+ fornecedores, preço médio = valor/qtd */
+  const comp=lista.filter(o=>Object.keys(o.forn).length>=2&&o.grupo!=='Frete e ajustes').map(o=>{
+    const fs=Object.entries(o.forn).filter(([,f])=>f.qtd>0).map(([n,f])=>({n,p:f.valor/f.qtd,qtd:f.qtd,det:[...f.det].join(', ')})).sort((a,b)=>a.p-b.p);
+    if(fs.length<2)return null;const bar=fs[0],car=fs[fs.length-1];
+    return {item:o.item,un:o.un,fs,dif:(car.p/bar.p-1)*100,eco:(car.p-bar.p)*car.qtd}}).filter(Boolean).sort((a,b)=>b.eco-a.eco);
+  return {lista,grupos,comp};
+}
+const R2p=v=>'R$ '+(+v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+function itensHtml(M){
+  if(!itens.length)return '';
+  const I=itensModelo(),totItens=itens.reduce((a,l)=>a+l.valor,0);
+  const cobertura=M.total>0?Math.round(totItens/M.total*100):0;
+  const linhas=I.lista.map(o=>{const fs=Object.entries(o.forn).map(([n,f])=>`<div>${esc(n)}: <b>${f.qtd?R2p(f.valor/f.qtd):'—'}</b><small class="mut"> ${f.qtd?N(+f.qtd.toFixed(2))+' '+esc(o.un||''):''}${f.det.size?' · '+esc([...f.det].join(', ')):''}</small></div>`).join('');
+    return `<tr><td><b>${esc(o.item)}</b><br><span class="pill p-n">${esc(o.grupo||'Outros')}</span></td><td class="r">${o.qtd?N(+o.qtd.toFixed(2))+' '+esc(o.un||''):'—'}</td><td class="r"><b>${R(o.valor)}</b></td><td class="r hide-m">${M.total>0?(o.valor/M.total*100).toFixed(1).replace('.',',')+'%':''}</td><td>${fs}</td></tr>`}).join('');
+  const cmp=I.comp.length?I.comp.map(c=>`<div style="padding:10px 0;border-top:1px solid var(--line)"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><b>${esc(c.item)}</b><span class="pill ${c.dif>=8?'p-bad':'p-warn'}">${c.fs[c.fs.length-1].n} ${c.dif.toFixed(0)}% mais caro</span></div><div class="hint" style="margin:4px 0 0">${c.fs.map(f=>`${esc(f.n)} <b>${R2p(f.p)}</b>/${esc(c.un||'un')}${f.det?` <span class="mut">(${esc(f.det)})</span>`:''}`).join(' · ')}</div><div class="hint" style="margin:2px 0 0">Comprando tudo no mais barato, a diferença seria de cerca de <b class="up">${R(c.eco)}</b> no período.</div></div>`).join(''):'<p class="hint">Nenhum item foi comprado de mais de um fornecedor.</p>';
+  const ecoTot=I.comp.reduce((a,c)=>a+c.eco,0);
+  return `<div class="card s12"><h3>Itens comprados</h3><p class="hint" style="margin:0 0 8px">${R(totItens)} detalhados item a item (${cobertura}% do gasto desta categoria no ano). O resto fica sem detalhe porque a nota ou o pedido não estava nas conversas.</p>
+   <div class="tw"><table><thead><tr><th>Item</th><th class="r">Quantidade</th><th class="r">Gasto</th><th class="r hide-m">% do total</th><th>Preço por fornecedor</th></tr></thead><tbody>${linhas}</tbody></table></div></div>
+  <div class="card s6"><h3>Gasto por grupo de item</h3><div style="position:relative;height:${Math.max(190,Object.keys(I.grupos).length*38)}px;margin-top:6px"><canvas id="gG"></canvas></div></div>
+  <div class="card s6"><h3>Comparação de preço entre fornecedores</h3><p class="hint" style="margin:0 0 4px">Mesmo item comprado em mais de um fornecedor${ecoTot>0?` · potencial total de ${R(ecoTot)}`:''}</p>${cmp}</div>`;
+}
 function html(){
   const M=modelo(),mx=M.totMes.length?M.totMes.indexOf(Math.max(...M.totMes)):-1;
   const media=M.meses.length?M.total/M.meses.length:0;
@@ -70,10 +102,18 @@ function html(){
   <div class="card ${M.temQtd?'s6':'s12'}"><h3>Pontos de atenção</h3><div style="display:grid;gap:10px;margin-top:8px">${atencao(M)}</div></div>
   <div class="card s12"><h3>Mês a mês</h3><div class="tw"><table><thead><tr><th>Mês</th>${M.temQtd?'<th class="r">Discos</th>':''}${M.forns.map(f=>`<th class="r">${esc(f)}</th>`).join('')}<th class="r">Total</th>${M.temQtd?'<th class="r hide-m">Preço</th>':''}<th>Origem</th><th></th></tr></thead><tbody>${linhas||`<tr><td colspan="${M.forns.length+(M.temQtd?6:4)}" class="mut">Nenhum lançamento neste ano.</td></tr>`}</tbody>
    <tfoot><tr><td><b>Total</b></td>${M.temQtd?`<td class="r"><b>${N(Math.round(M.qtdTot))}</b></td>`:''}${M.forns.map(f=>`<td class="r"><b>${R(M.meses.reduce((a,m)=>a+M.val(f,m),0))}</b></td>`).join('')}<td class="r"><b>${R(M.total)}</b></td>${M.temQtd?'<td></td>':''}<td></td><td></td></tr></tfoot></table></div></div>
+  ${cat==='Insumos secos'?itensHtml(M):''}
   </div>`;
 }
 
+function grafGrupos(){
+  if(cat!=='Insumos secos'||!itens.length||!window.Chart||!document.getElementById('gG'))return;
+  const I=itensModelo(),gs=Object.entries(I.grupos).sort((a,b)=>b[1]-a[1]);
+  const cor=n=>{const c=GRUPO_COR[n]||'#9a9a9a';return c.startsWith('--')?css(c):c};
+  desenhar('gG',{type:'bar',data:{labels:gs.map(g=>g[0]),datasets:[{data:gs.map(g=>g[1]),backgroundColor:gs.map(g=>cor(g[0])),borderRadius:5,maxBarThickness:22}]},options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>R(c.parsed.x)}}},scales:{x:{grid:{color:css('--line')},ticks:{callback:v=>R(v)}},y:{grid:{display:false}}}}});
+}
 function graf(){
+  grafGrupos();
   const M=modelo();if(!M.meses.length||!window.Chart)return;
   Chart.defaults.color=css('--ink-2');Chart.defaults.borderColor=css('--line');Chart.defaults.font.family='Figtree, system-ui, sans-serif';
   const pal=[css('--brasa'),css('--ink-2'),'#5b8def','#2e9e6b','#d9a21b','#a855a7'],line=css('--line'),labels=M.meses.map(m=>MES_AB[m]);
@@ -119,7 +159,7 @@ function dlgMes(m){
 
 function desenharTela(){el.innerHTML=html();carregarChart().then(graf).catch(()=>{})}
 function carregar(){
-  fetch('/api/gastos_fornecedor'+(ano?'?ano='+ano:'')).then(r=>r.json()).then(d=>{if(!d.ok)throw 0;dados=d;ano=d.ano;desenharTela()})
+  fetch('/api/gastos_fornecedor'+(ano?'?ano='+ano:'')).then(r=>r.json()).then(async d=>{if(!d.ok)throw 0;dados=d;ano=d.ano;try{const i=await fetch('/api/gastos_itens?ano='+ano+'&categoria='+encodeURIComponent('Insumos secos')).then(r=>r.json());itens=i.ok?i.itens:[]}catch(e){itens=[]}desenharTela()})
    .catch(()=>{el.innerHTML='<div class="card"><h3>Não foi possível carregar</h3><p class="hint">Tente de novo em instantes.</p></div>'})}
 function ligar(){
   document.addEventListener('click',e=>{if(!el||!el.isConnected)return;

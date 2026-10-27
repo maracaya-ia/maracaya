@@ -4481,6 +4481,21 @@ def listar_gastos_fornecedor(ano: int = Query(None)):
     return {"ok": True, "ano": ano, "anos": anos, "linhas": linhas, "fornecedores_cadastrados": forn}
 
 
+@app.get("/api/gastos_itens")
+def listar_gastos_itens(ano: int = Query(...), categoria: str = Query("Insumos secos")):
+    """Itens comprados (detalhe dos gastos por fornecedor) de um ano e categoria."""
+    linhas = consultar("""
+        SELECT id, fornecedor, to_char(mes, 'YYYY-MM-DD') AS mes, item, grupo, quantidade, unidade,
+               preco_unit, valor, origem, doc, detalhe
+        FROM gastos_itens
+        WHERE extract(year FROM mes) = %(a)s AND categoria = %(c)s
+        ORDER BY mes, fornecedor, valor DESC""", {"a": ano, "c": categoria})
+    for l in linhas:
+        for k in ("quantidade", "preco_unit", "valor"):
+            l[k] = float(l[k]) if l[k] is not None else None
+    return {"ok": True, "ano": ano, "categoria": categoria, "itens": linhas}
+
+
 @app.post("/api/gastos_fornecedor")
 def salvar_gasto_fornecedor(dados: dict = Body(...)):
     d = _mes_primeiro(dados.get("mes"))
