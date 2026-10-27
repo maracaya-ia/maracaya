@@ -58,3 +58,27 @@ INSERT INTO gastos_fornecedor (fornecedor, mes, categoria, valor, origem, obs) V
  ('Garra','2026-09-01','Insumos secos',557.70,'nota','pedido de 09/09: R$ 375,70 de limpeza e papel toalha + R$ 182 de óleo; o pedido de 02/09 (R$ 543) não foi faturado por falta de limite'),
  ('Garra','2026-10-01','Insumos secos',817.60,'nota','orçamento de 15/10 (boleto de 14 dias, vence em 30/10 no DDA); o pedido de 22/10 (R$ 399,10) ficou sem confirmação e não entrou')
 ON CONFLICT (fornecedor, mes, categoria) DO NOTHING;
+
+-- Pão e Roça (pães): fev a out = soma das notas listadas pelo Murilo (nº da nota, data e valor); jan estimado pelos acertos semanais
+INSERT INTO gastos_fornecedor (fornecedor, mes, categoria, valor, origem, obs) VALUES
+ ('Pão e Roça','2026-01-01','Pães',1587.20,'estimado','acertos semanais de 14/01 (R$ 402,80), 21/01 (R$ 324,00), 28/01 (R$ 358,20) e 04/02 (R$ 502,20)'),
+ ('Pão e Roça','2026-02-01','Pães',1897.20,'nota','8 notas a partir da nº 9592 (09/02) + acerto de 11/02 (R$ 340,20) da 1ª semana'),
+ ('Pão e Roça','2026-03-01','Pães',1968.60,'nota','10 notas do mês'),
+ ('Pão e Roça','2026-04-01','Pães',1862.10,'nota','10 notas do mês'),
+ ('Pão e Roça','2026-05-01','Pães',1895.70,'nota','9 notas do mês'),
+ ('Pão e Roça','2026-06-01','Pães',2128.50,'nota','11 notas do mês'),
+ ('Pão e Roça','2026-07-01','Pães',2652.60,'nota','12 notas do mês (maior mês do ano)'),
+ ('Pão e Roça','2026-08-01','Pães',2408.70,'nota','9 notas do mês'),
+ ('Pão e Roça','2026-09-01','Pães',2187.60,'nota','9 notas do mês'),
+ ('Pão e Roça','2026-10-01','Pães',2067.30,'nota','8 notas até 22/10')
+ON CONFLICT (fornecedor, mes, categoria) DO NOTHING;
+
+-- Juju Batata (batata palha): caixa a R$ 150 (7 caixas + R$ 1.200 = R$ 2.250 em 07/04); meses sem pedido visível ficam de fora
+INSERT INTO gastos_fornecedor (fornecedor, mes, categoria, valor, quantidade, origem, obs) VALUES
+ ('Juju Batata','2026-01-01','Batata palha',1050,7,'estimado','saldo subiu de R$ 1.200 (24/12) para R$ 2.250 (29/01); 3 caixas em 28/01'),
+ ('Juju Batata','2026-02-01','Batata palha',1200,8,'estimado','pedido de R$ 1.200 em 05/02; 4 caixas retiradas em 18/02'),
+ ('Juju Batata','2026-03-01','Batata palha',450,3,'estimado','3 caixas pedidas em 14/03'),
+ ('Juju Batata','2026-04-01','Batata palha',600,4,'estimado','1 caixa retirada e 3 entregues em 08/04; havia R$ 750 em aberto em 07/04'),
+ ('Juju Batata','2026-06-01','Batata palha',450,3,'estimado','3 caixas pedidas em 09/06'),
+ ('Juju Batata','2026-10-01','Batata palha',450,3,'estimado','último pedido (R$ 450); saldo devedor de R$ 700 em 15/10')
+ON CONFLICT (fornecedor, mes, categoria) DO NOTHING;
