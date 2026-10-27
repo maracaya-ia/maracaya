@@ -82,3 +82,16 @@ INSERT INTO gastos_fornecedor (fornecedor, mes, categoria, valor, quantidade, or
  ('Juju Batata','2026-06-01','Batata palha',450,3,'estimado','3 caixas pedidas em 09/06'),
  ('Juju Batata','2026-10-01','Batata palha',450,3,'estimado','último pedido (R$ 450); saldo devedor de R$ 700 em 15/10')
 ON CONFLICT (fornecedor, mes, categoria) DO NOTHING;
+
+-- Ambev (BEES, aba Faturas): faturas pagas, lançadas no mês do pedido (vencimento menos 3 dias de prazo); as duas canceladas de junho ficam de fora
+INSERT INTO gastos_fornecedor (fornecedor, mes, categoria, valor, origem, obs) VALUES
+ ('Ambev','2026-01-01','Bebidas',191.90,'pago','fatura de R$ 191,90 (venc. 21/01)'),
+ ('Ambev','2026-02-01','Bebidas',348.07,'pago','faturas de R$ 134,48 (venc. 07/02) e R$ 213,59 (venc. 19/02)'),
+ ('Ambev','2026-03-01','Bebidas',199.60,'pago','fatura de R$ 199,60 (venc. 21/03)'),
+ ('Ambev','2026-04-01','Bebidas',500.48,'pago','faturas de R$ 199,60 (venc. 11/04) e R$ 300,88 (venc. 24/04)'),
+ ('Ambev','2026-05-01','Bebidas',414.20,'pago','fatura de R$ 414,20 (venc. 12/05)'),
+ ('Ambev','2026-06-01','Bebidas',362.26,'pago','fatura de R$ 362,26 (venc. 20/06); as de R$ 431,95 (09/06) e R$ 262,22 (16/06) foram canceladas'),
+ ('Ambev','2026-07-01','Bebidas',675.12,'pago','fatura de R$ 675,12 (venc. 21/07)'),
+ ('Ambev','2026-09-01','Bebidas',203.22,'pago','fatura de R$ 203,22 (venc. 15/09); agosto sem fatura'),
+ ('Ambev','2026-10-01','Bebidas',411.80,'pago','fatura de R$ 411,80 (venc. 06/10)')
+ON CONFLICT (fornecedor, mes, categoria) DO NOTHING;
