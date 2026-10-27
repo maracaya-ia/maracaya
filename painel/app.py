@@ -4482,13 +4482,13 @@ def listar_gastos_fornecedor(ano: int = Query(None)):
 
 
 @app.get("/api/gastos_itens")
-def listar_gastos_itens(ano: int = Query(...), categoria: str = Query("Insumos secos")):
+def listar_gastos_itens(ano: int = Query(...), categoria: str = Query(None)):
     """Itens comprados (detalhe dos gastos por fornecedor) de um ano e categoria."""
     linhas = consultar("""
         SELECT id, fornecedor, to_char(mes, 'YYYY-MM-DD') AS mes, item, grupo, quantidade, unidade,
                preco_unit, valor, origem, doc, detalhe
         FROM gastos_itens
-        WHERE extract(year FROM mes) = %(a)s AND categoria = %(c)s
+        WHERE extract(year FROM mes) = %(a)s AND (%(c)s::text IS NULL OR categoria = %(c)s)
         ORDER BY mes, fornecedor, valor DESC""", {"a": ano, "c": categoria})
     for l in linhas:
         for k in ("quantidade", "preco_unit", "valor"):

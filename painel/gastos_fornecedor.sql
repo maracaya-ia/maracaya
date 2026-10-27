@@ -44,7 +44,7 @@ INSERT INTO gastos_fornecedor (fornecedor, mes, categoria, valor, origem, obs) V
  ('Brasal','2026-05-01','Bebidas',1978.61,'estimado','5 pedidos (05, 12, 15, 19 e 26/05); boleto de R$ 306,34 em atraso em 12/05'),
  ('Brasal','2026-06-01','Bebidas',1752.21,'estimado','pedido grande de 08/06 (R$ 1,6 mil) e 22/06'),
  ('Brasal','2026-07-01','Bebidas',2095.51,'estimado','pedidos de 13, 20 e 27/07; boletos conhecidos: R$ 780,79 (14/07) e R$ 1.341,36 (27/07)'),
- ('Brasal','2026-08-01','Bebidas',2702.69,'estimado','pedidos de 10, 24 e 31/08 (o de 03/08 foi repetido em 10/08); boleto de R$ 699,37 pago em 24/08 com juros e multa'),
+ ('Brasal','2026-08-01','Bebidas',1863.33,'estimado','pedidos de 10 e 24/08 (o de 31/08 foi cancelado e refeito em 04/09); boleto de R$ 699,37 pago em 24/08 com juros e multa'),
  ('Brasal','2026-09-01','Bebidas',1920.66,'estimado','pedidos de 04/09 (R$ 1.307,61) e 14/09 (R$ 613,05); títulos conhecidos R$ 968,15 (21/09) e R$ 618,05 (28/09); o pedido de 28/09 para a outra unidade não entrou'),
  ('Brasal','2026-10-01','Bebidas',1201.55,'nota','boleto do DDA com vencimento em 27/10; pedido de 13/10 feito pelo app')
 ON CONFLICT (fornecedor, mes, categoria) DO NOTHING;
