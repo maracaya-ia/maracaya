@@ -1507,6 +1507,17 @@ def _custo_logistica_chomp_99(entrega):
     return LOGISTICA_CHOMP_99[-1][1]
 
 
+# Chomp no iFood passou a ter entrega propria (como a Maracaya): a partir desta data (aaaammdd, configuravel em
+# dre_config 'chomp_ifood_proprio_desde') o frete segue a tabela do motoboy; antes continua a regra de plataforma.
+CHOMP_IFOOD_PROPRIO_DESDE = 20261101
+
+
+def _chomp_ifood_proprio(r, cfg):
+    desde = int(cfg.get("chomp_ifood_proprio_desde", CHOMP_IFOOD_PROPRIO_DESDE))
+    d = r["criado_em"]
+    return d.year * 10000 + d.month * 100 + d.day >= desde
+
+
 def _calcular_pedido(r, cfg, razao_cmv):
     sub, ent = float(r["subtotal"]), float(r["taxa_entrega"])
     dl, di = float(r["desconto_loja"]), float(r["desconto_ifood"])
@@ -1516,6 +1527,8 @@ def _calcular_pedido(r, cfg, razao_cmv):
     ifood = origem == "ifood"
     n99 = origem in ("99food", "food99")
     site = origem in ORIGENS_SITE
+    proprio = chomp and ifood and _chomp_ifood_proprio(r, cfg)   # entrega propria no iFood (regra da Maracaya)
+    plat_chomp = chomp and ((ifood and not proprio) or n99)
 
     # --- comissao / taxa ---
     if ifood:
@@ -1527,11 +1540,11 @@ def _calcular_pedido(r, cfg, razao_cmv):
 
     # --- custo de entrega / logistica ---
     tipo_frete, plataforma = "nenhum", False
-    if not delivery and not (chomp and (ifood or n99)):
+    if not delivery and not plat_chomp:
         frete = 0.0
     elif site:
         frete, tipo_frete = CUSTO_MOTOBOY_SITE, "site"
-    elif chomp and ifood:
+    elif chomp and ifood and not proprio:
         plataforma = True
         if dl > 0:
             frete, tipo_frete = COMISSAO_VARIAVEL_CHOMP["ate_3km"], "chomp"
@@ -1543,7 +1556,7 @@ def _calcular_pedido(r, cfg, razao_cmv):
             frete, tipo_frete = COMISSAO_VARIAVEL_CHOMP["3_a_5km"], "estimado"
     elif chomp and n99:
         frete, tipo_frete, plataforma = _custo_logistica_chomp_99(ent), "chomp", True
-    elif chomp:
+    elif chomp and not proprio:
         frete = 0.0
     else:
         rep = TABELA_FRETE.get(round(ent))
@@ -1555,7 +1568,7 @@ def _calcular_pedido(r, cfg, razao_cmv):
             frete, tipo_frete = max(rep - ent, 0.0), "tabela"
 
     # --- receita / repasse / lucro ---
-    bruto = sub if chomp else sub + ent
+    bruto = sub if (chomp and not proprio) else sub + ent
     receita = bruto - dl
     repasse = receita - comissao - taxa - (frete if plataforma else 0.0)
     imposto = receita * float(cfg.get("imposto_pct", 0)) / 100
